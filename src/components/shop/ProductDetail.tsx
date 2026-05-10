@@ -29,17 +29,7 @@ export default function ProductDetail({ product }: ProductDetailProps) {
   const normalize = (val?: string) => (val ? val.replace(/['"\\]/g, "").trim() : "");
 
   const optionNames = useMemo(() => {
-    const seen = new Set<string>();
-    const result: string[] = [];
-    product.variants.forEach((v) => {
-      Object.keys(v.options || {}).forEach((k) => {
-        if (!seen.has(k)) {
-          seen.add(k);
-          result.push(k);
-        }
-      });
-    });
-    return result;
+    return Array.from(new Set(product.variants.flatMap((v) => Object.keys(v.options || {}))));
   }, [product.variants]);
 
   const [selected, setSelected] = useState<Record<string, string>>(() => {
@@ -98,17 +88,8 @@ export default function ProductDetail({ product }: ProductDetailProps) {
   }, [product.variants, optionNames, selected]);
 
   const allImages = useMemo(() => {
-    const result: string[] = [...product.images];
-    const inResult = new Set(result);
-    product.variants.forEach((v) => {
-      (v.images ?? []).forEach((img) => {
-        if (!inResult.has(img)) {
-          result.push(img);
-          inResult.add(img);
-        }
-      });
-    });
-    return result;
+    const imgs = [...(product.images || []), ...product.variants.flatMap((v) => v.images || [])];
+    return Array.from(new Set(imgs));
   }, [product]);
 
   const getVariantImageIndex = useCallback(

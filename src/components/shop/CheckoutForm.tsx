@@ -10,10 +10,11 @@ import { getPaymentLabel, PaymentMethod } from "@/types/shop/payment";
 import { CartItem } from "@/types/shop/product";
 import { getOrderKindRules, getOrderKindFromItems } from "@/utils/shop/orderKindUtils";
 import Image from "next/image";
-import { getColorFromOptions, isColorKey } from "@/utils/shop/shopUtils";
+import { getColorFromOptions } from "@/utils/shop/shopUtils";
 import { FaChevronDown } from "react-icons/fa";
 import { User } from "@/types/user";
 import type { ApplePayPaymentRequest, ApplePayPaymentToken } from "@/types/sumup";
+import VariantTags from "@/components/shop/VariantTags";
 
 interface CheckoutFormProps {
   user: User;
@@ -426,10 +427,7 @@ export default function CheckoutForm({ user }: CheckoutFormProps) {
                   ? item.product.variants.find((v) => v.id === item.variantId)
                   : null;
 
-              const imageSrc =
-                variantObj && Array.isArray(variantObj.images) && variantObj.images.length > 0
-                  ? variantObj.images[0]
-                  : item.product.images?.[0];
+              const imageSrc = variantObj?.images?.[0] ?? item.product.images?.[0];
               const colorInfo = getColorFromOptions(
                 variantObj?.options ?? undefined,
                 variantObj?.label ?? undefined
@@ -466,16 +464,7 @@ export default function CheckoutForm({ user }: CheckoutFormProps) {
                           title={colorInfo.name || colorInfo.hex}
                         />
                       )}
-                      {variantObj?.options &&
-                        (() => {
-                          const entries = Object.entries(variantObj.options);
-                          const nonColorEntries = entries.filter(([k]) => !isColorKey(k));
-                          return nonColorEntries.map(([k, v]) => (
-                            <span className={styles.variantSize} key={k}>
-                              {`${k.trim()}: ${v}`}
-                            </span>
-                          ));
-                        })()}
+                      <VariantTags options={variantObj?.options} className={styles.variantSize} />
                     </div>
                   </div>
                 </div>

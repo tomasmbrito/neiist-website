@@ -68,6 +68,14 @@ export default function PosPaymentOverlay({
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const autoStartedRef = useRef(false);
   const confirmInFlightRef = useRef(false);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const selectedReaderName = useMemo(
     () =>
@@ -204,7 +212,7 @@ export default function PosPaymentOverlay({
     ): Promise<{ paid: boolean; transactionCode: string | null }> => {
       const startedAt = Date.now();
 
-      while (Date.now() - startedAt < 90_000) {
+      while (isMountedRef.current && Date.now() - startedAt < 90_000) {
         const txRes = await fetch(
           `/api/shop/sumup/transactions/status?clientTransactionId=${encodeURIComponent(clientTransactionId)}`,
           { cache: "no-store" }

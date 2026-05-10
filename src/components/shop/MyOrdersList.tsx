@@ -19,8 +19,8 @@ export default function MyOrdersList({ orders, products }: Props) {
     const now = new Date();
     return orders.some((o) => {
       if (!o.pickup_deadline) return false;
-      const dl = new Date(o.pickup_deadline);
-      const diffDays = (dl.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+      const deadline = new Date(o.pickup_deadline);
+      const diffDays = (deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
       return diffDays <= 28 && diffDays >= 0;
     });
   }, [orders]);
@@ -67,18 +67,12 @@ export default function MyOrdersList({ orders, products }: Props) {
   const selectImage = (order: Order): string | undefined => {
     if (!order.items || order.items.length === 0) return undefined;
     const firstItem = order.items[0];
-    const product = products.find((p) => p.id === firstItem.product_id);
+    const product = products.find((p) => String(p.id) === String(firstItem.product_id));
     if (!product) return undefined;
     const variantObj = firstItem.variant_id
-      ? product.variants?.find((v) => v.id === firstItem.variant_id)
+      ? product.variants?.find((v) => String(v.id) === String(firstItem.variant_id))
       : undefined;
-    if (variantObj && Array.isArray(variantObj.images) && variantObj.images.length > 0) {
-      return variantObj.images[0];
-    }
-    if (Array.isArray(product.images) && product.images.length > 0) {
-      return product.images[0];
-    }
-    return undefined;
+    return variantObj?.images?.[0] ?? product.images?.[0];
   };
 
   return (

@@ -52,7 +52,9 @@ const displayValue = (key: string, val: string) => {
 const normalizeOptionValue = (value?: string) => (value ? value.replace(/["'\\]/g, "").trim() : "");
 
 const variantLabel = (name: string, options: Record<string, string>) => {
-  const values = Object.entries(options).map(([k, v]) => displayValue(k, v));
+  const values = Object.entries(options)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => displayValue(k, v));
   return values.length ? `${name} - ${values.join(" | ")}` : name;
 };
 
@@ -68,7 +70,7 @@ const getOptionKeys = (product: Product) => {
     });
   });
 
-  return keys;
+  return keys.sort();
 };
 
 const matchesSelections = (variant: ProductVariant, selections: Record<string, string>) =>
@@ -101,8 +103,8 @@ const resolveVariant = (
 
 const buildFallbackUser = (order: Order): User => ({
   istid: order.user_istid ?? "",
-  name: order.customer_name || "",
-  email: order.customer_email || "",
+  name: order.customer_name ?? "",
+  email: order.customer_email ?? "",
   alternativeEmail: null,
   alternativeEmailVerified: true,
   phone: order.customer_phone ?? null,
@@ -234,17 +236,14 @@ export default function NewOrderModal({
 
     const queryTokens = normalizedQuery.split(/\s+/).filter(Boolean);
 
-    const matches = allUsers
-      .map((user) => {
-        const name = normalizeText(user.name || "");
-        const nameTokens = name.split(/\s+/).filter(Boolean);
-        for (const qtok of queryTokens) {
-          const found = nameTokens.some((nameToken) => nameToken.startsWith(qtok));
-          if (!found) return null;
-        }
-        return user;
-      })
-      .filter(Boolean) as User[];
+    const matches = allUsers.filter((user) => {
+      const name = normalizeText(user.name || "");
+      const nameTokens = name.split(/\s+/).filter(Boolean);
+      for (const qtok of queryTokens) {
+        if (!nameTokens.some((token) => token.startsWith(qtok))) return false;
+      }
+      return true;
+    });
 
     return matches.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 10);
   }, [userSearch, allUsers]);
