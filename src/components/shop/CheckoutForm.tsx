@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import ShopCheckoutOverlay from "@/components/shop/ShopCheckoutOverlay";
+import { toast } from "sonner";
 import styles from "@/styles/components/shop/CheckoutForm.module.css";
 
 import { Campus } from "@/types/shop/order";
@@ -30,7 +31,6 @@ export default function CheckoutForm({ user }: CheckoutFormProps) {
   const [showTaxInfo, setShowTaxInfo] = useState(false);
   const [showDeliveryInfo, setShowDeliveryInfo] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<number | null>(null);
   const [submittedPaymentMethod, setSubmittedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [discountCode, setDiscountCode] = useState("");
@@ -104,12 +104,11 @@ export default function CheckoutForm({ user }: CheckoutFormProps) {
     const code = discountCode.trim();
     if (!code) {
       setAppliedDiscount(null);
-      setError("Indica um código de desconto.");
+      toast.error("Indica um código de desconto.", { closeButton: true });
       return;
     }
 
     setDiscountLoading(true);
-    setError(null);
     try {
       const result = await validateDiscount({
         code,
@@ -119,7 +118,7 @@ export default function CheckoutForm({ user }: CheckoutFormProps) {
 
       if (!result.valid) {
         setAppliedDiscount(null);
-        setError(result.error ?? "Código de desconto inválido.");
+        toast.error(result.error ?? "Código de desconto inválido.", { closeButton: true });
         return;
       }
 
@@ -129,7 +128,9 @@ export default function CheckoutForm({ user }: CheckoutFormProps) {
       });
     } catch (err) {
       setAppliedDiscount(null);
-      setError(err instanceof Error ? err.message : "Não foi possível validar o código.");
+      toast.error(err instanceof Error ? err.message : "Não foi possível validar o código.", {
+        closeButton: true,
+      });
     } finally {
       setDiscountLoading(false);
     }
@@ -168,25 +169,28 @@ export default function CheckoutForm({ user }: CheckoutFormProps) {
 
   const handleSubmit = async (selectedPayment: PaymentMethod | null = payment) => {
     if (!campus) {
-      setError("Por favor, seleciona o campus.");
+      toast.error("Por favor, seleciona o campus.", { closeButton: true });
       return;
     }
 
     if (isMixedInvalid) {
-      setError("Este pedido nao pode misturar categorias especiais com outras categorias.");
+      toast.error("Este pedido não pode misturar categorias especiais com outras categorias.", {
+        closeButton: true,
+      });
       return;
     }
 
     if (!selectedPayment || !allowedPaymentMethods.includes(selectedPayment)) {
-      setError("Seleciona um método de pagamento.");
+      toast.error("Seleciona um método de pagamento.", { closeButton: true });
       return;
     }
     setLoading(true);
-    setError(null);
     try {
       await createOrder(selectedPayment, true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao submeter encomenda.");
+      toast.error(err instanceof Error ? err.message : "Erro ao submeter encomenda.", {
+        closeButton: true,
+      });
     } finally {
       setLoading(false);
     }
@@ -194,27 +198,25 @@ export default function CheckoutForm({ user }: CheckoutFormProps) {
 
   const handleApplePayDirect = () => {
     if (!campus) {
-      setError("Por favor, seleciona o campus.");
+      toast.error("Por favor, seleciona o campus.", { closeButton: true });
       return;
     }
 
     if (typeof window === "undefined" || !window.isSecureContext) {
-      setError("Apple Pay requer um contexto seguro (HTTPS).");
+      toast.error("Apple Pay requer um contexto seguro (HTTPS).", { closeButton: true });
       return;
     }
 
     if (typeof window.ApplePaySession === "undefined") {
-      setError("Apple Pay não está disponível neste browser.");
+      toast.error("Apple Pay não está disponível neste browser.", { closeButton: true });
       return;
     }
 
     const ApplePaySession = window.ApplePaySession;
     if (!ApplePaySession.canMakePayments()) {
-      setError("Apple Pay não está disponível neste dispositivo.");
+      toast.error("Apple Pay não está disponível neste dispositivo.", { closeButton: true });
       return;
     }
-
-    setError(null);
 
     let createdOrderId: number | null = null;
     let checkoutId: string | null = null;
@@ -273,8 +275,9 @@ export default function CheckoutForm({ user }: CheckoutFormProps) {
         session.completeMerchantValidation(merchantSession);
       } catch (error) {
         session.abort();
-        setError(
-          error instanceof Error ? error.message : "Falha na validação Apple Pay. Tenta novamente."
+        toast.error(
+          error instanceof Error ? error.message : "Falha na validação Apple Pay. Tenta novamente.",
+          { closeButton: true }
         );
         setLoading(false);
       }
@@ -302,12 +305,15 @@ export default function CheckoutForm({ user }: CheckoutFormProps) {
           router.push(`/my-orders?orderId=${createdOrderId}`);
         } else {
           session.completePayment(ApplePaySession.STATUS_FAILURE);
-          setError(data?.error || "Pagamento Apple Pay falhou. Tenta novamente.");
+          toast.error(data?.error || "Pagamento Apple Pay falhou. Tenta novamente.", {
+            closeButton: true,
+          });
         }
       } catch (error) {
         session.completePayment(ApplePaySession.STATUS_FAILURE);
-        setError(
-          error instanceof Error ? error.message : "Erro ao processar Apple Pay. Tenta novamente."
+        toast.error(
+          error instanceof Error ? error.message : "Erro ao processar Apple Pay. Tenta novamente.",
+          { closeButton: true }
         );
       } finally {
         setLoading(false);
@@ -486,9 +492,6 @@ export default function CheckoutForm({ user }: CheckoutFormProps) {
             disabled={loading}
             aria-label="Pagar com Apple Pay"></button>
         )}
-
-        {/* TODO: remove inline error in favor of toast or test if for this case the inline error on the widget are better.*/}
-        {error && <div className={styles.errorMessage}>{error}</div>}
       </div>
 
       <div className={styles.rightColumn}>

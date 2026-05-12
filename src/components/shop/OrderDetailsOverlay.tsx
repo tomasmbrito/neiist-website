@@ -71,7 +71,6 @@ export default function OrderDetailOverlay({
   const router = useRouter();
   const [order, setOrder] = useState<Order | null>(null);
   const [pendingStatus, setPendingStatus] = useState<OrderStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [showUserCancelConfirm, setShowUserCancelConfirm] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
 
@@ -150,7 +149,6 @@ export default function OrderDetailOverlay({
 
   const handleStatusChange = async (status: OrderStatus) => {
     if (!order) return;
-    setError(null);
     const res = await fetch(`/api/shop/orders/${order.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -160,25 +158,22 @@ export default function OrderDetailOverlay({
       const updated = await res.json();
       setOrder(updated);
       router.refresh();
-      // TODO: (SUCCESS)
+      toast.success(`Estado atualizado para ${getStatusLabel(status)}.`, { closeButton: true });
     } else {
-      // TODO: (ERROR)
-      setError("Erro ao atualizar estado.");
+      toast.error("Erro ao atualizar estado.", { closeButton: true });
     }
   };
 
   const handleUserCancel = async () => {
     if (!order) return;
-    setError(null);
     const res = await fetch(`/api/shop/orders/${order.id}`, { method: "DELETE" });
     if (res.ok) {
       const updated = await res.json();
       setOrder(updated);
       router.refresh();
-      // TODO: (SUCCESS)
+      toast.success("Encomenda cancelada com sucesso.", { closeButton: true });
     } else {
-      // TODO: (ERROR)
-      setError("Erro ao cancelar encomenda.");
+      toast.error("Erro ao cancelar encomenda.", { closeButton: true });
     }
   };
 
@@ -241,7 +236,6 @@ export default function OrderDetailOverlay({
       setNotesEditing(false);
       return true;
     }
-    setError(null);
     try {
       const res = await fetch(`/api/shop/orders/${order.id}`, {
         method: "PUT",
@@ -254,11 +248,12 @@ export default function OrderDetailOverlay({
       setOrder(data);
       setNotesEditing(false);
       router.refresh();
-      // TODO: (SUCCESS) show success toast after the order notes are saved.
+      toast.success("Notas guardadas com sucesso.", { closeButton: true });
       return true;
     } catch (err) {
-      // TODO: (ERROR)
-      setError(err instanceof Error ? err.message : "Erro ao guardar notas.");
+      toast.error(err instanceof Error ? err.message : "Erro ao guardar notas.", {
+        closeButton: true,
+      });
       return false;
     }
   };
@@ -604,9 +599,6 @@ export default function OrderDetailOverlay({
               setNotesEditing(false);
             }}
           />
-
-          {/* TODO: replace this inline error with a toast and remove this fallback once Sonner is implemented here. */}
-          {error && <div className={styles.error}>{error}</div>}
         </div>
       )}
 
