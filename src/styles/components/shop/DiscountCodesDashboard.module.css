@@ -396,9 +396,15 @@ textarea.field {
 }
 
 .previewEmail {
-  background: white;
-  padding: 1rem;
-  border-radius: 0.5rem;
+  background: transparent;
+  padding: 0;
+  width: 100%;
+}
+
+.previewEmail > div {
+  border: 2px solid #d3d7df;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-sizing: border-box;
 }
 
 .datePickerWrap {
