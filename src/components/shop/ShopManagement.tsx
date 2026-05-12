@@ -8,6 +8,7 @@ import { Product } from "@/types/shop/product";
 import { Category } from "@/types/shop/category";
 import ConfirmDialog from "@/components/layout/ConfirmDialog";
 import { PiContactlessPayment } from "react-icons/pi";
+import { MdOutlineDiscount } from "react-icons/md";
 import ProductManagementCard from "./ProductManagementCard";
 import Fuse from "fuse.js";
 import styles from "@/styles/components/shop/ShopManagement.module.css";
@@ -139,9 +140,6 @@ export default function ShopManagement({ products, categories }: ShopManagementP
         <div className={styles.header}>
           <ColorfulText className={styles.title} text="Gestão da Loja" />
           <div className={styles.headerActions}>
-            <button className={styles.addBtn} onClick={() => router.push("/shop/manage/discounts")}>
-              Descontos
-            </button>
             <button className={styles.addBtn} onClick={() => router.push("/shop/manage/new")}>
               <FaPlus /> Adicionar Produto
             </button>
@@ -178,6 +176,9 @@ export default function ShopManagement({ products, categories }: ShopManagementP
           </button>
           <button className={styles.addBtn} onClick={() => router.push("/shop/pos")}>
             <PiContactlessPayment /> Gestão POS
+          </button>
+          <button className={styles.addBtn} onClick={() => router.push("/shop/manage/discounts")}>
+            <MdOutlineDiscount /> Descontos
           </button>
         </div>
 
