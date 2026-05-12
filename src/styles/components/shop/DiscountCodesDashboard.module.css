@@ -204,6 +204,14 @@ textarea.field {
   transition: all 0.2s;
 }
 
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  width: fit-content;
+}
+
 .itemCard {
   border-radius: 0.6rem;
   border: 2px solid #d3d7df;
@@ -219,7 +227,8 @@ textarea.field {
   align-items: center;
 }
 
-.itemHeaderLeft {
+.itemHeaderLeft,
+.itemHeaderRight {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -231,9 +240,21 @@ textarea.field {
 }
 
 .itemBody {
+  border-top: 2px solid #d3d7df;
   padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
   background: #fafafa;
   overflow: hidden;
+}
+
+.badge {
+  background: #ececf0;
+  color: #3f3f3f;
+  padding: 0.1rem 0.5rem;
+  border-radius: 1rem;
+  font-size: 0.75rem;
 }
 
 .listControls {
@@ -375,8 +396,9 @@ textarea.field {
 }
 
 .previewEmail {
-  background: transparent;
-  padding: 0;
+  background: white;
+  padding: 1rem;
+  border-radius: 0.5rem;
 }
 
 .datePickerWrap {

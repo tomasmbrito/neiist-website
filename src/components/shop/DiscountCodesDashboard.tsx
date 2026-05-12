@@ -89,7 +89,7 @@ function SectionTitle({ icon, children }: { icon: ReactNode; children: ReactNode
 }
 
 const PREVIEW_RECIPIENT = {
-  name: "Nome do utilizador",
+  name: "Nome",
   istid: "ist12345",
   email: "email@exemplo.com",
 };
@@ -107,7 +107,7 @@ function emptyCreationDraft(): CreationDraft {
     maxUses: "1",
     expiresAt: undefined,
     emailSubject: "O teu código de desconto NEIIST",
-    emailIntroLine: getDefaultDiscountEmailIntroLine(),
+    emailIntroLine: getDefaultDiscountEmailIntroLine().trim(),
   };
 }
 
@@ -208,25 +208,15 @@ export default function DiscountCodesDashboard({
   const previewRecipient = selectedBulkRecipients[0] ?? PREVIEW_RECIPIENT;
   const previewCode = "K9X2A1"; // 6 character alphanumeric format for the preview
 
-  const previewDiscountFormatted =
-    creationDraft.discount_type === "percentage"
-      ? `${Number(creationDraft.discount_value) || 0}%`
-      : `€${(Number(creationDraft.discount_value) || 0).toFixed(2)}`;
-
-  const previewIntroLine = creationDraft.emailIntroLine.replace(
-    /\{\{discount\}\}/g,
-    previewDiscountFormatted
-  );
-
-  const previewHtml = renderDiscountCampaignEmailHtml(previewIntroLine, {
+  const previewHtml = renderDiscountCampaignEmailHtml(creationDraft.emailIntroLine, {
     recipientName: previewRecipient.name,
     recipientIstid: previewRecipient.istid,
     recipientEmail: previewRecipient.email,
     code: previewCode,
     discountType: creationDraft.discount_type,
     discountValue: Number(creationDraft.discount_value) || 0,
-    expiresAt: creationDraft.expiresAt ? creationDraft.expiresAt.toLocaleDateString("pt-PT") : null,
-    introLine: previewIntroLine,
+    expiresAt: creationDraft.expiresAt ? creationDraft.expiresAt.toISOString() : null,
+    introLine: creationDraft.emailIntroLine,
   });
 
   const renderDiscountPreview = (
@@ -318,19 +308,19 @@ export default function DiscountCodesDashboard({
       : null;
 
     if (recipients.length === 0) {
-      toast.error("Seleciona pelo menos um utilizador.");
+      toast.error("Seleciona pelo menos um utilizador.", { closeButton: true });
       return;
     }
     if (!Number.isFinite(discountValue) || discountValue < 0) {
-      toast.error("Indica um valor de desconto válido.");
+      toast.error("Indica um valor de desconto válido.", { closeButton: true });
       return;
     }
     if (!Number.isInteger(maxUses) || maxUses <= 0) {
-      toast.error("O limite máximo de usos deve ser um número positivo.");
+      toast.error("O limite máximo de usos deve ser um número positivo.", { closeButton: true });
       return;
     }
     if (!creationDraft.emailSubject.trim() || !creationDraft.emailIntroLine.trim()) {
-      toast.error("O assunto e o texto do email são obrigatórios.");
+      toast.error("O assunto e o texto do email são obrigatórios.", { closeButton: true });
       return;
     }
 
@@ -360,7 +350,7 @@ export default function DiscountCodesDashboard({
         | null;
 
       if (!response.ok) {
-        toast.error(data?.error ?? "Não foi possível gerar os códigos.");
+        toast.error(data?.error ?? "Não foi possível gerar os códigos.", { closeButton: true });
         return;
       }
 
@@ -373,13 +363,18 @@ export default function DiscountCodesDashboard({
       const failedCount = data?.failed_count ?? 0;
       if (failedCount > 0) {
         toast.warning(
-          `Gerados ${generatedCodes.length} códigos com ${failedCount} falhas no envio.`
+          `Gerados ${generatedCodes.length} códigos com ${failedCount} falhas no envio.`,
+          { closeButton: true }
         );
       } else {
-        toast.success(`Gerados ${generatedCodes.length} códigos e enviados os emails.`);
+        toast.success(`Gerados ${generatedCodes.length} códigos e enviados os emails.`, {
+          closeButton: true,
+        });
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Não foi possível gerar os códigos.");
+      toast.error(error instanceof Error ? error.message : "Não foi possível gerar os códigos.", {
+        closeButton: true,
+      });
     } finally {
       setIsCreating(false);
     }
@@ -435,8 +430,12 @@ export default function DiscountCodesDashboard({
       })
     );
 
-    if (failures > 0) toast.error(`Falha ao atualizar ${failures} código(s).`);
-    else toast.success(`Códigos ${active ? "ativados" : "desativados"} com sucesso.`);
+    if (failures > 0)
+      toast.error(`Falha ao atualizar ${failures} código(s).`, { closeButton: true });
+    else
+      toast.success(`Códigos ${active ? "ativados" : "desativados"} com sucesso.`, {
+        closeButton: true,
+      });
     setSelectedCodeIds(new Set());
   };
 
@@ -464,8 +463,9 @@ export default function DiscountCodesDashboard({
       })
     );
 
-    if (failures > 0) toast.error(`Falha ao eliminar ${failures} código(s).`);
-    else toast.success("Códigos eliminados com sucesso.");
+    if (failures > 0)
+      toast.error(`Falha ao eliminar ${failures} código(s).`, { closeButton: true });
+    else toast.success("Códigos eliminados com sucesso.", { closeButton: true });
     setSelectedCodeIds(new Set());
   };
 
@@ -495,16 +495,14 @@ export default function DiscountCodesDashboard({
               <SectionTitle icon={<FaTicketAlt />}>Novo Desconto</SectionTitle>
 
               <Field label="Utilizadores" icon={<FaUsers />}>
-                <div className={styles.multiSelectContainer}>
-                  <MultiSelectDropdown
-                    availableItems={userOptions}
-                    selectedItems={creationDraft.selectedRecipients}
-                    onChange={(items) =>
-                      setCreationDraft((prev) => ({ ...prev, selectedRecipients: items }))
-                    }
-                    placeholder="Selecionar utilizadores..."
-                  />
-                </div>
+                <MultiSelectDropdown
+                  availableItems={userOptions}
+                  selectedItems={creationDraft.selectedRecipients}
+                  onChange={(items) =>
+                    setCreationDraft((prev) => ({ ...prev, selectedRecipients: items }))
+                  }
+                  placeholder="Selecionar utilizadores..."
+                />
               </Field>
               <div className={styles.row}>
                 <Field label="Tipo" icon={<FaTag />}>
@@ -619,29 +617,28 @@ export default function DiscountCodesDashboard({
                   placeholder="O teu código de desconto NEIIST"
                 />
               </Field>
-              <Field label="Texto de introdução" icon={<FaAlignLeft />} iconAlignTop>
+              <Field label="Corpo do Email" icon={<FaAlignLeft />} iconAlignTop>
                 <textarea
-                  rows={3}
+                  rows={10}
                   className={styles.field}
                   value={creationDraft.emailIntroLine}
                   onChange={(e) =>
                     setCreationDraft((prev) => ({ ...prev, emailIntroLine: e.target.value }))
                   }
-                  placeholder="Foi gerado um código personalizado para ti, válido para {{discount}}."
+                  placeholder="Olá {{name}},\n\nAqui tens o teu código de desconto: {{code}}"
                 />
               </Field>
               <span className={styles.hint}>
-                Usa {"{{discount}}"} para inserir o valor dinamicamente no email.
+                Variáveis: {"{{name}}"}, {"{{istid}}"}, {"{{code}}"}, {"{{discount}}"},{" "}
+                {"{{expiry}}"}.<br />
               </span>
 
               <SectionTitle icon={<FaEye />}>Pré-visualização</SectionTitle>
-              <div className={styles.itemCard}>
-                <div className={styles.itemBody}>
-                  <article
-                    className={styles.previewEmail}
-                    dangerouslySetInnerHTML={{ __html: previewHtml }}
-                  />
-                </div>
+              <div className={styles.previewEmailWrapper}>
+                <article
+                  className={styles.previewEmail}
+                  dangerouslySetInnerHTML={{ __html: previewHtml }}
+                />
               </div>
             </div>
           </div>

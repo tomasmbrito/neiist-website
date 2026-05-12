@@ -76,52 +76,54 @@ export function interpolateDiscountEmailHtml(
 }
 
 export function getDefaultDiscountEmailIntroLine(): string {
-  return "Foi gerado um código personalizado para ti, no valor de {{discount}}.";
-}
+  return `
+Olá {{name}}!
 
-export function getDefaultDiscountEmailHtmlTemplate(): string {
-  return [
-    "<div style=\"font-family: 'Secular One', Arial, sans-serif; background: #F2F2F7; padding: 2rem; border-radius: 1rem; color: #333;\">",
-    '  <h2 style="color: #2863FD; margin-bottom: 1rem;">O teu código de desconto NEIIST</h2>',
-    '  <p style="font-size: 1.05rem;">Olá {{name}},</p>',
-    "  <p>{{intro_line}}</p>",
-    '  <div style="padding: 1rem; border-radius: 0.9rem; background: #ffffff; border: 1px solid #e5e7eb; margin: 1rem 0 1.25rem;">',
-    '    <p style="margin: 0 0 0.35rem; color: #6b7280; font-size: 0.9rem;">Código</p>',
-    '    <p style="margin: 0; font-size: 1.4rem; font-weight: 700; letter-spacing: 0.08em; color: #111827;">{{code}}</p>',
-    "  </div>",
-    '  <p style="margin: 0.35rem 0;"><strong>ISTID:</strong> {{istid}}</p>',
-    '  <p style="margin: 0.35rem 0;"><strong>Email:</strong> {{email}}</p>',
-    '  <p style="margin: 0.35rem 0 1.25rem;"><strong>Expira:</strong> {{expiry}}</p>',
-    '  <p style="margin-bottom: 0;">Se precisares de ajuda, responde a este email.</p>',
-    "</div>",
-  ].join("\n");
+Foi gerado um código personalizado para ti, no valor de {{discount}}.
+
+Código: **{{code}}**
+Expira: {{expiry}}
+  `;
 }
 
 export function renderDiscountCampaignEmailHtml(
-  introLine: string,
+  templateContent: string,
   data: DiscountEmailTemplateData
 ): string {
-  const logoUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/neiist_logo.svg`;
   const discountLabel = formatDiscountValueLabel(data.discountType, data.discountValue);
   const expiryLabel = formatDiscountExpiryLabel(data.expiresAt);
-  const parsedIntro = introLine.replace(/\{\{\s*discount\s*\}\}/gi, discountLabel).trim();
-  const safeIntroLine =
-    parsedIntro || `Foi gerado um código personalizado para ti, no valor de ${discountLabel}.`;
+
+  let processed = templateContent
+    .replace(/\{\{\s*name\s*\}\}/gi, data.recipientName)
+    .replace(/\{\{\s*istid\s*\}\}/gi, data.recipientIstid)
+    .replace(/\{\{\s*email\s*\}\}/gi, data.recipientEmail ?? "")
+    .replace(/\{\{\s*code\s*\}\}/gi, data.code)
+    .replace(/\{\{\s*discount\s*\}\}/gi, discountLabel)
+    .replace(/\{\{\s*discount_value\s*\}\}/gi, String(data.discountValue))
+    .replace(/\{\{\s*expiry\s*\}\}/gi, expiryLabel);
+
+  processed = escapeHtml(processed);
+
+  processed = processed.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+  processed = processed.replace(/\*(.*?)\*/g, "<em>$1</em>");
+  processed = processed.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    '<a href="$2" style="color: #2863FD; text-decoration: underline;">$1</a>'
+  );
+  processed = processed.replace(
+    /(^|[^"'])(https?:\/\/[^\s<]+)/g,
+    '$1<a href="$2" style="color: #2863FD; text-decoration: underline;">$2</a>'
+  );
+  processed = processed.replace(/\n/g, "<br />");
+
+  const logoUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/neiist_logo.svg`;
 
   return `
-    <div style="font-family: 'Secular One', Arial, sans-serif; background: #F2F2F7; padding: 2rem; border-radius: 1rem; color: #333;">
-      <img src="${logoUrl}" alt="NEIIST Logo" style="height: 48px; margin-bottom: 1rem;" />
-      <h2 style="color: #2863FD; margin-bottom: 1rem;">O teu código de desconto NEIIST</h2>
-      <p style="font-size: 1.05rem;">Olá ${escapeHtml(data.recipientName)}!</p>
-      <p style="margin-bottom: 1.25rem;">${escapeHtml(safeIntroLine)}</p>
-      <div style="padding: 1rem; border-radius: 0.9rem; background: #ffffff; border: 1px solid #e5e7eb; margin-bottom: 1.25rem;">
-        <p style="margin: 0 0 0.35rem; color: #6b7280; font-size: 0.9rem;">Código</p>
-        <p style="margin: 0; font-size: 1.4rem; font-weight: 700; letter-spacing: 0.08em; color: #111827;">${escapeHtml(data.code)}</p>
+    <div style="font-family: 'Secular One', Arial, sans-serif; background: #F2F2F7; padding: 2rem; border-radius: 1rem; color: #333; max-width: 600px;">
+      <img src="${logoUrl}" alt="NEIIST Logo" style="height: 48px; margin-bottom: 1.5rem;" />
+      <div style="font-size: 1.05rem; line-height: 1.6;">
+        ${processed}
       </div>
-      <p style="margin: 0.35rem 0;"><strong>ISTID:</strong> ${escapeHtml(data.recipientIstid)}</p>
-      <p style="margin: 0.35rem 0;"><strong>Email:</strong> ${escapeHtml(data.recipientEmail ?? "")}</p>
-      <p style="margin: 0.35rem 0 1.25rem;"><strong>Expira:</strong> ${escapeHtml(expiryLabel)}</p>
-      <p style="margin-bottom: 0;">Se precisares de ajuda, responde a este email.</p>
     </div>
   `;
 }
