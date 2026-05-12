@@ -399,6 +399,15 @@ export default function OrderDetailOverlay({
                     </div>
                   );
                 })}
+                {order.discount_amount != null && Number(order.discount_amount) > 0 && (
+                  <div className={styles.tableRow}>
+                    <span>Desconto</span>
+                    <span>{order.discount_code}</span>
+                    <span>1</span>
+                    <span>-{order.discount_amount.toFixed(2)}€</span>
+                    <span>-{order.discount_amount.toFixed(2)}€</span>
+                  </div>
+                )}
               </div>
               <div className={styles.totalRow}>Total: {order.total_amount.toFixed(2)}€</div>
             </div>

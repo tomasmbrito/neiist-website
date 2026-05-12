@@ -13,6 +13,14 @@ import {
 import { Order, dbOrder, mapdbOrderToOrder } from "@/types/shop/order";
 import { OrderStatus } from "@/types/shop/orderStatus";
 import { Category, dbCategory, mapdbCategoryToCategory } from "@/types/shop/category";
+import {
+  DiscountCode,
+  DiscountCodeInput,
+  DiscountCodeUpdateInput,
+  DiscountValidationResult,
+  dbDiscountCode,
+  mapdbDiscountCodeToDiscountCode,
+} from "@/types/shop/discountCode";
 import { isSpecialCategory } from "@/utils/shop/orderKindUtils";
 import { SPECIAL_CATEGORIES } from "@/types/shop/orderKind";
 import {
@@ -745,17 +753,103 @@ export const updateProductVariant = async (
     : null;
 };
 
+export const getAllDiscountCodes = async (): Promise<DiscountCode[]> => {
+  try {
+    const { rows } = await db_query<dbDiscountCode>(
+      `SELECT * FROM neiist.get_all_discount_codes()`
+    );
+    return rows.map(mapdbDiscountCodeToDiscountCode);
+  } catch (error) {
+    console.error("Error fetching discount codes:", error);
+    return [];
+  }
+};
+
+export const createDiscountCode = async (
+  discountCode: DiscountCodeInput
+): Promise<DiscountCode | null> => {
+  try {
+    const {
+      rows: [row],
+    } = await db_query<dbDiscountCode>(
+      `SELECT * FROM neiist.add_discount_code($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [
+        discountCode.code,
+        discountCode.discount_type,
+        discountCode.discount_value,
+        discountCode.valid_product_ids ?? null,
+        discountCode.valid_istids ?? null,
+        discountCode.max_uses ?? null,
+        discountCode.expires_at ?? null,
+        discountCode.active ?? true,
+      ]
+    );
+    return row ? mapdbDiscountCodeToDiscountCode(row) : null;
+  } catch (error) {
+    console.error("Error creating discount code:", error);
+    return null;
+  }
+};
+
+export const updateDiscountCode = async (
+  discountCodeId: number,
+  updates: DiscountCodeUpdateInput
+): Promise<DiscountCode | null> => {
+  try {
+    const {
+      rows: [row],
+    } = await db_query<dbDiscountCode>(`SELECT * FROM neiist.update_discount_code($1, $2)`, [
+      discountCodeId,
+      JSON.stringify(updates),
+    ]);
+    return row ? mapdbDiscountCodeToDiscountCode(row) : null;
+  } catch (error) {
+    console.error("Error updating discount code:", error);
+    return null;
+  }
+};
+
+export const deleteDiscountCode = async (discountCodeId: number): Promise<boolean> => {
+  try {
+    await db_query(`SELECT neiist.delete_discount_code($1)`, [discountCodeId]);
+    return true;
+  } catch (error) {
+    console.error("Error deleting discount code:", error);
+    return false;
+  }
+};
+
+export const validateDiscountCode = async (
+  code: string,
+  userIstid: string | null,
+  cartItems: Array<{ product_id: number; variant_id?: number | null; quantity: number }>
+): Promise<DiscountValidationResult | null> => {
+  try {
+    const {
+      rows: [row],
+    } = await db_query<DiscountValidationResult>(
+      `SELECT * FROM neiist.validate_discount_code($1, $2, $3)`,
+      [code, userIstid ?? null, JSON.stringify(cartItems)]
+    );
+    return row ?? null;
+  } catch (error) {
+    console.error("Error validating discount code:", error);
+    return null;
+  }
+};
+
 export const newOrder = async (
   order: Partial<Order> & {
     user_istid?: string;
     items: Array<{ product_id: number; variant_id?: number; quantity: number }>;
+    discount_code?: string | null;
   },
   stockOverride: boolean = false
 ): Promise<Order | null> => {
   const {
     rows: [row],
   } = await db_query<dbOrder>(
-    `SELECT * FROM neiist.new_order($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+    `SELECT * FROM neiist.new_order($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
     [
       order.user_istid ?? null,
       order.customer_name ?? null,
@@ -774,6 +868,7 @@ export const newOrder = async (
           quantity: i.quantity,
         }))
       ),
+      order.discount_code ?? null,
       stockOverride,
     ]
   );
@@ -809,6 +904,30 @@ export function mapOrderDbErrorToResponse(
 
   if (message.includes("Variant") && message.includes("not found or inactive")) {
     return { error: "Variante indisponivel", status: 400 };
+  }
+
+  if (message.includes("Discount code is required")) {
+    return { error: "Código de desconto obrigatório", status: 400 };
+  }
+
+  if (message.includes("Discount code not found or inactive")) {
+    return { error: "Código de desconto inválido ou inativo", status: 400 };
+  }
+
+  if (message.includes("Discount code expired")) {
+    return { error: "Código de desconto expirado", status: 400 };
+  }
+
+  if (message.includes("Discount code max uses reached")) {
+    return { error: "Código de desconto esgotado", status: 400 };
+  }
+
+  if (message.includes("Discount code not valid for user")) {
+    return { error: "Código de desconto não é válido para este utilizador", status: 400 };
+  }
+
+  if (message.includes("Discount code not applicable to these products")) {
+    return { error: "Código de desconto não é aplicável a estes produtos", status: 400 };
   }
 
   if (message.includes("Invalid quantity for product_id")) {

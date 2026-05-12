@@ -138,9 +138,14 @@ export default function ShopManagement({ products, categories }: ShopManagementP
       <div className={styles.container}>
         <div className={styles.header}>
           <ColorfulText className={styles.title} text="Gestão da Loja" />
-          <button className={styles.addBtn} onClick={() => router.push("/shop/manage/new")}>
-            <FaPlus /> Adicionar Produto
-          </button>
+          <div className={styles.headerActions}>
+            <button className={styles.addBtn} onClick={() => router.push("/shop/manage/discounts")}>
+              Descontos
+            </button>
+            <button className={styles.addBtn} onClick={() => router.push("/shop/manage/new")}>
+              <FaPlus /> Adicionar Produto
+            </button>
+          </div>
         </div>
 
         <div className={styles.filters}>

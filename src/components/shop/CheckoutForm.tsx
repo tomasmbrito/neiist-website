@@ -15,6 +15,7 @@ import { FaChevronDown } from "react-icons/fa";
 import { User } from "@/types/user";
 import type { ApplePayPaymentRequest, ApplePayPaymentToken } from "@/types/sumup";
 import VariantTags from "@/components/shop/VariantTags";
+import { validateDiscount } from "@/utils/shop/discountUtils";
 
 interface CheckoutFormProps {
   user: User;
@@ -32,6 +33,12 @@ export default function CheckoutForm({ user }: CheckoutFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<number | null>(null);
   const [submittedPaymentMethod, setSubmittedPaymentMethod] = useState<PaymentMethod | null>(null);
+  const [discountCode, setDiscountCode] = useState("");
+  const [appliedDiscount, setAppliedDiscount] = useState<{
+    code: string;
+    discount_amount: number;
+  } | null>(null);
+  const [discountLoading, setDiscountLoading] = useState(false);
 
   const [phone, setPhone] = useState(user.phone || "");
   const [nif, setNif] = useState("");
@@ -52,6 +59,10 @@ export default function CheckoutForm({ user }: CheckoutFormProps) {
   }, []);
 
   useEffect(() => {
+    setAppliedDiscount(null);
+  }, [cart]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     if (!window.isSecureContext) return;
     if (typeof window.ApplePaySession === "undefined") return;
@@ -70,9 +81,11 @@ export default function CheckoutForm({ user }: CheckoutFormProps) {
     return item.product.price + variantModifier;
   };
 
-  const total = cart.reduce((sum, item) => sum + unitPrice(item) * item.quantity, 0);
-  const subtotal = total / 1.23; // Price without IVA
-  const taxes = total - subtotal; // IVA amount (23% of subtotal)
+  const cartTotal = cart.reduce((sum, item) => sum + unitPrice(item) * item.quantity, 0);
+  const discountAmount = appliedDiscount?.discount_amount ?? 0;
+  const total = Math.max(cartTotal - discountAmount, 0);
+  const subtotal = cartTotal / 1.23; // Price without IVA
+  const taxes = cartTotal - subtotal; // IVA amount (23% of subtotal)
   const { orderKind: checkoutOrderKind, isMixedInvalid } = getOrderKindFromItems(
     cart.map((item) => item.product)
   );
@@ -86,6 +99,41 @@ export default function CheckoutForm({ user }: CheckoutFormProps) {
     variant_id: item.variantId ?? undefined,
     quantity: item.quantity,
   }));
+
+  const handleApplyDiscount = async () => {
+    const code = discountCode.trim();
+    if (!code) {
+      setAppliedDiscount(null);
+      setError("Indica um código de desconto.");
+      return;
+    }
+
+    setDiscountLoading(true);
+    setError(null);
+    try {
+      const result = await validateDiscount({
+        code,
+        userIstid: user.istid,
+        cartItems: apiItems,
+      });
+
+      if (!result.valid) {
+        setAppliedDiscount(null);
+        setError(result.error ?? "Código de desconto inválido.");
+        return;
+      }
+
+      setAppliedDiscount({
+        code: result.code ?? code,
+        discount_amount: Number(result.discount_amount ?? 0),
+      });
+    } catch (err) {
+      setAppliedDiscount(null);
+      setError(err instanceof Error ? err.message : "Não foi possível validar o código.");
+    } finally {
+      setDiscountLoading(false);
+    }
+  };
 
   const createOrder = async (selectedPayment: PaymentMethod, persistOverlay = true) => {
     const res = await fetch("/api/shop/orders", {
@@ -103,6 +151,7 @@ export default function CheckoutForm({ user }: CheckoutFormProps) {
         payment_reference: undefined,
         customer_phone: user.phone || phone || undefined,
         order_source: checkoutSource,
+        discount_code: appliedDiscount?.code ?? undefined,
       }),
     });
 
@@ -396,6 +445,31 @@ export default function CheckoutForm({ user }: CheckoutFormProps) {
             rows={4}
           />
         </section>
+
+        <section className={styles.section}>
+          <div className={styles.formGroup}>
+            <label htmlFor="discount-code">Código de desconto</label>
+            <div style={{ display: "flex", gap: "0.75rem" }}>
+              <input
+                id="discount-code"
+                type="text"
+                value={discountCode}
+                onChange={(e) => setDiscountCode(e.target.value)}
+                placeholder="NEIIST20"
+                className={styles.input}
+              />
+              <button
+                type="button"
+                className={styles.checkoutButton}
+                style={{ marginTop: 0, padding: "0.75rem 1rem", width: "auto" }}
+                onClick={handleApplyDiscount}
+                disabled={discountLoading || cart.length === 0}>
+                {discountLoading ? "A validar..." : "Aplicar"}
+              </button>
+            </div>
+          </div>
+        </section>
+
         {isSelectedPaymentAllowed && (
           <button
             className={styles.checkoutButton}
@@ -483,8 +557,16 @@ export default function CheckoutForm({ user }: CheckoutFormProps) {
                   <span>IVA (23%)</span>
                   <span>€{taxes.toFixed(2)}</span>
                 </div>
-                <div className={styles.priceDivider} />
               </>
+            )}
+            {appliedDiscount && discountAmount > 0 && (
+              <div className={styles.priceLine}>
+                <span>Desconto aplicado ({appliedDiscount.code})</span>
+                <span>- €{discountAmount.toFixed(2)}</span>
+              </div>
+            )}
+            {(!isSpecialOrderKind || (appliedDiscount && discountAmount > 0)) && (
+              <div className={styles.priceDivider} />
             )}
             <div className={styles.totalLine}>
               <span>Total</span>

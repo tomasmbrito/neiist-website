@@ -183,6 +183,23 @@ CREATE TABLE neiist.categories (
   name TEXT UNIQUE NOT NULL
 );
 
+CREATE TABLE neiist.discount_codes (
+  id SERIAL PRIMARY KEY,
+  code TEXT UNIQUE NOT NULL,
+  discount_type TEXT NOT NULL CHECK (discount_type IN ('percentage', 'fixed')),
+  discount_value NUMERIC(10,2) NOT NULL CHECK (discount_value >= 0),
+  valid_product_ids INTEGER[],
+  valid_istids TEXT[],
+  max_uses INTEGER,
+  current_uses INTEGER NOT NULL DEFAULT 0,
+  expires_at TIMESTAMPTZ,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT chk_discount_codes_max_uses CHECK (max_uses IS NULL OR max_uses > 0),
+  CONSTRAINT chk_discount_codes_current_uses CHECK (current_uses >= 0)
+);
+
 -- PRODUCTS
 CREATE TABLE neiist.products (
   id SERIAL PRIMARY KEY,
@@ -1696,6 +1713,364 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Add discount code
+CREATE OR REPLACE FUNCTION neiist.add_discount_code(
+  p_code TEXT,
+  p_discount_type TEXT,
+  p_discount_value NUMERIC,
+  p_valid_product_ids INTEGER[] DEFAULT NULL,
+  p_valid_istids TEXT[] DEFAULT NULL,
+  p_max_uses INTEGER DEFAULT NULL,
+  p_expires_at TIMESTAMPTZ DEFAULT NULL,
+  p_active BOOLEAN DEFAULT TRUE
+) RETURNS TABLE (
+  id INTEGER,
+  code TEXT,
+  discount_type TEXT,
+  discount_value NUMERIC(10,2),
+  valid_product_ids INTEGER[],
+  valid_istids TEXT[],
+  max_uses INTEGER,
+  current_uses INTEGER,
+  expires_at TIMESTAMPTZ,
+  active BOOLEAN,
+  created_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ
+) AS $$
+DECLARE
+  v_code TEXT;
+BEGIN
+  v_code := UPPER(BTRIM(p_code));
+
+  IF v_code IS NULL OR v_code = '' THEN
+    RAISE EXCEPTION 'Discount code is required';
+  END IF;
+
+  IF p_discount_type NOT IN ('percentage', 'fixed') THEN
+    RAISE EXCEPTION 'Invalid discount type';
+  END IF;
+
+  INSERT INTO neiist.discount_codes (
+    code,
+    discount_type,
+    discount_value,
+    valid_product_ids,
+    valid_istids,
+    max_uses,
+    expires_at,
+    active
+  )
+  VALUES (
+    v_code,
+    p_discount_type,
+    ROUND(COALESCE(p_discount_value, 0), 2),
+    NULLIF(p_valid_product_ids, '{}'),
+    NULLIF(p_valid_istids, '{}'),
+    p_max_uses,
+    p_expires_at,
+    COALESCE(p_active, TRUE)
+  )
+  RETURNING
+    discount_codes.id,
+    discount_codes.code,
+    discount_codes.discount_type,
+    discount_codes.discount_value,
+    discount_codes.valid_product_ids,
+    discount_codes.valid_istids,
+    discount_codes.max_uses,
+    discount_codes.current_uses,
+    discount_codes.expires_at,
+    discount_codes.active,
+    discount_codes.created_at,
+    discount_codes.updated_at
+  INTO
+    id,
+    code,
+    discount_type,
+    discount_value,
+    valid_product_ids,
+    valid_istids,
+    max_uses,
+    current_uses,
+    expires_at,
+    active,
+    created_at,
+    updated_at;
+
+  RETURN NEXT;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Update discount code
+CREATE OR REPLACE FUNCTION neiist.update_discount_code(
+  p_discount_code_id INTEGER,
+  p_updates JSONB
+) RETURNS TABLE (
+  id INTEGER,
+  code TEXT,
+  discount_type TEXT,
+  discount_value NUMERIC(10,2),
+  valid_product_ids INTEGER[],
+  valid_istids TEXT[],
+  max_uses INTEGER,
+  current_uses INTEGER,
+  expires_at TIMESTAMPTZ,
+  active BOOLEAN,
+  created_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ
+) AS $$
+BEGIN
+  UPDATE neiist.discount_codes
+  SET
+    code = COALESCE(UPPER(BTRIM(NULLIF(p_updates->>'code', ''))), code),
+    discount_type = COALESCE(NULLIF(p_updates->>'discount_type', ''), discount_type),
+    discount_value = COALESCE(ROUND(NULLIF(p_updates->>'discount_value', '')::NUMERIC, 2), discount_value),
+    valid_product_ids = CASE
+      WHEN p_updates ? 'valid_product_ids' THEN (
+        SELECT COALESCE(array_agg(value::INTEGER), '{}'::INTEGER[])
+        FROM jsonb_array_elements_text(COALESCE(p_updates->'valid_product_ids', '[]'::jsonb)) AS value
+      )
+      ELSE valid_product_ids
+    END,
+    valid_istids = CASE
+      WHEN p_updates ? 'valid_istids' THEN (
+        SELECT COALESCE(array_agg(value::TEXT), '{}'::TEXT[])
+        FROM jsonb_array_elements_text(COALESCE(p_updates->'valid_istids', '[]'::jsonb)) AS value
+      )
+      ELSE valid_istids
+    END,
+    max_uses = COALESCE(NULLIF(p_updates->>'max_uses', '')::INTEGER, max_uses),
+    expires_at = CASE
+      WHEN p_updates ? 'expires_at' THEN NULLIF(p_updates->>'expires_at', '')::TIMESTAMPTZ
+      ELSE expires_at
+    END,
+    active = COALESCE(NULLIF(p_updates->>'active', '')::BOOLEAN, active),
+    updated_at = NOW()
+  WHERE id = p_discount_code_id
+  RETURNING
+    discount_codes.id,
+    discount_codes.code,
+    discount_codes.discount_type,
+    discount_codes.discount_value,
+    discount_codes.valid_product_ids,
+    discount_codes.valid_istids,
+    discount_codes.max_uses,
+    discount_codes.current_uses,
+    discount_codes.expires_at,
+    discount_codes.active,
+    discount_codes.created_at,
+    discount_codes.updated_at
+  INTO
+    id,
+    code,
+    discount_type,
+    discount_value,
+    valid_product_ids,
+    valid_istids,
+    max_uses,
+    current_uses,
+    expires_at,
+    active,
+    created_at,
+    updated_at;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Discount code % not found', p_discount_code_id;
+  END IF;
+
+  RETURN NEXT;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Delete discount code
+CREATE OR REPLACE FUNCTION neiist.delete_discount_code(
+  p_discount_code_id INTEGER
+) RETURNS VOID AS $$
+BEGIN
+  DELETE FROM neiist.discount_codes WHERE id = p_discount_code_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Discount code % not found', p_discount_code_id;
+  END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Get all discount codes
+CREATE OR REPLACE FUNCTION neiist.get_all_discount_codes()
+RETURNS TABLE (
+  id INTEGER,
+  code TEXT,
+  discount_type TEXT,
+  discount_value NUMERIC,
+  valid_product_ids INTEGER[],
+  valid_istids TEXT[],
+  max_uses INTEGER,
+  current_uses INTEGER,
+  expires_at TIMESTAMPTZ,
+  active BOOLEAN,
+  created_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    discount_codes.id,
+    discount_codes.code,
+    discount_codes.discount_type,
+    discount_codes.discount_value,
+    discount_codes.valid_product_ids,
+    discount_codes.valid_istids,
+    discount_codes.max_uses,
+    discount_codes.current_uses,
+    discount_codes.expires_at,
+    discount_codes.active,
+    discount_codes.created_at,
+    discount_codes.updated_at
+  FROM neiist.discount_codes
+  ORDER BY id DESC;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Validate discount code
+CREATE OR REPLACE FUNCTION neiist.validate_discount_code(
+  p_code TEXT,
+  p_user_istid VARCHAR(10),
+  p_cart_items JSONB
+) RETURNS TABLE (
+  is_valid BOOLEAN,
+  discount_code_id INTEGER,
+  discount_code TEXT,
+  discount_type TEXT,
+  discount_value NUMERIC(10,2),
+  discount_amount NUMERIC(10,2),
+  error TEXT
+) AS $$
+DECLARE
+  v_code TEXT;
+  v_discount neiist.discount_codes%ROWTYPE;
+  it JSONB;
+  v_pid INTEGER;
+  v_vid INTEGER;
+  v_qty INTEGER;
+  v_price NUMERIC(10,2);
+  v_modifier NUMERIC(10,2);
+  v_unit NUMERIC(10,2);
+  v_eligible_total NUMERIC(10,2) := 0;
+  v_has_cart BOOLEAN := FALSE;
+  v_matching_items BOOLEAN := FALSE;
+BEGIN
+  v_code := UPPER(BTRIM(COALESCE(p_code, '')));
+
+  IF v_code = '' THEN
+    RETURN QUERY SELECT FALSE, NULL::INTEGER, NULL::TEXT, NULL::TEXT, NULL::NUMERIC(10,2), 0::NUMERIC(10,2), 'Discount code is required';
+    RETURN;
+  END IF;
+
+  SELECT * INTO v_discount
+  FROM neiist.discount_codes
+  WHERE UPPER(code) = v_code;
+
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT FALSE, NULL::INTEGER, v_code, NULL::TEXT, NULL::NUMERIC(10,2), 0::NUMERIC(10,2), 'Discount code not found';
+    RETURN;
+  END IF;
+
+  IF NOT v_discount.active THEN
+    RETURN QUERY SELECT FALSE, v_discount.id, v_discount.code, v_discount.discount_type, v_discount.discount_value, 0::NUMERIC(10,2), 'Discount code not found or inactive';
+    RETURN;
+  END IF;
+
+  IF v_discount.expires_at IS NOT NULL AND NOW() > v_discount.expires_at THEN
+    RETURN QUERY SELECT FALSE, v_discount.id, v_discount.code, v_discount.discount_type, v_discount.discount_value, 0::NUMERIC(10,2), 'Discount code expired';
+    RETURN;
+  END IF;
+
+  IF v_discount.max_uses IS NOT NULL AND v_discount.current_uses >= v_discount.max_uses THEN
+    RETURN QUERY SELECT FALSE, v_discount.id, v_discount.code, v_discount.discount_type, v_discount.discount_value, 0::NUMERIC(10,2), 'Discount code max uses reached';
+    RETURN;
+  END IF;
+
+  IF v_discount.valid_istids IS NOT NULL AND COALESCE(array_length(v_discount.valid_istids, 1), 0) > 0 THEN
+    IF p_user_istid IS NULL OR NOT EXISTS (
+      SELECT 1
+      FROM unnest(v_discount.valid_istids) AS allowed_istid
+      WHERE LOWER(BTRIM(allowed_istid)) = LOWER(BTRIM(p_user_istid))
+    ) THEN
+      RETURN QUERY SELECT FALSE, v_discount.id, v_discount.code, v_discount.discount_type, v_discount.discount_value, 0::NUMERIC(10,2), 'Discount code not valid for user';
+      RETURN;
+    END IF;
+  END IF;
+
+  FOR it IN SELECT * FROM jsonb_array_elements(COALESCE(p_cart_items, '[]'::jsonb))
+  LOOP
+    v_has_cart := TRUE;
+    v_pid := (it->>'product_id')::INTEGER;
+    v_vid := NULLIF(it->>'variant_id', '')::INTEGER;
+    v_qty := COALESCE((it->>'quantity')::INTEGER, 0);
+
+    IF v_qty <= 0 THEN
+      RETURN QUERY SELECT FALSE, v_discount.id, v_discount.code, v_discount.discount_type, v_discount.discount_value, 0::NUMERIC(10,2), 'Invalid quantity in cart';
+      RETURN;
+    END IF;
+
+    SELECT p.price
+      INTO v_price
+    FROM neiist.products p
+    WHERE p.id = v_pid AND p.active = TRUE;
+
+    IF NOT FOUND THEN
+      RETURN QUERY SELECT FALSE, v_discount.id, v_discount.code, v_discount.discount_type, v_discount.discount_value, 0::NUMERIC(10,2), 'Product not found or inactive';
+      RETURN;
+    END IF;
+
+    v_unit := ROUND(v_price, 2);
+
+    IF v_vid IS NOT NULL THEN
+      SELECT pv.price_modifier
+        INTO v_modifier
+      FROM neiist.product_variants pv
+      WHERE pv.id = v_vid
+        AND pv.product_id = v_pid
+        AND pv.active = TRUE;
+
+      IF NOT FOUND THEN
+        RETURN QUERY SELECT FALSE, v_discount.id, v_discount.code, v_discount.discount_type, v_discount.discount_value, 0::NUMERIC(10,2), 'Variant not found or inactive';
+        RETURN;
+      END IF;
+
+      v_unit := ROUND(v_unit + COALESCE(v_modifier, 0), 2);
+    END IF;
+
+    IF v_discount.valid_product_ids IS NULL OR COALESCE(array_length(v_discount.valid_product_ids, 1), 0) = 0 OR v_pid = ANY(v_discount.valid_product_ids) THEN
+      v_eligible_total := v_eligible_total + (v_unit * v_qty);
+      v_matching_items := TRUE;
+    END IF;
+  END LOOP;
+
+  IF NOT v_has_cart THEN
+    RETURN QUERY SELECT FALSE, v_discount.id, v_discount.code, v_discount.discount_type, v_discount.discount_value, 0::NUMERIC(10,2), 'Cart is empty';
+    RETURN;
+  END IF;
+
+  IF v_discount.valid_product_ids IS NOT NULL AND COALESCE(array_length(v_discount.valid_product_ids, 1), 0) > 0 AND NOT v_matching_items THEN
+    RETURN QUERY SELECT FALSE, v_discount.id, v_discount.code, v_discount.discount_type, v_discount.discount_value, 0::NUMERIC(10,2), 'Discount code not applicable to these products';
+    RETURN;
+  END IF;
+
+  IF v_discount.discount_type = 'percentage' THEN
+    v_eligible_total := ROUND(v_eligible_total * (v_discount.discount_value / 100.0), 2);
+  ELSE
+    v_eligible_total := ROUND(LEAST(v_eligible_total, v_discount.discount_value), 2);
+  END IF;
+
+  IF v_eligible_total <= 0 THEN
+    RETURN QUERY SELECT FALSE, v_discount.id, v_discount.code, v_discount.discount_type, v_discount.discount_value, 0::NUMERIC(10,2), 'Discount code not applicable to these products';
+    RETURN;
+  END IF;
+
+  RETURN QUERY SELECT TRUE, v_discount.id, v_discount.code, v_discount.discount_type, v_discount.discount_value, v_eligible_total, NULL::TEXT;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- New order created
 CREATE OR REPLACE FUNCTION neiist.new_order(
   p_user_istid VARCHAR(10),
@@ -1709,6 +2084,7 @@ CREATE OR REPLACE FUNCTION neiist.new_order(
   p_payment_reference TEXT,
   p_created_by TEXT,
   p_items JSONB,
+  p_discount_code TEXT DEFAULT NULL,
   p_stock_override BOOLEAN DEFAULT FALSE
 ) RETURNS TABLE (
   id INTEGER,
@@ -1722,6 +2098,8 @@ CREATE OR REPLACE FUNCTION neiist.new_order(
   pickup_deadline TIMESTAMPTZ,
   items JSONB,
   notes TEXT,
+  discount_code TEXT,
+  discount_amount NUMERIC(10,2),
   total_amount NUMERIC(10,2),
   payment_method TEXT,
   payment_reference TEXT,
@@ -1754,6 +2132,9 @@ DECLARE
   v_pname TEXT;
   v_v_label TEXT;
   v_v_opts JSONB;
+  v_discount_code TEXT := NULL;
+  v_discount_amount NUMERIC(10,2) := 0;
+  v_discount_result RECORD;
 BEGIN
   v_customer_name := CASE
     WHEN p_user_istid IS NOT NULL THEN NULL
@@ -1778,6 +2159,8 @@ BEGIN
     nif,
     campus,
     notes,
+    discount_code,
+    discount_amount,
     payment_method,
     payment_reference,
     created_by
@@ -1790,6 +2173,8 @@ BEGIN
     p_nif,
     p_campus,
     p_notes,
+    NULL,
+    NULL,
     p_payment_method,
     p_payment_reference,
     p_created_by
@@ -1894,7 +2279,38 @@ BEGIN
     );
   END LOOP;
 
-  UPDATE neiist.orders SET total_amount = ROUND(v_total, 2), updated_at = NOW(), updated_by = p_created_by WHERE orders.id = v_order_id;
+  IF NULLIF(BTRIM(COALESCE(p_discount_code, '')), '') IS NOT NULL THEN
+    SELECT * INTO v_discount_result
+    FROM neiist.validate_discount_code(p_discount_code, p_user_istid, p_items);
+
+    IF NOT COALESCE(v_discount_result.is_valid, FALSE) THEN
+      RAISE EXCEPTION '%', COALESCE(v_discount_result.error, 'Invalid discount code');
+    END IF;
+
+    UPDATE neiist.discount_codes
+    SET current_uses = neiist.discount_codes.current_uses + 1,
+        updated_at = NOW()
+    WHERE neiist.discount_codes.id = v_discount_result.discount_code_id
+      AND neiist.discount_codes.active = TRUE
+      AND (neiist.discount_codes.expires_at IS NULL OR neiist.discount_codes.expires_at > NOW())
+      AND (neiist.discount_codes.max_uses IS NULL OR neiist.discount_codes.current_uses < neiist.discount_codes.max_uses)
+    RETURNING neiist.discount_codes.code INTO v_discount_code;
+
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Discount code max uses reached';
+    END IF;
+
+    v_discount_amount := LEAST(v_total, COALESCE(v_discount_result.discount_amount, 0));
+  END IF;
+
+  UPDATE neiist.orders
+  SET
+    discount_code = v_discount_code,
+    discount_amount = CASE WHEN v_discount_code IS NULL THEN NULL ELSE ROUND(v_discount_amount, 2) END,
+    total_amount = ROUND(v_total - COALESCE(v_discount_amount, 0), 2),
+    updated_at = NOW(),
+    updated_by = p_created_by
+  WHERE orders.id = v_order_id;
 
   RETURN QUERY
   SELECT
@@ -1934,7 +2350,7 @@ BEGIN
       FROM neiist.order_items oi
       WHERE oi.order_id = o.id
     ), '[]'::JSONB) AS items,
-    o.notes, o.total_amount, o.payment_method, o.payment_reference,
+    o.notes, o.discount_code, o.discount_amount, o.total_amount, o.payment_method, o.payment_reference,
     o.created_by,
     o.created_at, o.paid_at, o.payment_checked_by, o.delivered_at, o.delivered_by, o.updated_at, o.updated_by,
     o.status::TEXT
@@ -1961,6 +2377,8 @@ RETURNS TABLE (
   pickup_deadline TIMESTAMPTZ,
   items JSONB,
   notes TEXT,
+  discount_code TEXT,
+  discount_amount NUMERIC(10,2),
   total_amount NUMERIC(10,2),
   payment_method TEXT,
   payment_reference TEXT,
@@ -2027,6 +2445,8 @@ BEGIN
       WHERE oi.order_id = o.id
     ) AS items,
     o.notes,
+    o.discount_code,
+    o.discount_amount,
     o.total_amount,
     o.payment_method,
     o.payment_reference,
@@ -2063,6 +2483,8 @@ RETURNS TABLE (
   pickup_deadline TIMESTAMPTZ,
   items JSONB,
   notes TEXT,
+  discount_code TEXT,
+  discount_amount NUMERIC(10,2),
   total_amount NUMERIC(10,2),
   payment_method TEXT,
   payment_reference TEXT,
@@ -2120,6 +2542,8 @@ BEGIN
       WHERE oi.order_id = o.id
     ) AS items,
     o.notes,
+    o.discount_code,
+    o.discount_amount,
     o.total_amount,
     o.payment_method,
     o.payment_reference,
@@ -2155,6 +2579,8 @@ CREATE OR REPLACE FUNCTION neiist.update_order(
   campus TEXT,
   items JSONB,
   notes TEXT,
+  discount_code TEXT,
+  discount_amount NUMERIC(10,2),
   total_amount NUMERIC(10,2),
   payment_method TEXT,
   payment_reference TEXT,
@@ -2184,7 +2610,13 @@ DECLARE
   v_pname TEXT;
   v_v_label TEXT;
   v_v_opts JSONB;
+  v_existing_discount_amount NUMERIC(10,2) := 0;
 BEGIN
+  SELECT COALESCE(discount_amount, 0)
+    INTO v_existing_discount_amount
+  FROM neiist.orders
+  WHERE id = p_order_id;
+
   IF p_updates ? 'user_istid' THEN
     UPDATE neiist.orders SET user_istid = NULLIF(p_updates->>'user_istid','') WHERE neiist.orders.id = p_order_id;
   END IF;
@@ -2342,7 +2774,7 @@ BEGIN
       );
     END LOOP;
 
-    UPDATE neiist.orders SET total_amount = ROUND(v_total, 2), updated_by = p_user_istid WHERE neiist.orders.id = p_order_id;
+    UPDATE neiist.orders SET total_amount = ROUND(v_total - COALESCE(v_existing_discount_amount, 0), 2), updated_by = p_user_istid WHERE neiist.orders.id = p_order_id;
   END IF;
 
   UPDATE neiist.orders SET updated_at = NOW(), updated_by = p_user_istid WHERE neiist.orders.id = p_order_id;
@@ -2359,6 +2791,8 @@ BEGIN
     g.campus,
     g.items,
     g.notes,
+    g.discount_code,
+    g.discount_amount,
     g.total_amount,
     g.payment_method,
     g.payment_reference,
