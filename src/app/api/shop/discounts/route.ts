@@ -51,10 +51,10 @@ function normalizeRecipients(value: unknown): DiscountBulkGenerateInput["recipie
       if (!item || typeof item !== "object") return null;
 
       const raw = item as Record<string, unknown>;
-      const istid = normalizeString(raw.istid);
-      const name = normalizeString(raw.name);
+      const istid = normalizeString(raw.istid) || "";
+      const name = normalizeString(raw.name) || "";
       const email = normalizeString(raw.email);
-      if (!istid || !name || !email) return null;
+      if (!email) return null;
 
       return { istid, name, email };
     })
@@ -82,7 +82,7 @@ async function createCodeForRecipient(
       discount_type: payload.discount_type,
       discount_value: payload.discount_value,
       valid_product_ids: payload.valid_product_ids ?? null,
-      valid_istids: [recipient.istid],
+      valid_istids: recipient.istid ? [recipient.istid] : [],
       max_uses: payload.max_uses ?? 1,
       expires_at: payload.expires_at ?? null,
       active: payload.active ?? true,

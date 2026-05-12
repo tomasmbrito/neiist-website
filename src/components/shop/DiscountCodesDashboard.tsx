@@ -46,6 +46,7 @@ interface DiscountCodesDashboardProps {
 
 interface CreationDraft {
   selectedRecipients: string[];
+  externalEmails: string;
   discount_type: DiscountType;
   discount_value: string;
   selectedProducts: string[];
@@ -101,6 +102,7 @@ function buildProductOption(product: Product): string {
 function emptyCreationDraft(): CreationDraft {
   return {
     selectedRecipients: [],
+    externalEmails: "",
     discount_type: "percentage",
     discount_value: "",
     selectedProducts: [],
@@ -292,11 +294,23 @@ export default function DiscountCodesDashboard({
   };
 
   const createCodes = async () => {
-    const recipients = selectedBulkRecipients.map((user) => ({
-      istid: user.istid,
-      name: user.name,
-      email: user.email,
-    }));
+    const parsedExternalEmails = creationDraft.externalEmails
+      .split(",")
+      .map((e) => e.trim())
+      .filter((e) => e.length > 0);
+
+    const recipients = [
+      ...selectedBulkRecipients.map((user) => ({
+        istid: user.istid,
+        name: user.name,
+        email: user.email,
+      })),
+      ...parsedExternalEmails.map((email) => ({
+        istid: "",
+        name: "",
+        email,
+      })),
+    ];
 
     const discountValue = Number(creationDraft.discount_value);
     const maxUses = creationDraft.maxUses.trim() ? Number(creationDraft.maxUses) : 1;
@@ -308,7 +322,7 @@ export default function DiscountCodesDashboard({
       : null;
 
     if (recipients.length === 0) {
-      toast.error("Seleciona pelo menos um utilizador.", { closeButton: true });
+      toast.error("Indica pelo menos um utilizador ou email externo.", { closeButton: true });
       return;
     }
     if (!Number.isFinite(discountValue) || discountValue < 0) {
@@ -502,6 +516,17 @@ export default function DiscountCodesDashboard({
                     setCreationDraft((prev) => ({ ...prev, selectedRecipients: items }))
                   }
                   placeholder="Selecionar utilizadores..."
+                />
+              </Field>
+              <Field label="Emails Externos" icon={<FaEnvelope />} iconAlignTop>
+                <textarea
+                  className={styles.field}
+                  rows={2}
+                  value={creationDraft.externalEmails}
+                  onChange={(e) =>
+                    setCreationDraft((prev) => ({ ...prev, externalEmails: e.target.value }))
+                  }
+                  placeholder="email1@exemplo.pt, email2@exemplo.pt..."
                 />
               </Field>
               <div className={styles.row}>

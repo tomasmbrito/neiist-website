@@ -1,8 +1,8 @@
 import type { DiscountType } from "@/types/shop/discountCode";
 
 export interface DiscountEmailTemplateData {
-  recipientName: string;
-  recipientIstid: string;
+  recipientName?: string;
+  recipientIstid?: string;
   recipientEmail?: string;
   code: string;
   discountType: DiscountType;
@@ -39,8 +39,8 @@ export function interpolateDiscountEmailMarkdown(
   const expiryLabel = formatDiscountExpiryLabel(data.expiresAt);
 
   return template
-    .replace(/\{\{\s*name\s*\}\}/gi, data.recipientName)
-    .replace(/\{\{\s*istid\s*\}\}/gi, data.recipientIstid)
+    .replace(/\{\{\s*name\s*\}\}/gi, data.recipientName || "")
+    .replace(/\{\{\s*istid\s*\}\}/gi, data.recipientIstid || "")
     .replace(/\{\{\s*email\s*\}\}/gi, data.recipientEmail ?? "")
     .replace(/\{\{\s*code\s*\}\}/gi, data.code)
     .replace(/\{\{\s*discount\s*\}\}/gi, discountLabel)
@@ -65,8 +65,8 @@ export function interpolateDiscountEmailHtml(
   const expiryLabel = formatDiscountExpiryLabel(data.expiresAt);
 
   return template
-    .replace(/\{\{\s*name\s*\}\}/gi, escapeHtml(data.recipientName))
-    .replace(/\{\{\s*istid\s*\}\}/gi, escapeHtml(data.recipientIstid))
+    .replace(/\{\{\s*name\s*\}\}/gi, escapeHtml(data.recipientName || ""))
+    .replace(/\{\{\s*istid\s*\}\}/gi, escapeHtml(data.recipientIstid || ""))
     .replace(/\{\{\s*email\s*\}\}/gi, escapeHtml(data.recipientEmail ?? ""))
     .replace(/\{\{\s*code\s*\}\}/gi, escapeHtml(data.code))
     .replace(/\{\{\s*discount\s*\}\}/gi, escapeHtml(discountLabel))
@@ -94,8 +94,8 @@ export function renderDiscountCampaignEmailHtml(
   const expiryLabel = formatDiscountExpiryLabel(data.expiresAt);
 
   let processed = templateContent
-    .replace(/\{\{\s*name\s*\}\}/gi, data.recipientName)
-    .replace(/\{\{\s*istid\s*\}\}/gi, data.recipientIstid)
+    .replace(/\{\{\s*name\s*\}\}/gi, data.recipientName || "")
+    .replace(/\{\{\s*istid\s*\}\}/gi, data.recipientIstid || "")
     .replace(/\{\{\s*email\s*\}\}/gi, data.recipientEmail ?? "")
     .replace(/\{\{\s*code\s*\}\}/gi, data.code)
     .replace(/\{\{\s*discount\s*\}\}/gi, discountLabel)
