@@ -266,6 +266,8 @@ CREATE TABLE neiist.orders (
   nif TEXT,
   campus TEXT,
   notes TEXT,
+  discount_code TEXT,
+  discount_amount NUMERIC(10,2),
   total_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
   payment_method TEXT,
   payment_reference TEXT,
@@ -2612,10 +2614,10 @@ DECLARE
   v_v_opts JSONB;
   v_existing_discount_amount NUMERIC(10,2) := 0;
 BEGIN
-  SELECT COALESCE(discount_amount, 0)
+  SELECT COALESCE(o.discount_amount, 0)
     INTO v_existing_discount_amount
-  FROM neiist.orders
-  WHERE id = p_order_id;
+  FROM neiist.orders o
+  WHERE o.id = p_order_id;
 
   IF p_updates ? 'user_istid' THEN
     UPDATE neiist.orders SET user_istid = NULLIF(p_updates->>'user_istid','') WHERE neiist.orders.id = p_order_id;
