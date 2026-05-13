@@ -66,7 +66,10 @@ export function interpolateDiscountEmailHtml(
   const expiryLabel = formatDiscountExpiryLabel(data.expiresAt);
 
   return template
-    .replace(/\{\{\s*name\s*\}\}/gi, escapeHtml(data.recipientName || ""))
+    .replace(
+      /\{\{\s*name\s*\}\}/gi,
+      escapeHtml(getFirstAndLastName(data.recipientName ?? "") || "")
+    )
     .replace(/\{\{\s*istid\s*\}\}/gi, escapeHtml(data.recipientIstid || ""))
     .replace(/\{\{\s*email\s*\}\}/gi, escapeHtml(data.recipientEmail ?? ""))
     .replace(/\{\{\s*code\s*\}\}/gi, escapeHtml(data.code))
@@ -95,7 +98,7 @@ export function renderDiscountCampaignEmailHtml(
   const expiryLabel = formatDiscountExpiryLabel(data.expiresAt);
 
   let processed = templateContent
-    .replace(/\{\{\s*name\s*\}\}/gi, data.recipientName || "")
+    .replace(/\{\{\s*name\s*\}\}/gi, getFirstAndLastName(data.recipientName ?? "") || "")
     .replace(/\{\{\s*istid\s*\}\}/gi, data.recipientIstid || "")
     .replace(/\{\{\s*email\s*\}\}/gi, data.recipientEmail ?? "")
     .replace(/\{\{\s*code\s*\}\}/gi, data.code)
