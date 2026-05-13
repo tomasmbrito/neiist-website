@@ -1,4 +1,5 @@
 import type { DiscountType } from "@/types/shop/discountCode";
+import { getFirstAndLastName } from "../userUtils";
 
 export interface DiscountEmailTemplateData {
   recipientName?: string;
@@ -39,7 +40,7 @@ export function interpolateDiscountEmailMarkdown(
   const expiryLabel = formatDiscountExpiryLabel(data.expiresAt);
 
   return template
-    .replace(/\{\{\s*name\s*\}\}/gi, data.recipientName || "")
+    .replace(/\{\{\s*name\s*\}\}/gi, getFirstAndLastName(data.recipientName ?? "") || "")
     .replace(/\{\{\s*istid\s*\}\}/gi, data.recipientIstid || "")
     .replace(/\{\{\s*email\s*\}\}/gi, data.recipientEmail ?? "")
     .replace(/\{\{\s*code\s*\}\}/gi, data.code)
