@@ -26,6 +26,7 @@ import type {
   CalendarEvent,
 } from "@/types/events";
 import type { IconType } from "react-icons";
+import { Modal } from "@/components/ui/Modal";
 import styles from "@/styles/components/activities/EventDetails.module.css";
 
 type CalendarEventWithOptionalCustom = CalendarEvent & { customIcon?: string };
@@ -147,10 +148,8 @@ export default function EventDetails({
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => e.key === "Escape" && handleClose();
     document.addEventListener("keydown", handleEscape);
-    document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", handleEscape);
-      document.body.style.overflow = "unset";
     };
   }, [handleClose]);
 
@@ -251,142 +250,135 @@ export default function EventDetails({
   };
 
   return (
-    <div
-      className={styles.modalOverlay}
-      onClick={(e) => e.target === e.currentTarget && handleClose()}>
-      <div className={styles.modalContent}>
-        <button className={styles.closeButton} onClick={handleClose} aria-label="Fechar">
-          <IoClose size={32} />
+    <Modal isOpen={true} onClose={handleClose} className={styles.modalContent}>
+      <button className={styles.closeButton} onClick={handleClose} aria-label="Fechar">
+        <IoClose size={32} />
+      </button>
+
+      <div className={styles.eventHeader}>
+        <div
+          className={styles.eventIcon}
+          onClick={isAdmin ? () => setShowIconPicker(true) : undefined}
+          style={{ cursor: isAdmin ? "pointer" : "default" }}>
+          <EventIcon size={48} />
+        </div>
+        <h2 className={styles.eventTitle}>{event.summary || "Untitled Event"}</h2>
+        <button className={styles.shareButton} onClick={handleShare} title="Copiar link do evento">
+          <IoShareOutline size={22} />
         </button>
+      </div>
 
-        <div className={styles.eventHeader}>
-          <div
-            className={styles.eventIcon}
-            onClick={isAdmin ? () => setShowIconPicker(true) : undefined}
-            style={{ cursor: isAdmin ? "pointer" : "default" }}>
-            <EventIcon size={48} />
-          </div>
-          <h2 className={styles.eventTitle}>{event.summary || "Untitled Event"}</h2>
-          <button
-            className={styles.shareButton}
-            onClick={handleShare}
-            title="Copiar link do evento">
-            <IoShareOutline size={22} />
-          </button>
+      <div className={styles.detailsSection}>
+        <div className={styles.detailRow}>
+          <MdAccessTime size={24} />
+          {isAllDay ? (
+            <span>{startDate == endDate ? `${startDate}` : `${startDate} → ${endDate}`}</span>
+          ) : startDate == endDate ? (
+            <span>
+              {startDate} | {startTime} - {endTime}
+            </span>
+          ) : (
+            <span>
+              {startDate} → {endDate} | {startTime} - {endTime}
+            </span>
+          )}
         </div>
-
-        <div className={styles.detailsSection}>
+        {event.location && (
           <div className={styles.detailRow}>
-            <MdAccessTime size={24} />
-            {isAllDay ? (
-              <span>{startDate == endDate ? `${startDate}` : `${startDate} → ${endDate}`}</span>
-            ) : startDate == endDate ? (
-              <span>
-                {startDate} | {startTime} - {endTime}
-              </span>
-            ) : (
-              <span>
-                {startDate} → {endDate} | {startTime} - {endTime}
-              </span>
-            )}
+            <IoLocationOutline size={24} />
+            <span>{event.location}</span>
           </div>
-          {event.location && (
-            <div className={styles.detailRow}>
-              <IoLocationOutline size={24} />
-              <span>{event.location}</span>
-            </div>
+        )}
+      </div>
+
+      {settings.description && !isAdmin && (
+        <div className={styles.descriptionSection}>
+          <Linkify
+            options={{
+              target: "_blank",
+              rel: "noopener noreferrer",
+              attributes: { className: styles.descriptionLink },
+            }}>
+            {settings.description}
+          </Linkify>
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className={styles.adminSection}>
+          <label>
+            Descrição do evento
+            <textarea
+              value={settings.description}
+              onChange={(e) => updateSetting("description", e.target.value)}
+              rows={4}
+              placeholder="Adicionar descrição..."
+              disabled={isProcessing}
+            />
+          </label>
+
+          <label className={styles.checkboxLabel}>
+            <input
+              type="checkbox"
+              checked={settings.signupEnabled}
+              onChange={(e) => updateSetting("signupEnabled", e.target.checked)}
+              disabled={isProcessing}
+            />
+            <span>Permitir inscrições</span>
+          </label>
+
+          {settings.signupEnabled && (
+            <>
+              <label>
+                Data limite para inscrições
+                <input
+                  type="datetime-local"
+                  value={settings.signupDeadline}
+                  onChange={(e) => updateSetting("signupDeadline", e.target.value)}
+                  disabled={isProcessing}
+                />
+              </label>
+
+              <label>
+                Número máximo de participantes
+                <input
+                  type="number"
+                  min="1"
+                  value={settings.maxAttendees}
+                  onChange={(e) => updateSetting("maxAttendees", e.target.value)}
+                  placeholder="Sem limite"
+                  disabled={isProcessing}
+                />
+              </label>
+            </>
           )}
         </div>
+      )}
 
-        {settings.description && !isAdmin && (
-          <div className={styles.descriptionSection}>
-            <Linkify
-              options={{
-                target: "_blank",
-                rel: "noopener noreferrer",
-                attributes: { className: styles.descriptionLink },
-              }}>
-              {settings.description}
-            </Linkify>
+      <div className={styles.actionSection}>
+        {isAdmin && subscriberCount > 0 && (
+          <div className={styles.subscriberCount}>
+            {String(subscriberCount).padStart(2, "0")} Inscritos
           </div>
         )}
 
-        {isAdmin && (
-          <div className={styles.adminSection}>
-            <label>
-              Descrição do evento
-              <textarea
-                value={settings.description}
-                onChange={(e) => updateSetting("description", e.target.value)}
-                rows={4}
-                placeholder="Adicionar descrição..."
-                disabled={isProcessing}
-              />
-            </label>
-
-            <label className={styles.checkboxLabel}>
-              <input
-                type="checkbox"
-                checked={settings.signupEnabled}
-                onChange={(e) => updateSetting("signupEnabled", e.target.checked)}
-                disabled={isProcessing}
-              />
-              <span>Permitir inscrições</span>
-            </label>
-
-            {settings.signupEnabled && (
-              <>
-                <label>
-                  Data limite para inscrições
-                  <input
-                    type="datetime-local"
-                    value={settings.signupDeadline}
-                    onChange={(e) => updateSetting("signupDeadline", e.target.value)}
-                    disabled={isProcessing}
-                  />
-                </label>
-
-                <label>
-                  Número máximo de participantes
-                  <input
-                    type="number"
-                    min="1"
-                    value={settings.maxAttendees}
-                    onChange={(e) => updateSetting("maxAttendees", e.target.value)}
-                    placeholder="Sem limite"
-                    disabled={isProcessing}
-                  />
-                </label>
-              </>
-            )}
-          </div>
-        )}
-
-        <div className={styles.actionSection}>
-          {isAdmin && subscriberCount > 0 && (
-            <div className={styles.subscriberCount}>
-              {String(subscriberCount).padStart(2, "0")} Inscritos
-            </div>
-          )}
-
-          <button
-            className={styles.signUpButton}
-            onClick={handleSignUp}
-            disabled={isProcessing || !currentIstid}>
-            {isProcessing
-              ? "A processar..."
-              : !currentIstid
-                ? "Por favor inicie sessão para se inscrever"
-                : signedUp
-                  ? "Cancelar inscrição"
-                  : "Sign Up"}
+        <button
+          className={styles.signUpButton}
+          onClick={handleSignUp}
+          disabled={isProcessing || !currentIstid}>
+          {isProcessing
+            ? "A processar..."
+            : !currentIstid
+              ? "Por favor inicie sessão para se inscrever"
+              : signedUp
+                ? "Cancelar inscrição"
+                : "Sign Up"}
+        </button>
+        {isAdmin && subscriberCount > 0 && (
+          <button onClick={handleEmailAttendees} className={styles.emailLink}>
+            Enviar email para todos os inscritos.
           </button>
-          {isAdmin && subscriberCount > 0 && (
-            <button onClick={handleEmailAttendees} className={styles.emailLink}>
-              Enviar email para todos os inscritos.
-            </button>
-          )}
-        </div>
+        )}
       </div>
 
       {showIconPicker && (
@@ -396,6 +388,6 @@ export default function EventDetails({
           onClose={() => setShowIconPicker(false)}
         />
       )}
-    </div>
+    </Modal>
   );
 }

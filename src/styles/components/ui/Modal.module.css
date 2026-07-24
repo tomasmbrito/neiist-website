@@ -1,0 +1,17 @@
+.modal {
+  padding: 1.5rem;
+  border: none;
+  border-radius: 12px;
+  background: var(--background-colour);
+  color: var(--foreground-colour);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  margin: auto;
+}
+
+.modal::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}

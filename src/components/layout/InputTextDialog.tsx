@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import styles from "@/styles/components/layout/InputDateDialog.module.css";
+import { Modal } from "@/components/ui/Modal";
 
 export default function InputTextDialog({
   open,
@@ -32,34 +33,30 @@ export default function InputTextDialog({
     setValue(initialValue ?? "");
   }, [initialValue, open]);
 
-  if (!open) return null;
-
   return (
-    <div className={styles.overlay}>
-      <div className={styles.dialog}>
-        {title && <div className={styles.title}>{title}</div>}
-        <div className={styles.content}>
-          {label && <div className={styles.label}>{label}</div>}
-          <input
-            className={styles.input}
-            type={type}
-            placeholder={placeholder}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-          />
-          {hint && <div className={styles.hint}>{hint}</div>}
-        </div>
-        <div className={styles.actions}>
-          <button
-            className={styles.confirm}
-            onClick={() => onConfirm(value.trim() === "" ? null : value)}>
-            {confirmLabel}
-          </button>
-          <button className={styles.cancel} onClick={onCancel}>
-            Cancelar
-          </button>
-        </div>
+    <Modal isOpen={open} onClose={onCancel} className={styles.dialog}>
+      {title && <div className={styles.title}>{title}</div>}
+      <div className={styles.content}>
+        {label && <div className={styles.label}>{label}</div>}
+        <input
+          className={styles.input}
+          type={type}
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        {hint && <div className={styles.hint}>{hint}</div>}
       </div>
-    </div>
+      <div className={styles.actions}>
+        <button
+          className={styles.confirm}
+          onClick={() => onConfirm(value.trim() === "" ? null : value)}>
+          {confirmLabel}
+        </button>
+        <button className={styles.cancel} onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+    </Modal>
   );
 }
