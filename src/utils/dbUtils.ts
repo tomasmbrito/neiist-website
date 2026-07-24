@@ -55,7 +55,7 @@ export const createUser = async (user: Partial<User>): Promise<User | null> => {
     const {
       rows: [newUser],
     } = await db_query<User>(
-      `SELECT * FROM neiist.add_user($1::VARCHAR(10), $2::TEXT, $3::TEXT, $4::TEXT, $5::TEXT, $6::TEXT, $7::TEXT[])`,
+      `SELECT * FROM neiist.add_user($1::VARCHAR(50), $2::TEXT, $3::TEXT, $4::TEXT, $5::TEXT, $6::TEXT, $7::TEXT[])`,
       [
         user.istid,
         user.name,
@@ -79,7 +79,7 @@ export const updateUser = async (istid: string, updates: Partial<User>): Promise
   try {
     const {
       rows: [updatedUser],
-    } = await db_query<User>("SELECT * FROM neiist.update_user($1::VARCHAR(10), $2::JSONB)", [
+    } = await db_query<User>("SELECT * FROM neiist.update_user($1::VARCHAR(50), $2::JSONB)", [
       istid,
       JSON.stringify(updates),
     ]);
@@ -94,7 +94,7 @@ export const updateUser = async (istid: string, updates: Partial<User>): Promise
 
 export const updateUserPhoto = async (istid: string, photoData: string): Promise<boolean> => {
   try {
-    await db_query("SELECT neiist.update_user_photo($1::VARCHAR(10), $2::TEXT)", [
+    await db_query("SELECT neiist.update_user_photo($1::VARCHAR(50), $2::TEXT)", [
       istid,
       photoData,
     ]);
@@ -109,14 +109,11 @@ export const getUser = async (istid: string): Promise<User | null> => {
   try {
     const {
       rows: [user],
-    } = await db_query<User>(
-      "SELECT * FROM neiist.get_user((SELECT id FROM neiist.users WHERE istid = $1 OR email = $1 LIMIT 1))",
-      [istid]
-    );
+    } = await db_query<User>("SELECT * FROM neiist.get_user($1::VARCHAR(50))", [istid]);
     if (!user) return null;
     const dbMemberships = (
       await db_query<dbMembership>(
-        "SELECT * FROM neiist.get_all_memberships() WHERE user_id = (SELECT id FROM neiist.users WHERE istid = $1 OR email = $1 LIMIT 1) AND active = TRUE",
+        "SELECT * FROM neiist.get_all_memberships() WHERE user_istid = $1 AND active = TRUE",
         [istid]
       )
     ).rows;
@@ -133,10 +130,12 @@ export const getUser = async (istid: string): Promise<User | null> => {
         .trim();
 
     for (const membership of memberships) {
-      const { rows: roleOrder } = await db_query<{ role_name: string; position: number }>(
-        "SELECT role_name, position FROM neiist.get_department_role_order($1)",
-        [membership.departmentName]
-      );
+      const { rows: roleOrder } = await db_query<{
+        role_name: string;
+        position: number;
+      }>("SELECT role_name, position FROM neiist.get_department_role_order($1)", [
+        membership.departmentName,
+      ]);
       const found = roleOrder.find(
         (r) => normalize(r.role_name) === normalize(membership.roleName)
       );
@@ -345,9 +344,11 @@ export const getAllDepartments = async (): Promise<
   Array<{ name: string; department_type: string; active: boolean }>
 > => {
   try {
-    const { rows } = await db_query<{ name: string; department_type: string; active: boolean }>(
-      "SELECT * FROM neiist.get_all_departments()"
-    );
+    const { rows } = await db_query<{
+      name: string;
+      department_type: string;
+      active: boolean;
+    }>("SELECT * FROM neiist.get_all_departments()");
     return rows;
   } catch (error) {
     console.error("Error fetching departments:", error);
@@ -825,7 +826,11 @@ export const deleteDiscountCode = async (discountCodeId: number): Promise<boolea
 export const validateDiscountCode = async (
   code: string,
   userIstid: string | null,
-  cartItems: Array<{ product_id: number; variant_id?: number | null; quantity: number }>
+  cartItems: Array<{
+    product_id: number;
+    variant_id?: number | null;
+    quantity: number;
+  }>
 ): Promise<DiscountValidationResult | null> => {
   try {
     const {
@@ -890,15 +895,24 @@ export function mapOrderDbErrorToResponse(
   const message = dbError?.message ?? "";
 
   if (message.includes("Order deadline has passed for product")) {
-    return { error: "O prazo de encomenda do produto ja terminou", status: 400 };
+    return {
+      error: "O prazo de encomenda do produto ja terminou",
+      status: 400,
+    };
   }
 
   if (message.includes("Insufficient variant stock")) {
-    return { error: "Stock insuficiente para a variante selecionada", status: 400 };
+    return {
+      error: "Stock insuficiente para a variante selecionada",
+      status: 400,
+    };
   }
 
   if (message.includes("Insufficient product stock")) {
-    return { error: "Stock insuficiente para o produto selecionado", status: 400 };
+    return {
+      error: "Stock insuficiente para o produto selecionado",
+      status: 400,
+    };
   }
 
   if (message.includes("Product") && message.includes("not found or inactive")) {
@@ -926,11 +940,17 @@ export function mapOrderDbErrorToResponse(
   }
 
   if (message.includes("Discount code not valid for user")) {
-    return { error: "Código de desconto não é válido para este utilizador", status: 400 };
+    return {
+      error: "Código de desconto não é válido para este utilizador",
+      status: 400,
+    };
   }
 
   if (message.includes("Discount code not applicable to these products")) {
-    return { error: "Código de desconto não é aplicável a estes produtos", status: 400 };
+    return {
+      error: "Código de desconto não é aplicável a estes produtos",
+      status: 400,
+    };
   }
 
   if (message.includes("Invalid quantity for product_id")) {

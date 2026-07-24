@@ -44,7 +44,7 @@ CREATE TYPE neiist.shop_order_status_enum AS ENUM (
 
 -- USERS TABLE
 CREATE TABLE neiist.users (
-  istid VARCHAR(10) PRIMARY KEY,
+  istid VARCHAR(50) PRIMARY KEY,
   name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL,
   github TEXT,
@@ -54,14 +54,14 @@ CREATE TABLE neiist.users (
 
 -- COURSES TABLE
 CREATE TABLE neiist.user_courses (
-  user_istid VARCHAR(10) REFERENCES neiist.users(istid),
+  user_istid VARCHAR(50) REFERENCES neiist.users(istid),
   course_name TEXT,
   PRIMARY KEY (user_istid, course_name)
 );
 
 -- CONTACTS TABLE
 CREATE TABLE neiist.user_contacts (
-  user_istid VARCHAR(10) REFERENCES neiist.users(istid),
+  user_istid VARCHAR(50) REFERENCES neiist.users(istid),
   contact_type neiist.contact_method_enum,
   contact_value TEXT NOT NULL,
   is_preferred BOOLEAN DEFAULT FALSE,
@@ -84,7 +84,7 @@ WHERE is_preferred = TRUE;
 -- EMAIL TOKEN VERIFICATION
 CREATE TABLE neiist.email_token (
   id SERIAL PRIMARY KEY,
-  istid VARCHAR(10) NOT NULL REFERENCES neiist.users(istid),
+  istid VARCHAR(50) NOT NULL REFERENCES neiist.users(istid),
   email TEXT NOT NULL,
   token TEXT NOT NULL,
   expires_at TIMESTAMPTZ NOT NULL
@@ -119,7 +119,7 @@ CREATE TABLE neiist.valid_department_roles (
 
 -- MEMBERSHIP TABLE
 CREATE TABLE neiist.membership (
-  user_istid VARCHAR(10) REFERENCES neiist.users(istid),
+  user_istid VARCHAR(50) REFERENCES neiist.users(istid),
   department_name VARCHAR(30) NOT NULL,
   role_name VARCHAR(40) NOT NULL,
   from_date DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -172,7 +172,7 @@ CREATE TABLE neiist.activities (
 -- EVENT SUBSCRIPTIONS
 CREATE TABLE neiist.activities_sign_up (
   event_id TEXT NOT NULL REFERENCES neiist.activities(id),
-  user_istid VARCHAR(10) NOT NULL REFERENCES neiist.users(istid),
+  user_istid VARCHAR(50) NOT NULL REFERENCES neiist.users(istid),
   signed_up_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (event_id, user_istid)
 );
@@ -259,7 +259,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE TABLE neiist.orders (
   id SERIAL PRIMARY KEY,
   order_number TEXT NOT NULL UNIQUE DEFAULT neiist.generate_order_number(),
-  user_istid VARCHAR(10) REFERENCES neiist.users(istid),
+  user_istid VARCHAR(50) REFERENCES neiist.users(istid),
   customer_name TEXT,
   customer_email TEXT,
   customer_phone TEXT,
@@ -395,9 +395,9 @@ EXECUTE FUNCTION neiist.update_order_item_product_name_on_product_rename();
 
 -- Get user
 CREATE OR REPLACE FUNCTION neiist.get_user(
-  u_istid VARCHAR(10)
+  u_istid VARCHAR(50)
 ) RETURNS TABLE (
-  istid VARCHAR(10),
+  istid VARCHAR(50),
   name TEXT,
   email TEXT,
   alt_email TEXT,
@@ -452,7 +452,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Add user
 CREATE OR REPLACE FUNCTION neiist.add_user(
-  p_istid VARCHAR(10),
+  p_istid VARCHAR(50),
   p_name TEXT DEFAULT NULL,
   p_email TEXT DEFAULT NULL,
   p_alt_email TEXT DEFAULT NULL,
@@ -462,7 +462,7 @@ CREATE OR REPLACE FUNCTION neiist.add_user(
   p_github TEXT DEFAULT NULL,
   p_linkedin TEXT DEFAULT NULL
 ) RETURNS TABLE(
-  istid VARCHAR(10),
+  istid VARCHAR(50),
   name TEXT,
   email TEXT,
   alt_email TEXT,
@@ -631,7 +631,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Add team member
 CREATE OR REPLACE FUNCTION neiist.add_team_member(
-  u_user_istid VARCHAR(10),
+  u_user_istid VARCHAR(50),
   u_department_name VARCHAR(30),
   u_role_name VARCHAR(40)
 ) RETURNS VOID AS $$
@@ -647,7 +647,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Remove team member
 CREATE OR REPLACE FUNCTION neiist.remove_team_member(
-  u_user_istid VARCHAR(10),
+  u_user_istid VARCHAR(50),
   u_department_name VARCHAR(30),
   u_role_name VARCHAR(40)
 ) RETURNS VOID AS $$
@@ -685,7 +685,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Get users with a specific access level
 CREATE OR REPLACE FUNCTION neiist.get_users_by_access(u_access neiist.user_access_enum)
 RETURNS TABLE (
-  istid VARCHAR(10),
+  istid VARCHAR(50),
   name TEXT,
   email TEXT,
   phone VARCHAR(15),
@@ -718,7 +718,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Gett all users TODO: send alt_email if is prefered contact as the email?
 CREATE OR REPLACE FUNCTION neiist.get_all_users()
 RETURNS TABLE (
-  istid VARCHAR(10),
+  istid VARCHAR(50),
   name TEXT,
   email TEXT,
   phone TEXT,
@@ -774,10 +774,10 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Update user data
 CREATE OR REPLACE FUNCTION neiist.update_user(
-  p_istid VARCHAR(10),
+  p_istid VARCHAR(50),
   p_updates JSONB
 ) RETURNS TABLE(
-  istid VARCHAR(10),
+  istid VARCHAR(50),
   name TEXT,
   email TEXT,
   alt_email TEXT,
@@ -854,7 +854,7 @@ $$;
 
 -- Update user photo path
 CREATE OR REPLACE FUNCTION neiist.update_user_photo(
-  p_istid VARCHAR(10),
+  p_istid VARCHAR(50),
   p_photo_data TEXT
 ) RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
@@ -870,7 +870,7 @@ $$;
 
 -- Create a new email verification request
 CREATE OR REPLACE FUNCTION neiist.add_email_verification(
-  p_istid VARCHAR(10),
+  p_istid VARCHAR(50),
   p_email TEXT,
   p_token TEXT,
   p_expires_at TIMESTAMPTZ
@@ -884,7 +884,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Get verification request by token
 CREATE OR REPLACE FUNCTION neiist.get_email_verification(
   p_token TEXT
-) RETURNS TABLE(istid VARCHAR(10), email TEXT, expires_at TIMESTAMPTZ) AS $$
+) RETURNS TABLE(istid VARCHAR(50), email TEXT, expires_at TIMESTAMPTZ) AS $$
 BEGIN
   RETURN QUERY SELECT email_token.istid, email_token.email, email_token.expires_at
   FROM neiist.email_token
@@ -903,7 +903,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Get verification request by user
 CREATE OR REPLACE FUNCTION neiist.get_email_verification_by_user(
-  p_istid VARCHAR(10)
+  p_istid VARCHAR(50)
 ) RETURNS TABLE(email TEXT, expires_at TIMESTAMPTZ) AS $$
 BEGIN
   RETURN QUERY
@@ -983,7 +983,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Get all memberships (useful for admin interface)
 CREATE OR REPLACE FUNCTION neiist.get_all_memberships()
 RETURNS TABLE (
-  user_istid VARCHAR(10),
+  user_istid VARCHAR(50),
   user_name TEXT,
   department_name VARCHAR(30),
   department_type VARCHAR(20),
@@ -1083,7 +1083,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Subscribe user to event
 CREATE OR REPLACE FUNCTION neiist.sign_up_to_event(
   p_event_id TEXT,
-  p_user_istid VARCHAR(10)
+  p_user_istid VARCHAR(50)
 ) RETURNS VOID AS $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM neiist.activities WHERE id = p_event_id) THEN
@@ -1103,7 +1103,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Unsubscribe user from event
 CREATE OR REPLACE FUNCTION neiist.remove_sign_up_from_event(
   p_event_id TEXT,
-  p_user_istid VARCHAR(10)
+  p_user_istid VARCHAR(50)
 ) RETURNS VOID AS $$
 BEGIN
   DELETE FROM neiist.activities_sign_up
@@ -1130,7 +1130,7 @@ RETURNS TABLE (
   signup_deadline TIMESTAMPTZ,
   max_attendees INTEGER,
   custom_icon TEXT,
-  subscribers VARCHAR(10)[],
+  subscribers VARCHAR(50)[],
   subscriber_count BIGINT
 ) AS $$
 BEGIN
@@ -1154,7 +1154,7 @@ BEGIN
     e.custom_icon,
     COALESCE(
       ARRAY_AGG(es.user_istid ORDER BY es.signed_up_at) FILTER (WHERE es.user_istid IS NOT NULL),
-      ARRAY[]::VARCHAR(10)[]
+      ARRAY[]::VARCHAR(50)[]
     ) AS subscribers,
     COUNT(es.user_istid) AS subscriber_count
   FROM neiist.activities e
@@ -1192,7 +1192,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Get subscribers for an event with user details
 CREATE OR REPLACE FUNCTION neiist.get_event_subscribers(p_event_id TEXT)
 RETURNS TABLE (
-  istid VARCHAR(10),
+  istid VARCHAR(50),
   name TEXT,
   email TEXT,
   signed_up_at TIMESTAMPTZ
@@ -1935,7 +1935,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Validate discount code
 CREATE OR REPLACE FUNCTION neiist.validate_discount_code(
   p_code TEXT,
-  p_user_istid VARCHAR(10),
+  p_user_istid VARCHAR(50),
   p_cart_items JSONB
 ) RETURNS TABLE (
   is_valid BOOLEAN,
@@ -2075,7 +2075,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- New order created
 CREATE OR REPLACE FUNCTION neiist.new_order(
-  p_user_istid VARCHAR(10),
+  p_user_istid VARCHAR(50),
   p_customer_name TEXT,
   p_customer_email TEXT,
   p_customer_phone TEXT,
@@ -2092,7 +2092,7 @@ CREATE OR REPLACE FUNCTION neiist.new_order(
   id INTEGER,
   order_number TEXT,
   customer_name TEXT,
-  user_istid VARCHAR(10),
+  user_istid VARCHAR(50),
   customer_email TEXT,
   customer_phone TEXT,
   customer_nif TEXT,
@@ -2371,7 +2371,7 @@ RETURNS TABLE (
   id INT,
   order_number TEXT,
   customer_name TEXT,
-  user_istid VARCHAR(10),
+  user_istid VARCHAR(50),
   customer_email TEXT,
   customer_phone TEXT,
   customer_nif TEXT,
@@ -2477,7 +2477,7 @@ RETURNS TABLE (
   id INT,
   order_number TEXT,
   customer_name TEXT,
-  user_istid VARCHAR(10),
+  user_istid VARCHAR(50),
   customer_email TEXT,
   customer_phone TEXT,
   customer_nif TEXT,
@@ -2574,7 +2574,7 @@ CREATE OR REPLACE FUNCTION neiist.update_order(
   id INTEGER,
   order_number TEXT,
   customer_name TEXT,
-  user_istid VARCHAR(10),
+  user_istid VARCHAR(50),
   customer_email TEXT,
   customer_phone TEXT,
   customer_nif TEXT,
@@ -2822,7 +2822,7 @@ CREATE OR REPLACE FUNCTION neiist.set_order_state(
   id INTEGER,
   order_number TEXT,
   customer_name TEXT,
-  user_istid VARCHAR(10),
+  user_istid VARCHAR(50),
   customer_email TEXT,
   customer_phone TEXT,
   customer_nif TEXT,
@@ -2886,7 +2886,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Get all non-cancelled ordered quantities by product for a user within a category
 CREATE OR REPLACE FUNCTION neiist.get_user_ordered_products_in_category(
-  p_user_istid VARCHAR(10),
+  p_user_istid VARCHAR(50),
   p_category_name TEXT
 ) RETURNS TABLE(product_id INTEGER, total INTEGER) AS $$
   SELECT oi.product_id, SUM(oi.quantity)::INT AS total

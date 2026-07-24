@@ -9,7 +9,7 @@ export class UserRepository {
       const {
         rows: [newUser],
       } = await db_query<User>(
-        `SELECT * FROM neiist.add_user($1::VARCHAR(10), $2::TEXT, $3::TEXT, $4::TEXT, $5::TEXT, $6::TEXT, $7::TEXT[])`,
+        `SELECT * FROM neiist.add_user($1::VARCHAR(50), $2::TEXT, $3::TEXT, $4::TEXT, $5::TEXT, $6::TEXT, $7::TEXT[])`,
         [
           user.istid || null, // null for external users
           user.name,
@@ -33,7 +33,7 @@ export class UserRepository {
     try {
       const {
         rows: [updatedUser],
-      } = await db_query<User>("SELECT * FROM neiist.update_user($1::UUID, $2::JSONB)", [
+      } = await db_query<User>("SELECT * FROM neiist.update_user($1::VARCHAR(50), $2::JSONB)", [
         id,
         JSON.stringify(updates),
       ]);
@@ -48,7 +48,7 @@ export class UserRepository {
 
   static async updateUserPhoto(id: string, photoData: string): Promise<boolean> {
     try {
-      await db_query("SELECT neiist.update_user_photo($1::UUID, $2::TEXT)", [id, photoData]);
+      await db_query("SELECT neiist.update_user_photo($1::VARCHAR(50), $2::TEXT)", [id, photoData]);
       return true;
     } catch (error) {
       console.error("Error updating user photo:", error);
@@ -60,12 +60,12 @@ export class UserRepository {
     try {
       const {
         rows: [user],
-      } = await db_query<User>("SELECT * FROM neiist.get_user($1::UUID)", [id]);
+      } = await db_query<User>("SELECT * FROM neiist.get_user($1::VARCHAR(50))", [id]);
       if (!user) return null;
 
       const dbMemberships = (
         await db_query<dbMembership>(
-          "SELECT * FROM neiist.get_all_memberships() WHERE user_id = $1 AND active = TRUE",
+          "SELECT * FROM neiist.get_all_memberships() WHERE user_istid = $1 AND active = TRUE",
           [id]
         )
       ).rows;
@@ -99,7 +99,10 @@ export class UserRepository {
         );
         if (found) {
           if (!highest || found.position < highest.position) {
-            highest = { roleName: membership.roleName, position: found.position };
+            highest = {
+              roleName: membership.roleName,
+              position: found.position,
+            };
           }
         }
       }
@@ -120,7 +123,7 @@ export class UserRepository {
     try {
       const {
         rows: [user],
-      } = await db_query<User>("SELECT * FROM neiist.get_user_by_istid($1::VARCHAR(10))", [istid]);
+      } = await db_query<User>("SELECT * FROM neiist.get_user($1::VARCHAR(50))", [istid]);
       if (!user) return null;
       // We recursively call getUser using the found id to get the full resolved user with roles/teams
       return this.getUser(user.istid);
@@ -160,7 +163,7 @@ export class UserRepository {
     expiresAt: string
   ): Promise<void> {
     try {
-      await db_query("SELECT neiist.add_email_verification($1::UUID, $2, $3, $4)", [
+      await db_query("SELECT neiist.add_email_verification($1::VARCHAR(50), $2, $3, $4)", [
         id,
         email,
         token,
@@ -178,10 +181,11 @@ export class UserRepository {
     try {
       const {
         rows: [row],
-      } = await db_query<{ user_id: string; email: string; expires_at: string }>(
-        "SELECT * FROM neiist.get_email_verification($1)",
-        [token]
-      );
+      } = await db_query<{
+        user_id: string;
+        email: string;
+        expires_at: string;
+      }>("SELECT * FROM neiist.get_email_verification($1)", [token]);
       return row ?? null;
     } catch (error) {
       console.error("Error fetching email verification:", error);
@@ -205,7 +209,7 @@ export class UserRepository {
       const {
         rows: [row],
       } = await db_query<{ email: string; expires_at: string }>(
-        "SELECT * FROM neiist.get_email_verification_by_user($1::UUID)",
+        "SELECT * FROM neiist.get_email_verification_by_user($1::VARCHAR(50))",
         [id]
       );
       return row ?? null;
