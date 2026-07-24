@@ -87,7 +87,7 @@ const CreateNewUserModal: React.FC<CreateNewUserModalProps> = ({
   };
 
   return (
-    <div className={styles.backdrop} onClick={handleBackdropClick}>
+    <div role="button" tabIndex={0} className={styles.backdrop} onClick={handleBackdropClick}>
       <div className={styles.modal}>
         <button className={styles.closeButton} onClick={onClose}>
           <MdClose size={20} />

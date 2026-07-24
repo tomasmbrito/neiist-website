@@ -78,7 +78,7 @@ export default function ProductManagementCard({
               onClick={() => setImageIndex(idx)}
               aria-current={imageIndex === idx}
               type="button">
-              <Image src={img} alt="" width={28} height={28} />
+              <Image src={img} alt={`Thumbnail ${idx + 1}`} width={28} height={28} />
             </button>
           ))}
         </div>

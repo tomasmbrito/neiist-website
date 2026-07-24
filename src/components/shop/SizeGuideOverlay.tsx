@@ -27,8 +27,8 @@ export default function SizeGuideOverlay({
 }) {
   if (!open) return null;
   return (
-    <div className={styles.backdrop} onClick={onClose}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+    <div role="button" tabIndex={0} className={styles.backdrop} onClick={onClose}>
+      <div role="button" tabIndex={0} className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <button className={styles.closeButton} onClick={onClose} aria-label="Fechar">
           ×
         </button>

@@ -200,6 +200,8 @@ export default function DiscountCodeManagement({
             <tr>
               <th className={styles.checkboxCol}>
                 <div
+                  role="button"
+                  tabIndex={0}
                   className={`${styles.checkbox} ${isAllSelected ? styles.checked : ""} ${isSomeSelected ? styles.indeterminate : ""}`}
                   onClick={toggleAll}>
                   {isAllSelected && <FiCheck size={14} />}

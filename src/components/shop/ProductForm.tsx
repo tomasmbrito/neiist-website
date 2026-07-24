@@ -76,7 +76,7 @@ function ImageGrid({
       <div className={styles.imgGrid}>
         {images.map((src, i) => (
           <div key={i} className={styles.imgSlot}>
-            <Image src={src} alt="" fill className={styles.imgThumb} />
+            <Image src={src} alt={`Thumbnail ${i + 1}`} fill className={styles.imgThumb} />
             <button type="button" className={styles.imgRemove} onClick={() => onRemove(i)}>
               <FaTrash size={10} />
             </button>
@@ -238,7 +238,7 @@ function ItemCard({
 }) {
   return (
     <div className={`${styles.itemCard} ${!isActive ? styles.itemCardInactive : ""}`}>
-      <div className={styles.itemHeader} onClick={onToggle}>
+      <div role="button" tabIndex={0} className={styles.itemHeader} onClick={onToggle}>
         <div className={styles.itemHeaderLeft}>
           {onActiveToggle && (
             <input
@@ -693,6 +693,8 @@ export default function ProductForm({
                     />
                     {showDatePicker && (
                       <div
+                        role="button"
+                        tabIndex={0}
                         className={styles.datePickerPopup}
                         onClick={(e) => {
                           if (e.target === e.currentTarget) setShowDatePicker(false);

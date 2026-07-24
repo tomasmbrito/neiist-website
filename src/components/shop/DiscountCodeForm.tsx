@@ -438,6 +438,8 @@ export default function DiscountCodeForm({ users, products }: DiscountCodeEditor
                     />
                     {showDatePicker && (
                       <div
+                        role="button"
+                        tabIndex={0}
                         className={styles.datePickerPopup}
                         onClick={(e) => {
                           if (e.target === e.currentTarget) setShowDatePicker(false);

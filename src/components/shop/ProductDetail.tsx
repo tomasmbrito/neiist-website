@@ -172,7 +172,11 @@ export default function ProductDetail({ product }: ProductDetailProps) {
   return (
     <div className={styles.container}>
       <div className={styles.breadcrumbs}>
-        <span onClick={() => router.push("/shop")} className={styles.breadcrumbLink}>
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={() => router.push("/shop")}
+          className={styles.breadcrumbLink}>
           Store
         </span>
         <span className={styles.breadcrumbSeparator}>››</span>
@@ -204,7 +208,7 @@ export default function ProductDetail({ product }: ProductDetailProps) {
                   className={`${styles.thumbnail} ${i === imgIndex ? styles.active : ""}`}
                   onClick={() => setImgIndex(i)}
                   aria-label={`View image ${i + 1}`}>
-                  <Image src={src} alt="" width={80} height={80} />
+                  <Image src={src} alt={`Thumbnail ${i + 1}`} width={80} height={80} />
                 </button>
               ))}
             </div>
@@ -297,6 +301,8 @@ export default function ProductDetail({ product }: ProductDetailProps) {
               </button>
             </div>
             <div
+              role="button"
+              tabIndex={0}
               className={styles.addButtonWrapper}
               onClick={() => {
                 if (!canBuy) addToCart();

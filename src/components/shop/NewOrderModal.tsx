@@ -641,7 +641,11 @@ export default function NewOrderModal({
   }
 
   return (
-    <div className={styles.backdrop} onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div
+      role="button"
+      tabIndex={0}
+      className={styles.backdrop}
+      onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className={styles.modal}>
         <button className={styles.closeButton} onClick={onClose} type="button">
           <MdClose size={24} />
@@ -710,6 +714,8 @@ export default function NewOrderModal({
                   <div className={styles.dropdown} ref={userDropdownRef}>
                     {filteredUsers.map((user, idx) => (
                       <div
+                        role="button"
+                        tabIndex={0}
                         key={user.istid}
                         className={`${styles.dropdownItem} ${idx === userHighlight ? styles.highlighted : ""}`}
                         onClick={() => selectUser(user)}
@@ -721,6 +727,8 @@ export default function NewOrderModal({
                     ))}
                     {showCreateUserOption && !isEditMode && (
                       <div
+                        role="button"
+                        tabIndex={0}
                         className={`${styles.dropdownItem} ${filteredUsers.length === userHighlight ? styles.highlighted : ""}`}
                         onClick={() => setShowCreateUser(true)}
                         onMouseEnter={() => setUserHighlight(filteredUsers.length)}>
@@ -780,6 +788,8 @@ export default function NewOrderModal({
                 <div className={styles.dropdown} ref={productDropdownRef}>
                   {filteredProducts.map((product, idx) => (
                     <div
+                      role="button"
+                      tabIndex={0}
                       key={product.id}
                       className={`${styles.dropdownItem} ${idx === productHighlight ? styles.highlighted : ""}`}
                       onClick={() => openCascade(product)}
@@ -803,7 +813,11 @@ export default function NewOrderModal({
                   const values = getValuesForKey(cascade.product, cascade.selections);
                   return (
                     <div className={styles.dropdown} ref={productDropdownRef}>
-                      <div className={styles.cascadeHeader} onClick={cascadeBack}>
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        className={styles.cascadeHeader}
+                        onClick={cascadeBack}>
                         <MdChevronLeft size={18} />
                         <span className={styles.cascadeHeaderText}>
                           {cascade.product.name}
@@ -823,6 +837,8 @@ export default function NewOrderModal({
                           : { name: val, hex: "" };
                         return (
                           <div
+                            role="button"
+                            tabIndex={0}
                             key={`${currentKeyIdx}-${idx}-${val}`}
                             className={`${styles.dropdownItem} ${idx === productHighlight ? styles.highlighted : ""}`}
                             onClick={() => selectCascadeValue(val)}
