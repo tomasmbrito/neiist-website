@@ -22,3 +22,15 @@ export function getUserFromJWT(token: string | undefined): JwtPayload | null {
     return null;
   }
 }
+
+export function decodeJWTPayload(token: string | undefined): JwtPayload | null {
+  if (!token) return null;
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(atob(parts[1]));
+    return payload as JwtPayload;
+  } catch {
+    return null;
+  }
+}

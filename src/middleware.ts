@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { UserRole, hasRequiredRole } from "@/types/user";
-import { getUserFromJWT } from "./utils/authUtils";
+import { decodeJWTPayload } from "./utils/authUtils";
 import { rateLimit } from "@/utils/security/rateLimitUtils";
 import { CSP } from "@/utils/security/cspUtils";
 import { getRateLimitRule } from "@/lib/rateLimitRules";
@@ -114,7 +114,7 @@ export function middleware(req: NextRequest) {
     const rule = getRateLimitRule(path);
     if (rule) {
       const sessionToken = req.cookies.get("session")?.value;
-      const jwtUser = getUserFromJWT(sessionToken);
+      const jwtUser = decodeJWTPayload(sessionToken);
       const identifier = rule.useUser ? (jwtUser?.istid ?? getIp(req)) : getIp(req);
       const bucketKey = `${path.split("/").slice(0, 4).join("/")}:${identifier}`;
       const result = rateLimit(bucketKey, rule.limit, rule.windowMs);
@@ -141,7 +141,7 @@ export function middleware(req: NextRequest) {
 
   const accessToken = req.cookies.get("access_token")?.value;
   const sessionToken = req.cookies.get("session")?.value;
-  const isAuthenticated = !!accessToken || !!getUserFromJWT(sessionToken);
+  const isAuthenticated = !!accessToken || !!decodeJWTPayload(sessionToken);
 
   if (!isAuthenticated && protectedRoutes.some((r) => path.startsWith(r))) {
     if (path !== "/api/auth/login") {
@@ -155,7 +155,7 @@ export function middleware(req: NextRequest) {
   }
 
   if (isAuthenticated) {
-    const jwtUser = getUserFromJWT(sessionToken);
+    const jwtUser = decodeJWTPayload(sessionToken);
     const roles = jwtUser?.roles || [UserRole._GUEST];
 
     if (!canAccess(path, roles)) {
