@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { validateDiscountCode } from "@/utils/dbUtils";
+import { cookies } from "next/headers";
+import { getUserFromJWT } from "@/utils/authUtils";
 
 export async function POST(request: NextRequest) {
   try {
+    const cookieStore = await cookies();
+    const session = cookieStore.get("session")?.value;
+    const user = getUserFromJWT(session);
+    const userIstid = user?.istid ?? null;
+
     const body = await request.json();
     const code = typeof body.code === "string" ? body.code.trim() : "";
-    const userIstid = typeof body.user_istid === "string" ? body.user_istid.trim() : null;
     const cartItems = Array.isArray(body.cart_items) ? body.cart_items : [];
 
     const result = await validateDiscountCode(code, userIstid, cartItems);

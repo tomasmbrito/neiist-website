@@ -2,9 +2,20 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { addEmailVerification } from "@/utils/dbUtils";
 import { sendEmail, getEmailVerificationTemplate } from "@/utils/emailUtils";
+import { cookies } from "next/headers";
+import { getUserFromJWT } from "@/utils/authUtils";
 
 export async function POST(request: Request) {
-  const { istid, alternativeEmail } = await request.json();
+  const cookieStore = await cookies();
+  const session = cookieStore.get("session")?.value;
+  const user = getUserFromJWT(session);
+
+  if (!user || !user.istid) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const istid = user.istid;
+
+  const { alternativeEmail } = await request.json();
   if (!istid || !alternativeEmail) {
     return NextResponse.json({ error: "Missing data" }, { status: 400 });
   }

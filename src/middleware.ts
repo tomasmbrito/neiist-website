@@ -96,7 +96,7 @@ function canAccess(path: string, roles: UserRole[]) {
   return false;
 }
 
-export function proxy(req: NextRequest) {
+export function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
 
   if (isBot(req)) {
