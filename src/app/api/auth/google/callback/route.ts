@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getUser, db_query } from "@/utils/dbUtils";
+import { getUser, createUser, db_query } from "@/utils/dbUtils";
 import { signUserJWT } from "@/utils/authUtils";
 
 export async function GET(request: Request) {
@@ -68,14 +68,16 @@ export async function GET(request: Request) {
       return NextResponse.redirect(new URL("/?error=use_fenix_for_tecnico_emails", request.url));
     }
 
-    // Lookup user by email
-    const { rows } = await db_query("SELECT * FROM neiist.users WHERE email = $1", [email]);
-    const existingUser = rows[0];
-    let userIstid = existingUser?.istid;
+    // Lookup user by email securely
+    const { rows } = await db_query<{ get_user_by_email: string | null }>(
+      "SELECT neiist.get_user_by_email($1)",
+      [email]
+    );
+    let userIstid = rows[0]?.get_user_by_email;
 
-    if (existingUser) {
+    if (userIstid) {
       // Task 2: Reject Google logins if email is already registered to a user with an active istid
-      const isExternalUser = existingUser.istid.startsWith("ext_");
+      const isExternalUser = userIstid.startsWith("ext_");
 
       if (!isExternalUser) {
         return NextResponse.redirect(new URL("/?error=email_registered_with_fenix", request.url));
@@ -89,11 +91,15 @@ export async function GET(request: Request) {
       const timestamp = Date.now().toString(36);
       userIstid = `ext_${timestamp}`;
 
-      await db_query("INSERT INTO neiist.users (istid, name, email) VALUES ($1, $2, $3)", [
-        userIstid,
-        name,
-        email,
-      ]);
+      await createUser({
+        istid: userIstid,
+        name: name,
+        email: email,
+        alternativeEmail: "",
+        phone: "",
+        courses: [],
+        photo: "",
+      });
     }
 
     const user = await getUser(userIstid);

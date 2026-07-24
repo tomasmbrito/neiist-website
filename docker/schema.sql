@@ -394,6 +394,11 @@ EXECUTE FUNCTION neiist.update_order_item_product_name_on_product_rename();
 -- FUNCTIONS
 
 -- Get user
+CREATE OR REPLACE FUNCTION neiist.get_user_by_email(u_email TEXT)
+RETURNS VARCHAR(50) AS $$
+  SELECT istid FROM neiist.users WHERE email = u_email LIMIT 1;
+$$ LANGUAGE sql SECURITY DEFINER;
+
 CREATE OR REPLACE FUNCTION neiist.get_user(
   u_istid VARCHAR(50)
 ) RETURNS TABLE (
