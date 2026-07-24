@@ -22,6 +22,9 @@ import {
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import ColorfulText from "@/components/ColorfulText";
+import { Input, Textarea } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Button } from "@/components/ui/Button";
 import MultiSelectDropdown from "@/components/MultiSelectDropdown";
 import { Product } from "@/types/shop/product";
 import { User } from "@/types/user";
@@ -336,16 +339,16 @@ export default function DiscountCodeForm({ users, products }: DiscountCodeEditor
           void handleSubmit(e);
         }}>
         <div className={styles.header}>
-          <button
+          <Button
             type="button"
-            className={styles.btnSecondary}
+            variant="secondary"
             onClick={() => router.push("/shop/manage/discounts")}>
             <FaArrowLeft /> Voltar
-          </button>
+          </Button>
           <ColorfulText className={styles.title} text="Códigos de Desconto" />
-          <button type="submit" className={styles.btnPrimary} disabled={isCreating}>
-            <FaPlus /> {isCreating ? "A gerar..." : "Gerar e Enviar"}
-          </button>
+          <Button type="submit" variant="primary" disabled={isCreating}>
+            <FaPlus /> {isCreating ? "A Gerar..." : "Gerar Códigos"}
+          </Button>
         </div>
 
         <div className={styles.grid}>
@@ -364,8 +367,7 @@ export default function DiscountCodeForm({ users, products }: DiscountCodeEditor
                 />
               </Field>
               <Field label="Emails Externos" icon={<FaEnvelope />} iconAlignTop>
-                <textarea
-                  className={styles.field}
+                <Textarea
                   rows={2}
                   value={creationDraft.externalEmails}
                   onChange={(e) =>
@@ -376,8 +378,7 @@ export default function DiscountCodeForm({ users, products }: DiscountCodeEditor
               </Field>
               <div className={styles.row}>
                 <Field label="Tipo" icon={<FaTag />}>
-                  <select
-                    className={styles.field}
+                  <Select
                     value={creationDraft.discount_type}
                     onChange={(e) =>
                       setCreationDraft((prev) => ({
@@ -387,19 +388,18 @@ export default function DiscountCodeForm({ users, products }: DiscountCodeEditor
                     }>
                     <option value="percentage">Percentagem</option>
                     <option value="fixed">Valor fixo</option>
-                  </select>
+                  </Select>
                 </Field>
                 <Field
                   label="Valor"
                   icon={
                     creationDraft.discount_type === "percentage" ? <FaPercent /> : <FaEuroSign />
                   }>
-                  <input
+                  <Input
                     type="number"
                     step="0.01"
                     min="0"
                     max={creationDraft.discount_type === "percentage" ? "100" : undefined}
-                    className={styles.field}
                     value={creationDraft.discount_value}
                     onChange={(e) =>
                       setCreationDraft((prev) => ({ ...prev, discount_value: e.target.value }))
@@ -415,10 +415,9 @@ export default function DiscountCodeForm({ users, products }: DiscountCodeEditor
               )}
               <div className={styles.row}>
                 <Field label="Max. usos por código" icon={<FaHashtag />}>
-                  <input
+                  <Input
                     type="number"
                     min="1"
-                    className={styles.field}
                     value={creationDraft.maxUses}
                     onChange={(e) =>
                       setCreationDraft((prev) => ({ ...prev, maxUses: e.target.value }))
@@ -428,8 +427,7 @@ export default function DiscountCodeForm({ users, products }: DiscountCodeEditor
                 </Field>
                 <Field label="Expiração" icon={<FaCalendarAlt />}>
                   <div className={styles.datePickerWrap} ref={datePickerRef}>
-                    <input
-                      className={styles.field}
+                    <Input
                       type="text"
                       value={creationDraft.expiresAt?.toLocaleDateString("pt-PT") ?? ""}
                       placeholder="Sem limite"
@@ -479,9 +477,8 @@ export default function DiscountCodeForm({ users, products }: DiscountCodeEditor
             <div className={styles.stackBlock}>
               <SectionTitle icon={<FaEnvelope />}>Email a Enviar</SectionTitle>
               <Field label="Assunto do email" icon={<FaHeading />}>
-                <input
+                <Input
                   type="text"
-                  className={styles.field}
                   value={creationDraft.emailSubject}
                   onChange={(e) =>
                     setCreationDraft((prev) => ({ ...prev, emailSubject: e.target.value }))
@@ -490,9 +487,8 @@ export default function DiscountCodeForm({ users, products }: DiscountCodeEditor
                 />
               </Field>
               <Field label="Corpo do Email" icon={<FaAlignLeft />} iconAlignTop>
-                <textarea
+                <Textarea
                   rows={10}
-                  className={styles.field}
                   value={creationDraft.emailIntroLine}
                   onChange={(e) =>
                     setCreationDraft((prev) => ({ ...prev, emailIntroLine: e.target.value }))

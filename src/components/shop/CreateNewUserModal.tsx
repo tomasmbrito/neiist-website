@@ -5,6 +5,8 @@ import styles from "@/styles/components/shop/CreateNewUserModal.module.css";
 import { MdClose } from "react-icons/md";
 import type { User } from "@/types/user";
 import ConfirmDialog from "@/components/layout/ConfirmDialog";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 
 interface CreateNewUserModalProps {
   onClose: () => void;
@@ -89,9 +91,9 @@ const CreateNewUserModal: React.FC<CreateNewUserModalProps> = ({
   return (
     <div role="button" tabIndex={0} className={styles.backdrop} onClick={handleBackdropClick}>
       <div className={styles.modal}>
-        <button className={styles.closeButton} onClick={onClose}>
+        <Button variant="ghost" className={styles.closeButton} onClick={onClose}>
           <MdClose size={20} />
-        </button>
+        </Button>
 
         <h2>Novo Utilizador</h2>
 
@@ -101,7 +103,7 @@ const CreateNewUserModal: React.FC<CreateNewUserModalProps> = ({
         <form onSubmit={handleConfirm}>
           <div className={styles.formGroup}>
             <label>IST ID</label>
-            <input
+            <Input
               type="text"
               placeholder="ist1119999"
               value={istId}
@@ -114,7 +116,7 @@ const CreateNewUserModal: React.FC<CreateNewUserModalProps> = ({
 
           <div className={styles.formGroup}>
             <label>Nome</label>
-            <input
+            <Input
               type="text"
               placeholder="John Doe"
               value={name}
@@ -126,7 +128,7 @@ const CreateNewUserModal: React.FC<CreateNewUserModalProps> = ({
 
           <div className={styles.formGroup}>
             <label>Email</label>
-            <input
+            <Input
               type="email"
               placeholder="john.doe@tecnico.ulisboa.pt"
               value={email}
@@ -137,16 +139,12 @@ const CreateNewUserModal: React.FC<CreateNewUserModalProps> = ({
           </div>
 
           <div className={styles.buttonRow}>
-            <button
-              className={styles.buttonCancel}
-              onClick={onClose}
-              disabled={isSubmitting}
-              type="button">
+            <Button variant="secondary" onClick={onClose} disabled={isSubmitting} type="button">
               Cancelar
-            </button>
-            <button className={styles.buttonSubmit} disabled={isSubmitting} type="submit">
+            </Button>
+            <Button variant="primary" disabled={isSubmitting} type="submit">
               {isSubmitting ? "A criar..." : "Guardar"}
-            </button>
+            </Button>
           </div>
         </form>
         {showConfirm && (

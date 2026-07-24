@@ -28,6 +28,8 @@ import { splitNameHex, isColorKey, joinNameHex } from "@/utils/shop/shopUtils";
 import VariantOptionsEditor, { variantValue } from "@/components/shop/VariantOptionsEditor";
 import MultiSelectDropdown from "@/components/MultiSelectDropdown";
 import ColorfulText from "@/components/ColorfulText";
+import { Input, Textarea } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 import ToggleSwitch from "@/components/ToggleSwitch";
 
 type ImageFile = { file: File; preview: string };
@@ -77,9 +79,9 @@ function ImageGrid({
         {images.map((src, i) => (
           <div key={i} className={styles.imgSlot}>
             <Image src={src} alt={`Thumbnail ${i + 1}`} fill className={styles.imgThumb} />
-            <button type="button" className={styles.imgRemove} onClick={() => onRemove(i)}>
+            <Button type="button" variant="secondary" onClick={() => onRemove(i)}>
               <FaTrash size={10} />
-            </button>
+            </Button>
           </div>
         ))}
         <button type="button" className={styles.imgAdd} onClick={() => inputRef.current?.click()}>
@@ -584,27 +586,27 @@ export default function ProductForm({
     <div className={styles.container}>
       <form onSubmit={handleSubmit}>
         <div className={styles.header}>
-          <button
+          <Button
             type="button"
-            className={styles.btnSecondary}
+            variant="secondary"
             onClick={onBackAction ?? (() => router.push(backHref))}>
             <FaArrowLeft /> Voltar
-          </button>
+          </Button>
           <ColorfulText
             className={styles.title}
             text={isEdit ? "Editar Produto" : "Novo Produto"}
           />
-          <button type="submit" className={styles.btnPrimary} disabled={uploading}>
+          <Button type="submit" variant="primary" disabled={uploading}>
             {isEdit ? <FaSave /> : <FaPlus />}
             {uploading ? "A guardar..." : isEdit ? "Guardar Alterações" : "Criar Produto"}
-          </button>
+          </Button>
         </div>
 
         <div className={styles.grid}>
           <div className={styles.sectionCol}>
             <div className={styles.stackBlock}>
               <Field label="Nome do Produto" icon={<FaTag />}>
-                <input
+                <Input
                   className={styles.field}
                   value={form.name}
                   onChange={(e) => updateForm({ name: e.target.value })}
@@ -614,7 +616,7 @@ export default function ProductForm({
               </Field>
 
               <Field label="Descrição" icon={<FaAlignLeft />} iconAlignTop>
-                <textarea
+                <Textarea
                   className={styles.field}
                   value={form.description}
                   onChange={(e) => updateForm({ description: e.target.value })}
@@ -635,7 +637,7 @@ export default function ProductForm({
               </Field>
 
               <Field label="Preço Base" icon={<FaEuroSign />}>
-                <input
+                <Input
                   className={styles.field}
                   type="number"
                   value={form.price}
@@ -671,7 +673,7 @@ export default function ProductForm({
 
               {form.stock_type === "limited" ? (
                 <Field label="Quantidade Total" icon={<FaBox />}>
-                  <input
+                  <Input
                     className={styles.field}
                     type="number"
                     value={hasVariants ? totalVariantStock : form.stock_quantity}
@@ -683,7 +685,7 @@ export default function ProductForm({
               ) : (
                 <Field label="Data Limite (Opcional)" icon={<FaCalendarAlt />}>
                   <div className={styles.datePickerWrap} ref={datePickerRef}>
-                    <input
+                    <Input
                       className={styles.field}
                       type="text"
                       value={form.order_deadline?.toLocaleDateString("pt-PT") ?? ""}
@@ -727,7 +729,7 @@ export default function ProductForm({
               <div className={styles.col}>
                 {variantDefinitions.map((def, idx) => (
                   <div key={def.id} className={styles.variantDefRow}>
-                    <input
+                    <Input
                       className={styles.field}
                       value={def.name}
                       onChange={(e) =>
@@ -751,18 +753,18 @@ export default function ProductForm({
                         isColor={isColorKey(def.name)}
                       />
                     </div>
-                    <button
-                      type="button"
-                      className={styles.btnDanger}
+                    <Button
+                      variant="danger"
                       onClick={() => setVariantDefinitions((p) => p.filter((_, i) => i !== idx))}>
                       <FaTrash />
-                    </button>
+                    </Button>
                   </div>
                 ))}
                 {variantDefinitions.length < MAX_VARIANTS && (
-                  <button
+                  <Button
                     type="button"
-                    className={`${styles.btnPrimary} ${styles.addVariantButton}`}
+                    variant="primary"
+                    className={styles.addVariantButton}
                     onClick={() =>
                       setVariantDefinitions((p) => [
                         ...p,
@@ -770,7 +772,7 @@ export default function ProductForm({
                       ])
                     }>
                     <FaPlus size={12} /> Adicionar
-                  </button>
+                  </Button>
                 )}
               </div>
 
