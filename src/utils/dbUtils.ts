@@ -265,10 +265,12 @@ export const addEmailVerification = async (
   expiresAt: string
 ): Promise<void> => {
   try {
-    await db_query(
-      "SELECT neiist.add_email_verification((SELECT id FROM neiist.users WHERE istid = $1::VARCHAR(10)), $2, $3, $4)",
-      [istid, email, token, expiresAt]
-    );
+    await db_query("SELECT neiist.add_email_verification($1, $2, $3, $4)", [
+      istid,
+      email,
+      token,
+      expiresAt,
+    ]);
   } catch (error) {
     console.error("Error adding email verification:", error);
     throw error;
@@ -829,7 +831,7 @@ export const validateDiscountCode = async (
     const {
       rows: [row],
     } = await db_query<DiscountValidationResult>(
-      `SELECT * FROM neiist.validate_discount_code($1, (SELECT id FROM neiist.users WHERE istid = $2::VARCHAR(10)), $3)`,
+      `SELECT * FROM neiist.validate_discount_code($1, $2, $3)`,
       [code, userIstid ?? null, JSON.stringify(cartItems)]
     );
     return row ?? null;

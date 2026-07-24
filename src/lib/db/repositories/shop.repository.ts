@@ -203,7 +203,7 @@ export class ShopRepository {
 
   static async validateDiscountCode(
     code: string,
-    user_istid: string | null,
+    user_id: string | null,
     cartItems: { productId: number; quantity: number }[]
   ): Promise<DiscountValidationResult> {
     const {
@@ -213,10 +213,11 @@ export class ShopRepository {
       error_message: string;
       discount_value: number;
       discount_type: string;
-    }>(
-      `SELECT * FROM neiist.validate_discount_code($1, (SELECT id FROM neiist.users WHERE istid = $2::VARCHAR(10)), $3)`,
-      [code, user_istid, JSON.stringify(cartItems)]
-    );
+    }>(`SELECT * FROM neiist.validate_discount_code($1, $2::UUID, $3)`, [
+      code,
+      user_id,
+      JSON.stringify(cartItems),
+    ]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return row as any;
   }

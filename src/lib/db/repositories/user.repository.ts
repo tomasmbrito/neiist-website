@@ -154,16 +154,18 @@ export class UserRepository {
   }
 
   static async addEmailVerification(
-    istid: string,
+    id: string,
     email: string,
     token: string,
     expiresAt: string
   ): Promise<void> {
     try {
-      await db_query(
-        "SELECT neiist.add_email_verification((SELECT id FROM neiist.users WHERE istid = $1::VARCHAR(10)), $2, $3, $4)",
-        [istid, email, token, expiresAt]
-      );
+      await db_query("SELECT neiist.add_email_verification($1::UUID, $2, $3, $4)", [
+        id,
+        email,
+        token,
+        expiresAt,
+      ]);
     } catch (error) {
       console.error("Error adding email verification:", error);
       throw error;
