@@ -847,7 +847,7 @@ export const validateDiscountCode = async (
 };
 
 export const newOrder = async (
-  order: Partial<Order> & {
+  order: Omit<Partial<Order>, "items"> & {
     user_istid?: string;
     items: Array<{ product_id: number; variant_id?: number; quantity: number }>;
     discount_code?: string | null;
