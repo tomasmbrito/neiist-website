@@ -76,15 +76,9 @@ export async function GET(request: Request) {
     let userIstid = rows[0]?.get_user_by_email;
 
     if (userIstid) {
-      // Task 2: Reject Google logins if email is already registered to a user with an active istid
-      const isExternalUser = userIstid.startsWith("ext_");
-
-      if (!isExternalUser) {
-        return NextResponse.redirect(new URL("/?error=email_registered_with_fenix", request.url));
-      }
-
-      // Gracefully link new Google identity if email matches existing user with an external istid
-      // (This is implicitly handled by using the same istid)
+      // User already exists with this email.
+      // Whether they're an IST student or external user, log them in to their existing account.
+      // This allows IST students to use Google as an alternative login method.
     } else {
       // Create new external user
       // Issue #12 requires creating external users with an ext_ prefix if they are new.
