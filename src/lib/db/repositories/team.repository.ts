@@ -13,7 +13,9 @@ export class TeamRepository {
           role,
           "member",
         ]);
-      } catch {}
+      } catch (err) {
+        console.warn("Could not add team or role (may already exist):", err);
+      }
       await db_query("SELECT neiist.add_team_member($1::UUID, $2, $3)", [id, department, role]);
       return true;
     } catch (error) {
@@ -31,7 +33,9 @@ export class TeamRepository {
             position,
             "coordinator",
           ]);
-        } catch {}
+        } catch (err) {
+          console.warn("Could not add team or role (may already exist):", err);
+        }
         await db_query("SELECT neiist.add_team_member($1::UUID, $2, $3)", [id, team, position]);
       }
       return true;
