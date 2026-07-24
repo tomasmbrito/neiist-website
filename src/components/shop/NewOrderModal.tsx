@@ -18,6 +18,9 @@ import ConfirmDialog from "@/components/layout/ConfirmDialog";
 import InputTextDialog from "@/components/layout/InputTextDialog";
 import { useUser } from "@/context/UserContext";
 import { validateDiscount } from "@/utils/shop/discountUtils";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Button } from "@/components/ui/Button";
 
 interface Props {
   onClose: () => void;
@@ -646,10 +649,10 @@ export default function NewOrderModal({
       tabIndex={0}
       className={styles.backdrop}
       onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={styles.modal}>
-        <button className={styles.closeButton} onClick={onClose} type="button">
-          <MdClose size={24} />
-        </button>
+      <div className={styles.modalContent}>
+        <Button variant="ghost" className={styles.closeButton} onClick={onClose} type="button">
+          <MdClose size={28} />
+        </Button>
 
         <h2>{isEditMode ? "Editar Encomenda" : "Nova Encomenda"}</h2>
 
@@ -670,7 +673,7 @@ export default function NewOrderModal({
               <label>User</label>
               <div className={styles.searchWrapper}>
                 <MdSearch className={styles.searchIcon} />
-                <input
+                <Input
                   ref={userInputRef}
                   type="text"
                   placeholder="Search by istid..."
@@ -748,7 +751,7 @@ export default function NewOrderModal({
             <label>Produtos</label>
             <div className={styles.searchWrapper}>
               <MdSearch className={styles.searchIcon} />
-              <input
+              <Input
                 ref={productInputRef}
                 type="text"
                 placeholder="Adicionar produtos..."
@@ -888,7 +891,7 @@ export default function NewOrderModal({
           <div className={styles.formRow}>
             <div className={styles.formGroup}>
               <label>Campus</label>
-              <select
+              <Select
                 value={campus}
                 onChange={(e) => setCampus(e.target.value as Campus)}
                 className={styles.input}
@@ -900,12 +903,12 @@ export default function NewOrderModal({
                     {opt.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div className={styles.formGroup}>
               <label>NIF (opcional)</label>
-              <input
+              <Input
                 type="text"
                 placeholder="123456789"
                 value={nif}
@@ -919,7 +922,7 @@ export default function NewOrderModal({
           {!isEditMode && (
             <div className={styles.formGroup}>
               <label>Telemóvel (opcional)</label>
-              <input
+              <Input
                 type="text"
                 placeholder="999333111"
                 value={phone}
@@ -932,7 +935,7 @@ export default function NewOrderModal({
 
           <div className={styles.formGroup}>
             <label>Notas</label>
-            <input
+            <Input
               type="text"
               placeholder="Notas"
               value={notes}
@@ -946,7 +949,7 @@ export default function NewOrderModal({
             <div className={styles.formGroup}>
               <label>Código de desconto</label>
               <div className={styles.discountRow}>
-                <input
+                <Input
                   type="text"
                   placeholder="NEIIST20"
                   value={discountCode}
@@ -954,13 +957,12 @@ export default function NewOrderModal({
                   className={styles.input}
                   disabled={isSubmitting || discountLoading}
                 />
-                <button
+                <Button
                   type="button"
-                  className={styles.discountButton}
                   onClick={handleApplyDiscount}
                   disabled={isSubmitting || discountLoading || selectedProducts.length === 0}>
                   {discountLoading ? "A validar..." : "Aplicar"}
-                </button>
+                </Button>
               </div>
               {discountError && <div className={styles.discountError}>{discountError}</div>}
               {appliedDiscount && discountAmount > 0 && (
@@ -989,22 +991,12 @@ export default function NewOrderModal({
           </div>
 
           <div className={styles.buttonRow}>
-            <button
-              type="button"
-              className={styles.buttonCancel}
-              onClick={onClose}
-              disabled={isSubmitting}>
+            <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
               Cancelar
-            </button>
-            <button type="submit" className={styles.buttonSubmit} disabled={isSubmitting}>
-              {isSubmitting
-                ? isEditMode
-                  ? "A guardar..."
-                  : "A criar..."
-                : isEditMode
-                  ? "Guardar Encomenda"
-                  : "Criar Encomenda"}
-            </button>
+            </Button>
+            <Button type="submit" variant="primary" disabled={isSubmitting}>
+              {isSubmitting ? "A Guardar..." : isEditMode ? "Guardar Encomenda" : "Criar Encomenda"}
+            </Button>
           </div>
         </form>
         {showConfirm && (
