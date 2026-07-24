@@ -2910,3 +2910,8 @@ BEGIN
   RETURN QUERY SELECT c.id, c.name FROM neiist.categories c ORDER BY c.name;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- PERFORMANCE INDEXES
+CREATE INDEX IF NOT EXISTS idx_orders_created_at ON neiist.orders(created_at);
+CREATE INDEX IF NOT EXISTS idx_activities_dates ON neiist.activities(start, "end");
+CREATE INDEX IF NOT EXISTS idx_discount_codes_code ON neiist.discount_codes(code);
