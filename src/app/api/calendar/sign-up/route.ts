@@ -6,11 +6,6 @@ import { getUserFromJWT } from "@/utils/authUtils";
 export async function POST(req: NextRequest) {
   try {
     const cookieStore = await cookies();
-    const accessToken = cookieStore.get("access_token")?.value;
-
-    if (!accessToken) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
 
     const sessionToken = cookieStore.get("session")?.value;
     const jwtUser = sessionToken ? getUserFromJWT(sessionToken) : null;
