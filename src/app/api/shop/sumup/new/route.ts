@@ -1,30 +1,20 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getOrderById, updateOrder } from "@/utils/dbUtils";
 import { serverCheckRoles } from "@/utils/permissionUtils";
 import { validateSumUpCredentials, getSumUpClient, sumupErrorResponse } from "@/utils/sumupUtils";
-import type {
-  CreateCheckoutResponse,
-  CreateCheckoutRequestBody,
-  SumUpCheckoutPayload,
-} from "@/types/sumup";
+import type { CreateCheckoutResponse, SumUpCheckoutPayload } from "@/types/sumup";
 import { formatVariantLabel } from "@/utils/emailUtils";
+import { withValidation } from "@/utils/security/validationUtils";
+import { sumUpCheckoutPayloadSchema } from "@/schemas/shop";
 
 const SUMUP_MERCHANT_CODE = process.env.SUMUP_MERCHANT_CODE;
 const CHECKOUT_TTL_MINUTES = 15;
 
-export async function POST(req: NextRequest) {
+export const POST = withValidation(sumUpCheckoutPayloadSchema, async (req, body) => {
   const auth = await serverCheckRoles([]);
   if (!auth.isAuthorized) return auth.error;
 
-  let orderId: number;
-  try {
-    const body = (await req.json()) as CreateCheckoutRequestBody;
-    orderId = Number(body?.orderId);
-
-    if (!orderId || orderId <= 0) return sumupErrorResponse("Missing or invalid orderId", 400);
-  } catch {
-    return sumupErrorResponse("Invalid request body", 400);
-  }
+  const orderId = body.orderId;
 
   const credentialError = validateSumUpCredentials();
   if (credentialError) return credentialError;
@@ -110,6 +100,6 @@ export async function POST(req: NextRequest) {
       message,
       stack: error instanceof Error ? error.stack : undefined,
     });
-    return sumupErrorResponse("Failed to create payment session", 500);
+    return sumupErrorResponse("Failed to create SumUp checkout", 500);
   }
-}
+});

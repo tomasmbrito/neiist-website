@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import {
   getAllOrders,
   newOrder,
@@ -16,6 +16,8 @@ import { OrderItem } from "@/types/shop/order";
 import { Product } from "@/types/shop/product";
 import { serverCheckRoles } from "@/utils/permissionUtils";
 import { sendEmail, getPendingOrderEmailTemplate } from "@/utils/emailUtils";
+import { withValidation } from "@/utils/security/validationUtils";
+import { createOrderPayloadSchema } from "@/schemas/shop";
 
 function parseOrderSource(value: string): OrderSource {
   switch (value) {
@@ -45,21 +47,16 @@ export async function GET() {
   }
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withValidation(createOrderPayloadSchema, async (request, body) => {
   const userRoles = await serverCheckRoles([]);
   if (!userRoles.isAuthorized) return userRoles.error;
 
   try {
-    const body = await request.json();
     const validPaymentMethods = new Set(Object.keys(PAYMENT_METHODS));
-    const orderSource = parseOrderSource(body.order_source);
+    const orderSource = parseOrderSource(body.order_source ?? "");
     const guestCheckout = body.guest_checkout === true;
     const canUseGuestCheckout =
       userRoles.roles?.some((role) => [UserRole._ADMIN].includes(role)) && orderSource === "pos";
-
-    if (!Array.isArray(body.items) || body.items.length === 0) {
-      return NextResponse.json({ error: "No items in order" }, { status: 400 });
-    }
 
     if (guestCheckout && !canUseGuestCheckout) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
@@ -71,7 +68,7 @@ export async function POST(request: NextRequest) {
       ? (body.payment_method as PaymentMethod)
       : undefined;
 
-    const orderItems = new Set<number>(body.items.map((item: OrderItem) => item.product_id));
+    const orderItems = new Set<number>(body.items.map((item) => item.product_id));
     const products = await Promise.all([...orderItems].map((id) => getProduct(id)));
     if (products.some((product) => product == null))
       return NextResponse.json({ error: "Produto invalido no pedido" }, { status: 400 });
@@ -175,13 +172,13 @@ export async function POST(request: NextRequest) {
       {
         user_istid: orderUserIstid,
         customer_name: customerName || (guestCheckout ? "Cliente POS" : ""),
-        customer_email: customerEmail || null,
-        customer_phone: customerPhone || null,
-        customer_nif: body.customer_nif ?? null,
-        campus: body.campus ?? null,
-        notes: body.notes ?? null,
+        customer_email: customerEmail || undefined,
+        customer_phone: customerPhone || undefined,
+        customer_nif: body.customer_nif ?? undefined,
+        campus: body.campus ?? undefined,
+        notes: body.notes ?? undefined,
         payment_method: paymentMethod,
-        payment_reference: body.payment_reference ?? "",
+        payment_reference: body.payment_reference ?? undefined,
         created_by: userRoles.user!.istid,
         items: body.items,
         discount_code: typeof body.discount_code === "string" ? body.discount_code : undefined,
@@ -231,4 +228,4 @@ export async function POST(request: NextRequest) {
     console.error("orders POST error:", error);
     return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
   }
-}
+});

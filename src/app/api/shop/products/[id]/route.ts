@@ -9,126 +9,103 @@ import {
   deleteProductVariant,
   mapDeleteProductDbErrorToResponse,
 } from "@/utils/dbUtils";
-import path from "path";
-import fs from "fs/promises";
 import { serverCheckRoles } from "@/utils/permissionUtils";
+import { withValidation } from "@/utils/security/validationUtils";
+import { productPayloadSchema } from "@/schemas/shop";
 
-function isImage(buffer: Buffer): boolean {
-  // JPEG magic: FF D8 FF
-  const isJpeg =
-    buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-  // PNG magic: 89 50 4E 47 0D 0A 1A 0A
-  const pngSig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  const isPng = buffer.length >= 8 && buffer.subarray(0, 8).equals(pngSig);
-  return isJpeg || isPng;
-}
+export const PUT = withValidation(
+  productPayloadSchema,
+  async (request, body, { params }: { params: Promise<{ id: string }> }) => {
+    const permissionCheck = await serverCheckRoles([UserRole._ADMIN]);
+    if (!permissionCheck.isAuthorized) return permissionCheck.error;
 
-async function uploadImages(
-  imageUploads: Array<{ imageBase64: string; imageName: string }>
-): Promise<string[]> {
-  const uploadDir = path.join(process.cwd(), "public", "products");
-  await fs.mkdir(uploadDir, { recursive: true });
-  const uploadedPaths: string[] = [];
+    try {
+      const { id } = await params;
+      const productId = Number(id);
 
-  for (const upload of imageUploads) {
-    if (!upload || typeof upload.imageBase64 !== "string" || upload.imageBase64.trim() === "")
-      continue;
+      await updateProduct(productId, {
+        name: body.name,
+        description: body.description ?? "",
+        price: body.price,
+        category: body.category ?? undefined,
+        images: body.images,
+        stock_type: body.stock_type,
+        stock_quantity: body.stock_quantity ?? undefined,
+        order_deadline: body.order_deadline ?? undefined,
+        active: body.active ?? true,
+      });
 
-    const rawBase64 = upload.imageBase64.includes(",")
-      ? (upload.imageBase64.split(",").pop() ?? "")
-      : upload.imageBase64;
-    const base64 = rawBase64.trim();
-    if (!base64) continue;
-
-    const buffer = Buffer.from(base64, "base64");
-    if (!isImage(buffer)) throw new Error("Only image uploads are allowed");
-
-    const imageName = path.basename(upload.imageName || `product-${Date.now()}.png`);
-    const filePath = path.join(uploadDir, imageName);
-    await fs.writeFile(filePath, buffer);
-    uploadedPaths.push(`/products/${imageName}`);
-  }
-
-  return uploadedPaths;
-}
-
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const userRoles = await serverCheckRoles([UserRole._ADMIN]);
-  if (!userRoles.isAuthorized) return userRoles.error;
-
-  try {
-    const { id } = await params;
-    const productId = Number(id);
-    const body = await request.json();
-    let finalImages = body.images || [];
-    if (Array.isArray(body.imageUploads) && body.imageUploads.length > 0) {
-      const uploadedImages = await uploadImages(body.imageUploads);
-      finalImages = [...finalImages, ...uploadedImages];
-    }
-
-    await updateProduct(productId, {
-      name: body.name,
-      description: body.description,
-      price: body.price,
-      images: finalImages,
-      category: body.category,
-      stock_type: body.stock_type,
-      stock_quantity: body.stock_quantity,
-      order_deadline: body.order_deadline,
-      active: body.active ?? true,
-    });
-
-    if (Array.isArray(body.variantsToDelete) && body.variantsToDelete.length > 0) {
-      for (const variantId of body.variantsToDelete) {
-        await deleteProductVariant(Number(variantId));
-      }
-    }
-
-    if (Array.isArray(body.variants) && body.variants.length > 0) {
-      for (const variant of body.variants) {
-        let variantImages: string[] = variant.images || [];
-        if (Array.isArray(variant.imageUploads) && variant.imageUploads.length > 0) {
-          const uploadedVariantImages = await uploadImages(variant.imageUploads);
-          variantImages = [...variantImages, ...uploadedVariantImages];
-        }
-        if (variant.id) {
-          await updateProductVariant(variant.id, {
-            sku: variant.sku,
-            images: variantImages,
-            price_modifier: variant.price_modifier ?? 0,
-            stock_quantity: variant.stock_quantity,
-            active: variant.active ?? true,
-            options: variant.options ?? {},
-          });
-        } else {
-          await addProductVariant(productId, {
-            sku: variant.sku,
-            images: variantImages,
-            price_modifier: variant.price_modifier ?? 0,
-            stock_quantity: variant.stock_quantity,
-            active: variant.active ?? true,
-            options: variant.options ?? {},
-          });
+      if (Array.isArray(body.variantsToDelete) && body.variantsToDelete.length > 0) {
+        for (const variantId of body.variantsToDelete) {
+          await deleteProductVariant(Number(variantId));
         }
       }
-    }
 
-    const updatedProduct = await getProduct(productId);
-    if (!updatedProduct) {
-      return NextResponse.json({ error: "Product not found or failed to update" }, { status: 404 });
-    }
+      // Build a map of group images: "optType::optVal" -> string[]
+      const groupImagePaths: Record<string, string[]> = {};
+      if (body.group_image_uploads) {
+        for (const [key, groupData] of Object.entries(body.group_image_uploads)) {
+          groupImagePaths[key] = [...groupData.existing, ...groupData.uploads];
+        }
+      }
 
-    return NextResponse.json({
-      message: "Product updated successfully",
-      product: updatedProduct,
-    });
-  } catch (error) {
-    const mapped = mapDeleteProductDbErrorToResponse(error);
-    if (mapped) return NextResponse.json({ error: mapped.error }, { status: mapped.status });
-    console.error("Error updating product:", error);
-    return NextResponse.json({ error: "Failed to update product" }, { status: 500 });
+      if (Array.isArray(body.variants) && body.variants.length > 0) {
+        for (const variant of body.variants) {
+          let variantImages: string[] = variant.images || [];
+
+          // Apply group images to variants that have no images of their own
+          if (variantImages.length === 0) {
+            for (const [optType, optVal] of Object.entries(variant.options || {})) {
+              const key = `${optType}::${optVal}`;
+              if (groupImagePaths[key]?.length > 0) {
+                variantImages = groupImagePaths[key];
+                break; // use first matching group's images
+              }
+            }
+          }
+
+          if (variant.id) {
+            await updateProductVariant(variant.id as number, {
+              sku: variant.sku ?? "",
+              images: variantImages,
+              price_modifier: variant.price_modifier ?? 0,
+              stock_quantity: variant.stock_quantity ?? undefined,
+              active: variant.active ?? true,
+              options: variant.options ?? {},
+            });
+          } else {
+            await addProductVariant(productId, {
+              sku: variant.sku ?? "",
+              images: variantImages,
+              price_modifier: variant.price_modifier ?? 0,
+              stock_quantity: variant.stock_quantity ?? undefined,
+              active: variant.active ?? true,
+              options: variant.options ?? {},
+            });
+          }
+        }
+      }
+
+      const updatedProduct = await getProduct(productId);
+      if (!updatedProduct) {
+        return NextResponse.json(
+          { error: "Product not found or failed to update" },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json({
+        message: "Product updated successfully",
+        product: updatedProduct,
+      });
+    } catch (error) {
+      const mapped = mapDeleteProductDbErrorToResponse(error);
+      if (mapped) return NextResponse.json({ error: mapped.error }, { status: mapped.status });
+      console.error("Error updating product:", error);
+      return NextResponse.json({ error: "Failed to update product" }, { status: 500 });
+    }
   }
-}
+);
 
 export async function DELETE(
   request: NextRequest,

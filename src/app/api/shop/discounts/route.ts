@@ -13,55 +13,8 @@ import type {
   DiscountCodeUpdateInput,
   DiscountBulkGenerateInput,
 } from "@/types/shop/discountCode";
-
-function normalizeString(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function normalizeList(value: unknown): string[] | null | undefined {
-  if (value === undefined) return undefined;
-  if (value === null) return null;
-  if (!Array.isArray(value)) return null;
-  return value.map((entry) => String(entry).trim()).filter(Boolean);
-}
-
-function normalizeProductIds(value: unknown): number[] | null | undefined {
-  if (value === undefined) return undefined;
-  if (value === null) return null;
-  if (!Array.isArray(value)) return null;
-  const ids = value
-    .map((entry) => Number(entry))
-    .filter((entry) => Number.isInteger(entry) && entry > 0);
-  return ids.length > 0 ? ids : [];
-}
-
-function normalizeCode(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const code = value.trim().toUpperCase();
-  return code.length > 0 ? code : null;
-}
-
-function normalizeRecipients(value: unknown): DiscountBulkGenerateInput["recipients"] | null {
-  if (!Array.isArray(value)) return null;
-
-  const recipients = value
-    .map((item) => {
-      if (!item || typeof item !== "object") return null;
-
-      const raw = item as Record<string, unknown>;
-      const istid = normalizeString(raw.istid) || "";
-      const name = normalizeString(raw.name) || "";
-      const email = normalizeString(raw.email);
-      if (!email) return null;
-
-      return { istid, name, email };
-    })
-    .filter((item): item is NonNullable<typeof item> => item !== null);
-
-  return recipients.length > 0 ? recipients : null;
-}
+import { withValidation } from "@/utils/security/validationUtils";
+import { bulkDiscountCodePayloadSchema, discountCodeUpdateSchema } from "@/schemas/shop";
 
 function generateCode(): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -102,66 +55,33 @@ export async function GET() {
   return NextResponse.json(codes);
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withValidation(bulkDiscountCodePayloadSchema, async (request, body) => {
   const userRoles = await serverCheckRoles([UserRole._ADMIN]);
   if (!userRoles.isAuthorized) return userRoles.error;
 
   try {
-    const body = await request.json();
-    const recipients = normalizeRecipients(body.recipients);
-    const discountType = body.discount_type;
-    const discountValue = Number(body.discount_value);
-    const validProductIds = normalizeProductIds(body.valid_product_ids) ?? null;
-    const maxUses =
-      body.max_uses === undefined || body.max_uses === null || body.max_uses === ""
-        ? 1
-        : Number(body.max_uses);
-    const expiresAt = normalizeString(body.expires_at);
-    const emailSubject = normalizeString(body.email_subject);
-    const emailIntroLine = normalizeString(body.email_intro_line ?? body.email_markdown);
-
-    if (!recipients) {
-      return NextResponse.json(
-        { error: "Indica pelo menos um utilizador válido." },
-        { status: 400 }
-      );
-    }
-    if (discountType !== "percentage" && discountType !== "fixed") {
-      return NextResponse.json({ error: "Tipo de desconto inválido" }, { status: 400 });
-    }
-    if (!Number.isFinite(discountValue) || discountValue < 0) {
-      return NextResponse.json({ error: "Valor de desconto inválido" }, { status: 400 });
-    }
-    if (!Number.isInteger(maxUses) || maxUses <= 0) {
-      return NextResponse.json(
-        { error: "O número máximo de usos deve ser positivo." },
-        { status: 400 }
-      );
-    }
-    if (!emailSubject || !emailIntroLine) {
-      return NextResponse.json(
-        { error: "O assunto e o texto do email são obrigatórios." },
-        { status: 400 }
-      );
+    const emailIntroLine = body.email_intro_line ?? body.email_markdown;
+    if (!emailIntroLine) {
+      return NextResponse.json({ error: "O texto do email é obrigatório." }, { status: 400 });
     }
 
     const createdCodes = [] as NonNullable<Awaited<ReturnType<typeof createDiscountCode>>>[];
     const failedRecipients: Array<{ istid: string; error: string }> = [];
     let sentCount = 0;
 
-    for (const recipient of recipients) {
+    for (const recipient of body.recipients) {
       const created = await createCodeForRecipient(recipient, {
-        discount_type: discountType,
-        discount_value: discountValue,
-        valid_product_ids: validProductIds,
-        max_uses: maxUses,
-        expires_at: expiresAt,
-        active: body.active !== undefined ? Boolean(body.active) : true,
+        discount_type: body.discount_type,
+        discount_value: body.discount_value,
+        valid_product_ids: body.valid_product_ids ?? null,
+        max_uses: body.max_uses ?? 1,
+        expires_at: body.expires_at ?? null,
+        active: body.active ?? true,
       });
 
       if (!created) {
         failedRecipients.push({
-          istid: recipient.istid,
+          istid: recipient.istid ?? "",
           error: "Não foi possível gerar o código.",
         });
         continue;
@@ -171,15 +91,15 @@ export async function POST(request: NextRequest) {
 
       const sent = await sendEmail({
         to: recipient.email,
-        subject: emailSubject,
+        subject: body.email_subject,
         html: getDiscountCampaignEmailTemplate(emailIntroLine, {
-          recipientName: recipient.name,
-          recipientIstid: recipient.istid,
+          recipientName: recipient.name ?? "",
+          recipientIstid: recipient.istid ?? "",
           recipientEmail: recipient.email,
           code: created.code,
-          discountType,
-          discountValue,
-          expiresAt,
+          discountType: body.discount_type,
+          discountValue: body.discount_value,
+          expiresAt: body.expires_at ?? null,
           introLine: emailIntroLine,
         }),
       });
@@ -188,7 +108,7 @@ export async function POST(request: NextRequest) {
         sentCount += 1;
       } else {
         failedRecipients.push({
-          istid: recipient.istid,
+          istid: recipient.istid ?? "",
           error: "Código gerado, mas o email não foi enviado.",
         });
       }
@@ -207,59 +127,42 @@ export async function POST(request: NextRequest) {
     console.error("discounts POST error:", error);
     return NextResponse.json({ error: "Failed to generate discount codes" }, { status: 500 });
   }
-}
+});
 
-export async function PUT(request: NextRequest) {
+export const PUT = withValidation(discountCodeUpdateSchema, async (request, body) => {
   const userRoles = await serverCheckRoles([UserRole._ADMIN]);
   if (!userRoles.isAuthorized) return userRoles.error;
 
   try {
-    const body = await request.json();
-    const discountCodeId = Number(body.id ?? body.discount_code_id);
-
-    if (!Number.isInteger(discountCodeId) || discountCodeId <= 0) {
+    const discountCodeId = body.id ?? body.discount_code_id;
+    if (!discountCodeId) {
       return NextResponse.json({ error: "Código de desconto inválido" }, { status: 400 });
     }
 
     const updates: DiscountCodeUpdateInput = {};
     if (body.code !== undefined) {
-      const code = normalizeCode(body.code);
-      if (!code) return NextResponse.json({ error: "Código inválido" }, { status: 400 });
-      updates.code = code;
+      updates.code = body.code;
     }
     if (body.discount_type !== undefined) {
-      if (body.discount_type !== "percentage" && body.discount_type !== "fixed") {
-        return NextResponse.json({ error: "Tipo de desconto inválido" }, { status: 400 });
-      }
       updates.discount_type = body.discount_type;
     }
     if (body.discount_value !== undefined) {
-      const value = Number(body.discount_value);
-      if (!Number.isFinite(value) || value < 0) {
-        return NextResponse.json({ error: "Valor de desconto inválido" }, { status: 400 });
-      }
-      updates.discount_value = value;
+      updates.discount_value = body.discount_value;
     }
     if (body.valid_product_ids !== undefined) {
-      updates.valid_product_ids = normalizeProductIds(body.valid_product_ids) ?? null;
+      updates.valid_product_ids = body.valid_product_ids;
     }
     if (body.valid_istids !== undefined) {
-      updates.valid_istids = normalizeList(body.valid_istids) ?? null;
+      updates.valid_istids = body.valid_istids;
     }
     if (body.max_uses !== undefined) {
-      updates.max_uses =
-        body.max_uses === null || body.max_uses === ""
-          ? null
-          : (() => {
-              const value = Number(body.max_uses);
-              return Number.isInteger(value) && value > 0 ? value : null;
-            })();
+      updates.max_uses = body.max_uses;
     }
     if (body.expires_at !== undefined) {
-      updates.expires_at = body.expires_at ? String(body.expires_at) : null;
+      updates.expires_at = body.expires_at;
     }
     if (body.active !== undefined) {
-      updates.active = Boolean(body.active);
+      updates.active = body.active;
     }
 
     const updated = await updateDiscountCode(discountCodeId, updates);
@@ -272,7 +175,7 @@ export async function PUT(request: NextRequest) {
     console.error("discounts PUT error:", error);
     return NextResponse.json({ error: "Failed to update discount code" }, { status: 500 });
   }
-}
+});
 
 export async function DELETE(request: NextRequest) {
   const userRoles = await serverCheckRoles([UserRole._ADMIN]);
