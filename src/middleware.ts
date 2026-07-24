@@ -140,7 +140,8 @@ export function middleware(req: NextRequest) {
   }
 
   const accessToken = req.cookies.get("access_token")?.value;
-  const isAuthenticated = !!accessToken;
+  const sessionToken = req.cookies.get("session")?.value;
+  const isAuthenticated = !!accessToken || !!getUserFromJWT(sessionToken);
 
   if (!isAuthenticated && protectedRoutes.some((r) => path.startsWith(r))) {
     if (path !== "/api/auth/login") {
@@ -154,7 +155,6 @@ export function middleware(req: NextRequest) {
   }
 
   if (isAuthenticated) {
-    const sessionToken = req.cookies.get("session")?.value;
     const jwtUser = getUserFromJWT(sessionToken);
     const roles = jwtUser?.roles || [UserRole._GUEST];
 

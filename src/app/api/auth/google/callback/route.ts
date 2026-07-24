@@ -94,6 +94,8 @@ export async function GET(request: Request) {
       });
     }
 
+    const response = NextResponse.redirect(new URL(postLoginRedirect || "/", request.url));
+
     const user = await getUser(userIstid);
     if (user) {
       const jwtPayload = {
@@ -104,7 +106,7 @@ export async function GET(request: Request) {
       };
       const jwtToken = signUserJWT(jwtPayload);
 
-      cookieStore.set("session", jwtToken, {
+      response.cookies.set("session", jwtToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         maxAge: 60 * 60 * 24,
@@ -112,7 +114,6 @@ export async function GET(request: Request) {
       });
     }
 
-    const response = NextResponse.redirect(new URL(postLoginRedirect || "/", request.url));
     response.cookies.delete("google_oauth_state");
     response.cookies.delete("post_login_redirect");
     return response;

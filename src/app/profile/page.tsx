@@ -1,9 +1,9 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import ProfileClient from "@/components/Profile";
 import styles from "@/styles/pages/ProfilePage.module.css";
 import { getUserFromJWT } from "@/utils/authUtils";
 import { getUser } from "@/utils/dbUtils";
-import { NextResponse } from "next/server";
 
 export default async function ProfilePage() {
   const cookieStore = await cookies();
@@ -12,7 +12,7 @@ export default async function ProfilePage() {
 
   const user = await getUser(jwtUser.istid);
   if (!user) {
-    return NextResponse.redirect("/login");
+    redirect("/login");
   }
 
   let hasCV = false;
