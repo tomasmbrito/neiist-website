@@ -471,7 +471,11 @@ export default function PosPaymentOverlay({
   }
 
   return (
-    <div className={styles.backdrop} onClick={(e) => e.target === e.currentTarget && handleClose()}>
+    <div
+      role="button"
+      tabIndex={0}
+      className={styles.backdrop}
+      onClick={(e) => e.target === e.currentTarget && handleClose()}>
       <div className={styles.modal}>
         <button
           className={styles.closeButton}

@@ -74,7 +74,7 @@ export default function Cart() {
 
   return (
     <div className={styles.overlay} onClick={closeCart} role="dialog" aria-modal="true">
-      <div className={styles.cart} onClick={(e) => e.stopPropagation()}>
+      <div role="button" tabIndex={0} className={styles.cart} onClick={(e) => e.stopPropagation()}>
         <button className={styles.close} onClick={closeCart} aria-label="Fechar carrinho">
           <Squash toggled={true} size={24} />
         </button>

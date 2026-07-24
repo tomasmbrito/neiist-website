@@ -146,7 +146,7 @@ export default function MobileFiltersDrawer({
 
   return (
     <>
-      <div className={styles.overlay} onClick={onClose} />
+      <div role="button" tabIndex={0} className={styles.overlay} onClick={onClose} />
       <div className={styles.drawer}>
         <div className={styles.header}>
           <h2 className={styles.title}>Filtros</h2>
@@ -330,7 +330,7 @@ function CheckboxItem({
   onToggle: () => void;
 }) {
   return (
-    <div className={styles.listItem} onClick={onToggle}>
+    <div role="button" tabIndex={0} className={styles.listItem} onClick={onToggle}>
       <div className={`${styles.checkbox} ${checked ? styles.checked : ""}`}>
         {checked && <FiCheck size={14} />}
       </div>

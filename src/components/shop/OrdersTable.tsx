@@ -628,6 +628,8 @@ export default function OrdersTable({ orders, products }: OrdersTableProps) {
                 <tr>
                   <th className={styles.checkboxCol}>
                     <div
+                      role="button"
+                      tabIndex={0}
                       className={`${styles.checkbox} ${isAllSelected ? styles.checked : ""} ${isSomeSelected ? styles.indeterminate : ""}`}
                       onClick={toggleAll}>
                       {isAllSelected && <FiCheck />}
@@ -692,6 +694,8 @@ export default function OrdersTable({ orders, products }: OrdersTableProps) {
                     style={{ cursor: "pointer" }}>
                     <td className={styles.checkboxCell}>
                       <div
+                        role="button"
+                        tabIndex={0}
                         className={`${styles.checkbox} ${selectedOrders.has(String(order.id)) ? styles.checked : ""}`}
                         onClick={(e) => {
                           e.stopPropagation();

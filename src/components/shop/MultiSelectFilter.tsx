@@ -121,7 +121,12 @@ export default function MultiSelectFilter({
         {options.map((option) => {
           const isSelected = selected.includes(option);
           return (
-            <div key={option} className={styles.listItem} onClick={() => toggleOption(option)}>
+            <div
+              role="button"
+              tabIndex={0}
+              key={option}
+              className={styles.listItem}
+              onClick={() => toggleOption(option)}>
               <div className={`${styles.checkbox} ${isSelected ? styles.checked : ""}`}>
                 {isSelected && <FiCheck size={14} />}
               </div>
