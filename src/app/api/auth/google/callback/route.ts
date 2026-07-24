@@ -95,8 +95,6 @@ export async function GET(request: Request) {
         istid: userIstid,
         name: name,
         email: email,
-        alternativeEmail: "",
-        phone: "",
         courses: [],
         photo: "",
       });
