@@ -3,12 +3,13 @@ import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useUser } from "@/context/UserContext";
-import { login, logout } from "@/utils/userUtils";
+import { logout } from "@/utils/userUtils";
 import { Squash } from "hamburger-react";
 import { NavItem } from "@/components/layout/navbar/NavItem";
 import NeiistLogo from "@/components/layout/navbar/NeiistLogo";
 import ShoppingCart from "@/components/layout/navbar/ShoppingCart";
 import LoginButton from "@/components/layout/navbar/LoginButton";
+import LoginModal from "@/components/layout/navbar/LoginModal";
 import UserMenu from "@/components/layout/navbar/UserMenu";
 import styles from "@/styles/components/layout/navbar/NavBar.module.css";
 
@@ -25,6 +26,7 @@ export default function NavBar() {
   const { user, setUser } = useUser();
   const [isSticky, setIsSticky] = useState(false);
   const [menuState, setMenuState] = useState<"closed" | "open" | "closing">("closed");
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -97,8 +99,9 @@ export default function NavBar() {
         {user ? (
           <UserMenu userData={user} logout={handleLogout} />
         ) : (
-          <LoginButton onClick={login} />
+          <LoginButton onClick={() => setIsLoginModalOpen(true)} />
         )}
+        <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
         <div className={styles.menuButton}>
           <Squash
             toggled={menuState === "open"}

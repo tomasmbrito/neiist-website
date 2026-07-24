@@ -7,68 +7,117 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   const error = searchParams.get("error");
+  const state = searchParams.get("state");
+
+  const cookieStore = await cookies();
+  const savedState = cookieStore.get("google_oauth_state")?.value;
+  const postLoginRedirect = cookieStore.get("post_login_redirect")?.value;
 
   if (error || !code) {
     return NextResponse.redirect(new URL("/?error=google_auth_failed", request.url));
   }
 
+  if (!state || state !== savedState) {
+    return NextResponse.redirect(new URL("/?error=invalid_state", request.url));
+  }
+
   try {
-    // In Issue #10, this code will be exchanged for Google tokens
-    // For now, this is a placeholder implementation for Issue #11 constraints.
-    // We assume we have the Google user info (email, name, id)
-    // const googleUserInfo = await exchangeGoogleCodeForUser(code);
-    // const { email, name, id: googleId } = googleUserInfo;
+    const baseUrl = new URL(request.url).origin;
+    const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${baseUrl}/api/auth/google/callback`;
+
+    // Exchange code for tokens
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        client_id: process.env.GOOGLE_CLIENT_ID!,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+        code,
+        grant_type: "authorization_code",
+        redirect_uri: redirectUri,
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      const errorData = await tokenResponse.text();
+      console.error("Failed to exchange Google code:", errorData);
+      return NextResponse.redirect(new URL("/?error=google_token_exchange_failed", request.url));
+    }
+
+    const { access_token } = await tokenResponse.json();
+
+    // Get user info
+    const userInfoResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+      headers: {
+        Authorization: `Bearer ${access_token}`,
+      },
+    });
+
+    if (!userInfoResponse.ok) {
+      console.error("Failed to fetch Google user info");
+      return NextResponse.redirect(new URL("/?error=google_user_info_failed", request.url));
+    }
+
+    const googleUserInfo = await userInfoResponse.json();
+    const { email, name } = googleUserInfo;
 
     // Task 1: Reject emails ending with @tecnico.ulisboa.pt
-    if ("placeholder@example.com".endsWith("@tecnico.ulisboa.pt")) {
+    if (email.endsWith("@tecnico.ulisboa.pt")) {
       return NextResponse.redirect(new URL("/?error=use_fenix_for_tecnico_emails", request.url));
     }
 
     // Lookup user by email
-    const { rows } = await db_query("SELECT * FROM neiist.users WHERE email = $1", [
-      "placeholder@example.com",
-    ]);
+    const { rows } = await db_query("SELECT * FROM neiist.users WHERE email = $1", [email]);
     const existingUser = rows[0];
+    let userIstid = existingUser?.istid;
 
     if (existingUser) {
       // Task 2: Reject Google logins if email is already registered to a user with an active istid
-      // An active istid means it follows the typical IST format (e.g. ist123456)
-      // or we can just check if it doesn't start with 'ext_' (external).
       const isExternalUser = existingUser.istid.startsWith("ext_");
 
       if (!isExternalUser) {
         return NextResponse.redirect(new URL("/?error=email_registered_with_fenix", request.url));
       }
 
-      // Task 3: Gracefully link new Google identity if email matches existing user with no istid (or external istid)
-      // Since Google id is not in the schema yet, this is a placeholder for the link logic
-      // e.g. await db_query("UPDATE neiist.users SET google_id = $1 WHERE istid = $2", [googleId, existingUser.istid]);
-
-      const user = await getUser(existingUser.istid);
-      if (user) {
-        const jwtPayload = {
-          istid: user.istid,
-          roles: user.roles,
-          name: user.name,
-          email: user.email,
-        };
-        const jwtToken = signUserJWT(jwtPayload);
-
-        const cookieStore = await cookies();
-        cookieStore.set("session", jwtToken, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          maxAge: 60 * 60 * 24,
-          path: "/",
-        });
-      }
-
-      return NextResponse.redirect(new URL("/", request.url));
+      // Gracefully link new Google identity if email matches existing user with an external istid
+      // (This is implicitly handled by using the same istid)
     } else {
       // Create new external user
-      // ... handled in Issue #10
-      return NextResponse.redirect(new URL("/", request.url));
+      // Issue #12 requires creating external users with an ext_ prefix if they are new.
+      const timestamp = Date.now().toString(36);
+      userIstid = `ext_${timestamp}`;
+
+      await db_query("INSERT INTO neiist.users (istid, name, email) VALUES ($1, $2, $3)", [
+        userIstid,
+        name,
+        email,
+      ]);
     }
+
+    const user = await getUser(userIstid);
+    if (user) {
+      const jwtPayload = {
+        istid: user.istid,
+        roles: user.roles,
+        name: user.name,
+        email: user.email,
+      };
+      const jwtToken = signUserJWT(jwtPayload);
+
+      cookieStore.set("session", jwtToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 60 * 60 * 24,
+        path: "/",
+      });
+    }
+
+    const response = NextResponse.redirect(new URL(postLoginRedirect || "/", request.url));
+    response.cookies.delete("google_oauth_state");
+    response.cookies.delete("post_login_redirect");
+    return response;
   } catch (error) {
     console.error("Google Auth Error:", error);
     return NextResponse.redirect(new URL("/?error=internal_server_error", request.url));

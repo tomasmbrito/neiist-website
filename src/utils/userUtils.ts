@@ -3,6 +3,11 @@ export const login = () => {
   window.location.href = `/api/auth/login?returnUrl=${returnUrl}`;
 };
 
+export const googleLogin = () => {
+  const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
+  window.location.href = `/api/auth/google/login?returnUrl=${returnUrl}`;
+};
+
 export const logout = async () => {
   await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
   localStorage.removeItem("cart");

@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import fs from "fs/promises";
 import path from "path";
 import { getUser, createUser, getEmailVerificationByUser } from "@/utils/dbUtils";
-import { signUserJWT } from "@/utils/authUtils";
+import { signUserJWT, getUserFromJWT } from "@/utils/authUtils";
 
 type FenixRegistration = {
   degree?: {
@@ -13,8 +13,29 @@ type FenixRegistration = {
 };
 
 export async function GET() {
-  const accessToken = (await cookies()).get("access_token")?.value;
-  if (!accessToken) return NextResponse.json({ error: "Not Authenticated." }, { status: 401 });
+  const cookieStore = await cookies();
+  const accessToken = cookieStore.get("access_token")?.value;
+  const sessionToken = cookieStore.get("session")?.value;
+
+  if (!accessToken) {
+    if (sessionToken) {
+      const payload = getUserFromJWT(sessionToken);
+      if (payload) {
+        const user = await getUser(payload.istid);
+        if (user) {
+          const notVerifiedEmail = await getEmailVerificationByUser(user.istid);
+          if (notVerifiedEmail) {
+            user.alternativeEmail = notVerifiedEmail.email;
+            user.alternativeEmailVerified = false;
+          } else {
+            user.alternativeEmailVerified = true;
+          }
+          return NextResponse.json(user);
+        }
+      }
+    }
+    return NextResponse.json({ error: "Not Authenticated." }, { status: 401 });
+  }
 
   try {
     const fenixResponse = await fetch("https://fenix.tecnico.ulisboa.pt/tecnico-api/v2/person", {
