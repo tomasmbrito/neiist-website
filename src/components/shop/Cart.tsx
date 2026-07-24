@@ -10,6 +10,7 @@ import styles from "@/styles/components/shop/Cart.module.css";
 import { getColorFromOptions } from "@/utils/shop/shopUtils";
 import { isJantarDeCursoCategory } from "@/utils/shop/orderKindUtils";
 import VariantTags from "@/components/shop/VariantTags";
+import { Modal } from "@/components/ui/Modal";
 
 function getItemPrice(item: CartItem): number {
   const variant = item.variantId
@@ -28,24 +29,6 @@ export default function Cart() {
     load();
     window.addEventListener("cartUpdated", load);
     return () => window.removeEventListener("cartUpdated", load);
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const prev = document.body.style.overflow;
-    const prevTouch = document.body.style.touchAction;
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-      // on some mobile browsers additionally block touch-action
-      document.body.style.touchAction = "none";
-    } else {
-      document.body.style.overflow = prev || "";
-      document.body.style.touchAction = prevTouch || "";
-    }
-    return () => {
-      document.body.style.overflow = prev || "";
-      document.body.style.touchAction = prevTouch || "";
-    };
   }, [isOpen]);
 
   const handleRemove = (idx: number) => {
@@ -73,8 +56,12 @@ export default function Cart() {
   if (!isOpen) return null;
 
   return (
-    <div className={styles.overlay} onClick={closeCart} role="dialog" aria-modal="true">
-      <div role="button" tabIndex={0} className={styles.cart} onClick={(e) => e.stopPropagation()}>
+    <Modal isOpen={isOpen} onClose={closeCart} className={styles.cart} unstyled>
+      <div
+        role="button"
+        tabIndex={0}
+        className={styles.cartContent}
+        onClick={(e) => e.stopPropagation()}>
         <button className={styles.close} onClick={closeCart} aria-label="Fechar carrinho">
           <Squash toggled={true} size={24} />
         </button>
@@ -172,6 +159,6 @@ export default function Cart() {
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
