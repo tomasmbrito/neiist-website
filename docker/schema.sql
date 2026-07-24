@@ -453,12 +453,12 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Add user
 CREATE OR REPLACE FUNCTION neiist.add_user(
   p_istid VARCHAR(10),
-  p_name TEXT,
-  p_email TEXT,
-  p_alt_email TEXT,
-  p_phone TEXT,
-  p_photo_path TEXT,
-  p_courses TEXT[],
+  p_name TEXT DEFAULT NULL,
+  p_email TEXT DEFAULT NULL,
+  p_alt_email TEXT DEFAULT NULL,
+  p_phone TEXT DEFAULT NULL,
+  p_photo_path TEXT DEFAULT NULL,
+  p_courses TEXT[] DEFAULT NULL,
   p_github TEXT DEFAULT NULL,
   p_linkedin TEXT DEFAULT NULL
 ) RETURNS TABLE(
@@ -477,7 +477,7 @@ CREATE OR REPLACE FUNCTION neiist.add_user(
 ) LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
   INSERT INTO neiist.users (istid, name, email, photo_path, github, linkedin)
-  VALUES (p_istid, p_name, p_email, p_photo_path, p_github, p_linkedin);
+  VALUES (p_istid, COALESCE(p_name, 'Unknown'), COALESCE(p_email, p_istid || '@tecnico.ulisboa.pt'), p_photo_path, p_github, p_linkedin);
 
   -- Insert alternative email if provided
   IF p_alt_email IS NOT NULL THEN
