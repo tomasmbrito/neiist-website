@@ -117,8 +117,9 @@ export async function GET(request: Request) {
     response.cookies.delete("google_oauth_state");
     response.cookies.delete("post_login_redirect");
     return response;
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Google Auth Error:", error);
-    return NextResponse.redirect(new URL("/?error=internal_server_error", request.url));
+    const msg = encodeURIComponent(error instanceof Error ? error.message : "Unknown error");
+    return NextResponse.redirect(new URL(`/?error=internal_server_error&msg=${msg}`, request.url));
   }
 }
