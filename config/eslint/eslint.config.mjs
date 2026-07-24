@@ -75,7 +75,7 @@ export default [
             {
               case: "kebab",
               target: "**/app/**",
-              patterns: "^(page|layout|loading|error|not-found|route|template).tsx$",
+              patterns: "^(page|layout|loading|error|not-found|route|template|sitemap)\\.(tsx|ts)$",
             },
             { case: "camel", target: "**/hooks/**", patterns: "^use" },
           ],
