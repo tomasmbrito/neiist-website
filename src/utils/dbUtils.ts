@@ -109,11 +109,14 @@ export const getUser = async (istid: string): Promise<User | null> => {
   try {
     const {
       rows: [user],
-    } = await db_query<User>("SELECT * FROM neiist.get_user($1::VARCHAR(10))", [istid]);
+    } = await db_query<User>(
+      "SELECT * FROM neiist.get_user((SELECT id FROM neiist.users WHERE istid = $1 OR email = $1 LIMIT 1))",
+      [istid]
+    );
     if (!user) return null;
     const dbMemberships = (
       await db_query<dbMembership>(
-        "SELECT * FROM neiist.get_all_memberships() WHERE user_istid = $1 AND active = TRUE",
+        "SELECT * FROM neiist.get_all_memberships() WHERE user_id = (SELECT id FROM neiist.users WHERE istid = $1 OR email = $1 LIMIT 1) AND active = TRUE",
         [istid]
       )
     ).rows;
