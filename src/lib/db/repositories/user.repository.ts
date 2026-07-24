@@ -81,11 +81,19 @@ export class UserRepository {
           .replace(/[\u0300-\u036f]/g, "")
           .trim();
 
+      const uniqueDepts = Array.from(new Set(memberships.map((m) => m.departmentName)));
+      const roleOrders = await Promise.all(
+        uniqueDepts.map((dept) =>
+          db_query<{ role_name: string; position: number }>(
+            "SELECT role_name, position FROM neiist.get_department_role_order($1)",
+            [dept]
+          ).then((res) => ({ dept, rows: res.rows }))
+        )
+      );
+      const roleOrderMap = new Map(roleOrders.map((ro) => [ro.dept, ro.rows]));
+
       for (const membership of memberships) {
-        const { rows: roleOrder } = await db_query<{ role_name: string; position: number }>(
-          "SELECT role_name, position FROM neiist.get_department_role_order($1)",
-          [membership.departmentName]
-        );
+        const roleOrder = roleOrderMap.get(membership.departmentName) ?? [];
         const found = roleOrder.find(
           (r) => normalize(r.role_name) === normalize(membership.roleName)
         );

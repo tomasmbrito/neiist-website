@@ -70,7 +70,9 @@ export default function ShopCheckoutOverlay({ orderId, paymentMethod }: Props) {
   const unmountWidget = useCallback(() => {
     try {
       widgetRef.current?.unmount?.();
-    } catch {}
+    } catch (err) {
+      console.warn("Failed to unmount widget:", err);
+    }
     widgetRef.current = null;
   }, []);
 
