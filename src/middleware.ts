@@ -145,7 +145,10 @@ export function middleware(req: NextRequest) {
 
   if (!isAuthenticated && protectedRoutes.some((r) => path.startsWith(r))) {
     if (path !== "/api/auth/login") {
-      const response = NextResponse.redirect(new URL("/api/auth/login", req.url));
+      const loginUrl = new URL("/api/auth/login", req.url);
+      const callbackUrl = req.nextUrl.pathname + req.nextUrl.search;
+      loginUrl.searchParams.set("callbackUrl", callbackUrl);
+      const response = NextResponse.redirect(loginUrl);
       addSecurityHeaders(response);
       return response;
     }

@@ -94,7 +94,8 @@ export async function GET(request: Request) {
       });
     }
 
-    const response = NextResponse.redirect(new URL(postLoginRedirect || "/", request.url));
+    const isSafe = typeof postLoginRedirect === "string" && postLoginRedirect.startsWith("/");
+    const response = NextResponse.redirect(new URL(isSafe ? postLoginRedirect! : "/", request.url));
 
     const user = await getUser(userIstid);
     if (user) {
