@@ -11,8 +11,8 @@ export async function GET(request: Request) {
   url.searchParams.set("scope", "read:personal");
   url.searchParams.set("state", state);
 
-  const returnUrl = (() => {
-    const param = new URL(request.url).searchParams.get("returnUrl") ?? "";
+  const callbackUrl = (() => {
+    const param = new URL(request.url).searchParams.get("callbackUrl") ?? "";
     return param.startsWith("/") ? param : "";
   })();
 
@@ -24,8 +24,8 @@ export async function GET(request: Request) {
     path: "/",
     maxAge: 60 * 10,
   });
-  if (returnUrl) {
-    res.cookies.set("post_login_redirect", returnUrl, {
+  if (callbackUrl) {
+    res.cookies.set("post_login_redirect", callbackUrl, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
