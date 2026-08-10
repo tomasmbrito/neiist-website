@@ -1,11 +1,11 @@
 export const login = () => {
-  const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
-  window.location.href = `/api/auth/login?returnUrl=${returnUrl}`;
+  const callbackUrl = encodeURIComponent(window.location.pathname + window.location.search);
+  window.location.href = `/api/auth/login?callbackUrl=${callbackUrl}`;
 };
 
 export const googleLogin = () => {
-  const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
-  window.location.href = `/api/auth/google/login?returnUrl=${returnUrl}`;
+  const callbackUrl = encodeURIComponent(window.location.pathname + window.location.search);
+  window.location.href = `/api/auth/google/login?callbackUrl=${callbackUrl}`;
 };
 
 export const logout = async () => {
