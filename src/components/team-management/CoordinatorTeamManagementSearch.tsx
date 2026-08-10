@@ -6,6 +6,7 @@ import { Membership } from "@/types/memberships";
 import Image from "next/image";
 import ConfirmDialog from "@/components/layout/ConfirmDialog";
 import styles from "@/styles/components/team-management/CoordinatorTeamManagementSearch.module.css";
+import { toast } from "sonner";
 
 export default function CoordinatorTeamManagementSearch({
   coordinatorTeams,
@@ -22,7 +23,6 @@ export default function CoordinatorTeamManagementSearch({
     []
   );
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [selectedUser, setSelectedUser] = useState("");
   const [selectedRole, setSelectedRole] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -78,7 +78,6 @@ export default function CoordinatorTeamManagementSearch({
 
   async function refreshMemberships() {
     setLoading(true);
-    setError("");
     try {
       const response = await fetch("/api/admin/memberships");
       if (response.ok) {
@@ -90,7 +89,7 @@ export default function CoordinatorTeamManagementSearch({
         );
       }
     } catch {
-      setError("Erro ao atualizar membros.");
+      toast.error("Erro ao atualizar membros.", { closeButton: true });
     } finally {
       setLoading(false);
     }
@@ -99,7 +98,6 @@ export default function CoordinatorTeamManagementSearch({
   async function handleAddMember(event: React.FormEvent) {
     event.preventDefault();
     setLoading(true);
-    setError("");
     try {
       const response = await fetch("/api/admin/memberships", {
         method: "POST",
@@ -114,14 +112,12 @@ export default function CoordinatorTeamManagementSearch({
         await refreshMemberships();
         setSelectedUser("");
         setSelectedRole("");
-        // TODO: (SUCCESS) show success toast after the team member is added.
+        toast.success("Operação concluída com sucesso.", { closeButton: true });
       } else {
-        // TODO: (ERROR)
-        setError("Erro ao adicionar membro.");
+        toast.error("Erro ao adicionar membro.", { closeButton: true });
       }
     } catch {
-      // TODO: (ERROR)
-      setError("Erro ao adicionar membro.");
+      toast.error("Erro ao adicionar membro.", { closeButton: true });
     } finally {
       setLoading(false);
     }
@@ -135,7 +131,6 @@ export default function CoordinatorTeamManagementSearch({
   async function confirmRemove() {
     if (!pendingRemove) return;
     setLoading(true);
-    setError("");
     setConfirmOpen(false);
     try {
       const response = await fetch("/api/admin/memberships", {
@@ -149,14 +144,12 @@ export default function CoordinatorTeamManagementSearch({
       });
       if (response.ok) {
         await refreshMemberships();
-        // TODO: (SUCCESS) show success toast after the team member is removed.
+        toast.success("Operação concluída com sucesso.", { closeButton: true });
       } else {
-        // TODO: (ERROR)
-        setError("Erro ao remover membro.");
+        toast.error("Erro ao remover membro.", { closeButton: true });
       }
     } catch {
-      // TODO: (ERROR)
-      setError("Erro ao remover membro.");
+      toast.error("Erro ao remover membro.", { closeButton: true });
     } finally {
       setLoading(false);
       setPendingRemove(null);
@@ -224,8 +217,6 @@ export default function CoordinatorTeamManagementSearch({
             Adicionar Membro
           </button>
         </form>
-        {/* TODO: replace this inline error with a toast and remove this fallback once Sonner is implemented here. */}
-        {error && <div className={styles.error}>{error}</div>}
       </section>
       <section className={styles.section}>
         <h3 className={styles.sectionTitle}>Membros Existentes</h3>

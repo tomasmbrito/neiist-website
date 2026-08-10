@@ -7,6 +7,7 @@ import type { User } from "@/types/user";
 import ConfirmDialog from "@/components/layout/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { toast } from "sonner";
 
 interface CreateNewUserModalProps {
   onClose: () => void;
@@ -44,13 +45,12 @@ const CreateNewUserModal: React.FC<CreateNewUserModalProps> = ({
 
   const handleSubmit = async () => {
     if (!istId || !name || !email) {
-      // TODO: (ERROR)
-      setError("Por favor, preencha todos os campos.");
+      toast.error("Por favor, preencha todos os campos.", { closeButton: true });
       return;
     }
 
     setIsSubmitting(true);
-    setError(null);
+    toast.error(null, { closeButton: true });
 
     try {
       const response = await fetch("/api/admin/users", {
@@ -72,12 +72,11 @@ const CreateNewUserModal: React.FC<CreateNewUserModalProps> = ({
 
       const newUser = await response.json();
       onSubmit?.(newUser);
-      // TODO: (SUCCESS) show success toast after the new user is created.
+      toast.success("Operação concluída com sucesso.", { closeButton: true });
       onClose();
     } catch (error) {
       console.error("Error creating user:", error);
-      // TODO: (ERROR)
-      setError(error instanceof Error ? error.message : "Failed to create user");
+      toast.error(error instanceof Error ? error.message : "Failed to create user", { closeButton: true });
     } finally {
       setIsSubmitting(false);
     }
@@ -96,9 +95,6 @@ const CreateNewUserModal: React.FC<CreateNewUserModalProps> = ({
         </Button>
 
         <h2>Novo Utilizador</h2>
-
-        {/* TODO: replace this inline error with a toast and remove this fallback once Sonner is implemented here. */}
-        {error && <div className={styles.error}>{error}</div>}
 
         <form onSubmit={handleConfirm}>
           <div className={styles.formGroup}>

@@ -20,6 +20,7 @@ import type {
   ApiErrorResponse,
 } from "@/types/sumup";
 import { getCampusLocation } from "@/utils/shop/shopUtils";
+import { toast } from "sonner";
 
 type FlowState = "loading" | "widget" | "processing" | "success" | "error";
 type VerifyResult = "paid" | "pending" | "failed";
@@ -158,7 +159,7 @@ export default function ShopCheckoutOverlay({ orderId, paymentMethod }: Props) {
       verifyingRef.current = true;
       clearAbortTimer();
       unmountWidget();
-      setError(null);
+      toast.error(null, { closeButton: true });
       setFlowState("processing");
 
       try {
@@ -179,10 +180,10 @@ export default function ShopCheckoutOverlay({ orderId, paymentMethod }: Props) {
               "A autorização expirou. Tenta novamente para gerar uma nova sessão de pagamento."
             );
           } else {
-            setError("Não foi possível confirmar o pagamento após autorização bancária.");
+            toast.error("Não foi possível confirmar o pagamento após autorização bancária.", { closeButton: true });
           }
         } else {
-          setError("O pagamento está pendente há demasiado tempo. Se foi cobrado, contacta-nos.");
+          toast.error("O pagamento está pendente há demasiado tempo. Se foi cobrado, contacta-nos.", { closeButton: true });
         }
 
         setFlowState("error");
@@ -242,7 +243,7 @@ export default function ShopCheckoutOverlay({ orderId, paymentMethod }: Props) {
       } catch (err) {
         console.error("Apple Pay merchant validation error:", err);
         session.abort();
-        setError("Falha na validação Apple Pay. Tenta novamente.");
+        toast.error("Falha na validação Apple Pay. Tenta novamente.", { closeButton: true });
         setFlowState("error");
         setRetryCount((count) => count + 1);
       }
@@ -260,14 +261,14 @@ export default function ShopCheckoutOverlay({ orderId, paymentMethod }: Props) {
           setFlowState("success");
         } else {
           session.completePayment(ApplePaySession.STATUS_FAILURE);
-          setError("Pagamento Apple Pay falhou. Tenta novamente.");
+          toast.error("Pagamento Apple Pay falhou. Tenta novamente.", { closeButton: true });
           setFlowState("error");
           setRetryCount((count) => count + 1);
         }
       } catch (error) {
         console.error("Apple Pay processing error:", error);
         session.completePayment(ApplePaySession.STATUS_FAILURE);
-        setError("Erro ao processar Apple Pay. Tenta novamente.");
+        toast.error("Erro ao processar Apple Pay. Tenta novamente.", { closeButton: true });
         setFlowState("error");
         setRetryCount((count) => count + 1);
       }
@@ -323,7 +324,7 @@ export default function ShopCheckoutOverlay({ orderId, paymentMethod }: Props) {
         });
       } catch (error) {
         console.error("SumUp SDK load failed:", error);
-        setError("Erro ao carregar o módulo de pagamento.");
+        toast.error("Erro ao carregar o módulo de pagamento.", { closeButton: true });
         setFlowState("error");
         setRetryCount((count) => count + 1);
         return;
@@ -346,13 +347,13 @@ export default function ShopCheckoutOverlay({ orderId, paymentMethod }: Props) {
           }
 
           if (type === "invalid") {
-            setError("Verifica os dados do cartão e tenta novamente.");
+            toast.error("Verifica os dados do cartão e tenta novamente.", { closeButton: true });
             return;
           }
 
           if (type === "error") {
             const errorBody = body as { message?: string };
-            setError(errorBody?.message || "Erro ao processar pagamento.");
+            toast.error(errorBody?.message || "Erro ao processar pagamento.", { closeButton: true });
             setFlowState("error");
             setRetryCount((count) => count + 1);
             return;
@@ -361,7 +362,7 @@ export default function ShopCheckoutOverlay({ orderId, paymentMethod }: Props) {
           if (type === "fail") {
             clearAbortTimer();
             unmountWidget();
-            setError("Pagamento cancelado ou expirado. Tenta novamente.");
+            toast.error("Pagamento cancelado ou expirado. Tenta novamente.", { closeButton: true });
             setFlowState("error");
             setRetryCount((count) => count + 1);
             return;
@@ -379,7 +380,7 @@ export default function ShopCheckoutOverlay({ orderId, paymentMethod }: Props) {
       abortTimerRef.current = setTimeout(() => {
         abortTimerRef.current = null;
         unmountWidget();
-        setError("A sessão de pagamento expirou. Tenta novamente.");
+        toast.error("A sessão de pagamento expirou. Tenta novamente.", { closeButton: true });
         setFlowState("error");
         setRetryCount((count) => count + 1);
       }, VERIFY_MAX_WAIT_MS);
@@ -397,7 +398,7 @@ export default function ShopCheckoutOverlay({ orderId, paymentMethod }: Props) {
         if (cancelled) return;
         const orderData = data as Order & { error?: string };
         if (orderData?.error) {
-          setError(orderData.error);
+          toast.error(orderData.error, { closeButton: true });
           setFlowState("error");
         } else {
           setOrder(orderData);
@@ -405,7 +406,7 @@ export default function ShopCheckoutOverlay({ orderId, paymentMethod }: Props) {
       })
       .catch(() => {
         if (!cancelled) {
-          setError("Erro de rede ao carregar encomenda.");
+          toast.error("Erro de rede ao carregar encomenda.", { closeButton: true });
           setFlowState("error");
         }
       });
@@ -449,12 +450,12 @@ export default function ShopCheckoutOverlay({ orderId, paymentMethod }: Props) {
 
         const nextCheckoutId = data.checkoutId;
         if (!nextCheckoutId) {
-          setError("Falha ao criar sessão de pagamento.");
+          toast.error("Falha ao criar sessão de pagamento.", { closeButton: true });
           setFlowState("error");
           return;
         }
 
-        setError(null);
+        toast.error(null, { closeButton: true });
         setFlowState("loading");
         setCheckoutId(nextCheckoutId);
       } catch (error) {
@@ -497,7 +498,7 @@ export default function ShopCheckoutOverlay({ orderId, paymentMethod }: Props) {
   const retryPayment = useCallback(async () => {
     if (retryCount >= MAX_RETRIES) return;
     unmountWidget();
-    setError(null);
+    toast.error(null, { closeButton: true });
     setCheckoutId(null);
     setFlowState("loading");
   }, [retryCount, unmountWidget]);
@@ -505,7 +506,7 @@ export default function ShopCheckoutOverlay({ orderId, paymentMethod }: Props) {
   const switchToInPerson = useCallback(async () => {
     if (!orderId || isFallbackSubmitting) return;
     setIsFallbackSubmitting(true);
-    setError(null);
+    toast.error(null, { closeButton: true });
     try {
       const res = await fetch(`/api/shop/orders/${orderId}`, {
         method: "PUT",
@@ -518,7 +519,7 @@ export default function ShopCheckoutOverlay({ orderId, paymentMethod }: Props) {
       }
       finalizeAndNavigate(`/my-orders?orderId=${orderId}`);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Erro ao mudar para pagamento presencial.");
+      toast.error(error instanceof Error ? error.message : "Erro ao mudar para pagamento presencial.", { closeButton: true });
     } finally {
       setIsFallbackSubmitting(false);
     }

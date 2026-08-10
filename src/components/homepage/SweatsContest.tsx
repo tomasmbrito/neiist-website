@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useUser } from "@/context/UserContext";
 import styles from "@/styles/components/homepage/SweatsContest.module.css";
 import backgroundImage from "@/assets/background.png";
+import { toast } from "sonner";
 
 export default function SweatsContest() {
   const { user } = useUser();
@@ -14,7 +15,7 @@ export default function SweatsContest() {
 
   const handleButtonClick = () => {
     if (!user) {
-      // TODO: (WARNING) show toast prompting the user to log in before submitting.
+      toast.warning("Tem de iniciar sessão para submeter.", { closeButton: true });
       return;
     }
     fileInputRef.current?.click();
@@ -25,7 +26,7 @@ export default function SweatsContest() {
     if (!file) return;
 
     if (file.type !== "application/zip" && file.type !== "application/x-zip-compressed") {
-      // TODO: (ERROR)
+      toast.error("Ocorreu um erro.", { closeButton: true });
       setButtonText("Erro: Apenas ficheiros ZIP");
       setTimeout(() => setButtonText("Submete um design!"), 3000);
       return;
@@ -36,23 +37,26 @@ export default function SweatsContest() {
     const formData = new FormData();
     formData.append("file", file);
 
+    let toastId: string | number = "";
     try {
-      // TODO: (LOADING) show loading toast while the design submission is uploading.
+      toastId = toast.loading("A enviar submissão...");
       const response = await fetch("/api/user/sweats-contest", {
         method: "POST",
         body: formData,
       });
 
+      toast.dismiss(toastId);
       if (response.ok) {
-        // TODO: (SUCCESS)
+        toast.success("Operação concluída com sucesso.", { closeButton: true });
         setButtonText("Design submetido");
       } else {
-        // TODO: (ERROR)
+        toast.error("Ocorreu um erro.", { closeButton: true });
         setButtonText("Erro ao submeter");
       }
     } catch (error) {
+      if (toastId) toast.dismiss(toastId);
       setButtonText("Erro ao submeter");
-      // TODO: (ERROR)
+      toast.error("Ocorreu um erro.", { closeButton: true });
       console.error("Upload error:", error);
     } finally {
       setUploading(false);

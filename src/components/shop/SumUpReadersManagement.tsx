@@ -4,6 +4,7 @@ import { FiTrash2 } from "react-icons/fi";
 import styles from "@/styles/components/shop/SumUpReadersManagement.module.css";
 import { SumUpReader } from "@/types/sumup";
 import ConfirmDialog from "@/components/layout/ConfirmDialog";
+import { toast } from "sonner";
 
 export default function SumUpReadersManagement() {
   const [readers, setReaders] = useState<SumUpReader[]>([]);
@@ -18,7 +19,7 @@ export default function SumUpReadersManagement() {
     const silent = opts?.silent ?? false;
     if (!silent) setLoading(true);
 
-    setError(null);
+    toast.error(null, { closeButton: true });
     try {
       const res = await fetch("/api/shop/sumup/readers");
       const data = await res.json();
@@ -26,7 +27,7 @@ export default function SumUpReadersManagement() {
 
       setReaders(data.readers || []);
     } catch (error) {
-      setError((error as Error).message);
+      toast.error((error as Error).message, { closeButton: true });
     } finally {
       if (!silent) setLoading(false);
     }
@@ -38,11 +39,11 @@ export default function SumUpReadersManagement() {
 
   const createReader = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setError(null);
+    toast.error(null, { closeButton: true });
     setActionMessage(null);
 
     if (!form.pairing_code.trim() || !form.name.trim()) {
-      setError("Pairing code and name are required.");
+      toast.error("Pairing code and name are required.", { closeButton: true });
       return;
     }
 
@@ -61,12 +62,12 @@ export default function SumUpReadersManagement() {
       setForm({ pairing_code: "", name: "" });
       fetchReaders();
     } catch (error) {
-      setError((error as Error).message);
+      toast.error((error as Error).message, { closeButton: true });
     }
   };
 
   const removeReader = async () => {
-    setError(null);
+    toast.error(null, { closeButton: true });
     setActionMessage(null);
     setShowConfirm(false);
 
@@ -87,7 +88,7 @@ export default function SumUpReadersManagement() {
       void fetchReaders({ silent: true });
     } catch (error) {
       setReaders(previousReaders);
-      setError((error as Error).message);
+      toast.error((error as Error).message, { closeButton: true });
     } finally {
       setdeleteReader(null);
     }

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import ConfirmDialog from "@/components/layout/ConfirmDialog";
 import Fuse from "fuse.js";
 import styles from "@/styles/components/admin/RolesSearchFilter.module.css";
+import { toast } from "sonner";
 
 interface Role {
   role_name: string;
@@ -33,7 +34,6 @@ export default function RolesSearchFilter({
   const [loading, setLoading] = useState(false);
   const [addDepartment, setAddDepartment] = useState<string>("");
   const [newRole, setNewRole] = useState({ roleName: "", access: "member" });
-  const [error, setError] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<{
     roleName: string;
@@ -84,7 +84,6 @@ export default function RolesSearchFilter({
   }, [selectedDepartment, fetchAllRoles, fetchRoles]);
 
   const addRole = async () => {
-    setError("");
     if (!newRole.roleName.trim() || !addDepartment) return;
     setLoading(true);
     try {
@@ -106,15 +105,13 @@ export default function RolesSearchFilter({
             await fetchRoles(selectedDepartment);
           }
         }
-        // TODO: (SUCCESS) show success toast after the role is added.
+        toast.success("Operação concluída com sucesso.", { closeButton: true });
       } else {
         const error = await response.json();
-        // TODO: (ERROR)
-        setError(error.error || "Erro ao adicionar cargo");
+        toast.error(error.error || "Erro ao adicionar cargo", { closeButton: true });
       }
     } catch {
-      // TODO: (ERROR)
-      setError("Erro ao adicionar cargo");
+      toast.error("Erro ao adicionar cargo", { closeButton: true });
     } finally {
       setLoading(false);
     }
@@ -126,7 +123,6 @@ export default function RolesSearchFilter({
   };
 
   const confirmRemove = async () => {
-    setError("");
     setConfirmOpen(false);
     if (!pendingRemove) return;
     const dept = selectedDepartment === "" ? pendingRemove.departmentName : selectedDepartment;
@@ -143,15 +139,13 @@ export default function RolesSearchFilter({
         } else {
           await fetchRoles(dept);
         }
-        // TODO: (SUCCESS) show success toast after the role is removed.
+        toast.success("Operação concluída com sucesso.", { closeButton: true });
       } else {
         const error = await response.json();
-        // TODO: (ERROR)
-        setError(error.error || "Erro ao remover cargo");
+        toast.error(error.error || "Erro ao remover cargo", { closeButton: true });
       }
     } catch {
-      // TODO: (ERROR)
-      setError("Erro ao remover cargo");
+      toast.error("Erro ao remover cargo", { closeButton: true });
     } finally {
       setPendingRemove(null);
     }
@@ -329,8 +323,6 @@ export default function RolesSearchFilter({
               {loading ? "A adicionar..." : "Adicionar Cargo"}
             </button>
           </div>
-          {/* TODO: replace this inline error with a toast and remove this fallback once Sonner is implemented here. */}
-          {error && <div className={styles.error}>{error}</div>}
         </form>
       </section>
     </>

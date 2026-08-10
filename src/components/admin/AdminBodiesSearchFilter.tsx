@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import Fuse from "fuse.js";
 import styles from "@/styles/components/admin/AdminBodiesSearchFilter.module.css";
+import { toast } from "sonner";
 
 interface AdminBody {
   name: string;
@@ -45,7 +46,7 @@ export default function AdminBodiesSearchFilter({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
-    // TODO: (SUCCESS) show success toast after the admin body is deactivated, and an error toast if this request fails.
+    toast.success("Operação concluída com sucesso.", { closeButton: true });
     window.location.reload();
   };
 

@@ -4,6 +4,7 @@ import { useState, useRef, useMemo } from "react";
 import Image from "next/image";
 import { useUser } from "@/context/UserContext";
 import styles from "@/styles/components/photo-management/PhotoTeamMembers.module.css";
+import { toast } from "sonner";
 
 interface Membership {
   id: string;
@@ -100,9 +101,9 @@ export default function PhotoTeamMembers({
         if (user && user.istid === istid) {
           setUser({ ...user, photo: newPhotoUrl });
         }
-        // TODO: (SUCCESS) show success toast after the photo is updated.
+        toast.success("Operação concluída com sucesso.", { closeButton: true });
       } else {
-        // TODO: (ERROR) show error toast when the photo update fails.
+        toast.error("Ocorreu um erro.", { closeButton: true });
       }
       setEditingPhotoIstid(null);
     };
