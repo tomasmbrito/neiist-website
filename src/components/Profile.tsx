@@ -21,6 +21,7 @@ import { RiContactsBook3Line } from "react-icons/ri";
 import { IoOpenOutline } from "react-icons/io5";
 import { LuCalendarDays } from "react-icons/lu";
 import { getFirstAndLastName } from "@/utils/userUtils";
+import { toast } from "sonner";
 
 type FieldName = "alternativeEmail" | "phone" | "preferredContactMethod" | "github" | "linkedin";
 
@@ -52,7 +53,6 @@ export default function ProfileClient({
     webViewLink: string;
   } | null>(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-  const [error, setError] = useState<string>("");
 
   const isMember = checkRoles(user, [UserRole._MEMBER, UserRole._COORDINATOR, UserRole._ADMIN]);
 
@@ -94,7 +94,6 @@ export default function ProfileClient({
   const handleConfirmChange = async () => {
     if (!pendingChange || !user) return;
     setShowConfirmDialog(false);
-    setError("");
 
     try {
       const { field } = pendingChange;
@@ -110,7 +109,7 @@ export default function ProfileClient({
           const data = await res.json().catch(() => ({}));
           throw new Error(data.error || "Falha ao enviar email de verificação");
         }
-        // TODO: (SUCCESS) show success toast after the verification email request is sent.
+        toast.success("Operação concluída com sucesso.", { closeButton: true });
       } else {
         const res = await fetch(`/api/user/update/${user.istid}`, {
           method: "PUT",
@@ -130,8 +129,9 @@ export default function ProfileClient({
         setUser(updated);
       }
     } catch (e) {
-      // TODO: (ERROR)
-      setError(e instanceof Error ? e.message : "Erro ao atualizar perfil.");
+      toast.error(e instanceof Error ? e.message : "Erro ao atualizar perfil.", {
+        closeButton: true,
+      });
     } finally {
       setPendingChange(null);
     }
@@ -140,8 +140,9 @@ export default function ProfileClient({
   const getCalendarData = async () => {
     if (calendarData) return calendarData;
     if (!user?.istid) return null;
+    let toastId: string | number = "";
     try {
-      // TODO: show loading toast while fetching calendar
+      toastId = toast.loading("A carregar...");
       const response = await fetch(`/api/calendar/${user.istid}`);
       if (!response.ok) {
         throw new Error("Failed to get calendar data");
@@ -152,10 +153,13 @@ export default function ProfileClient({
         webViewLink: data.webViewLink,
       };
       setCalendarData(links);
+      toast.dismiss(toastId);
       return links;
     } catch (e) {
-      // TODO: (ERROR)
-      setError(e instanceof Error ? e.message : "Erro ao obter link do calendário.");
+      toast.dismiss(toastId);
+      toast.error(e instanceof Error ? e.message : "Erro ao obter link do calendário.", {
+        closeButton: true,
+      });
       return null;
     }
   };
@@ -163,7 +167,6 @@ export default function ProfileClient({
   const handleAddCalendar = async () => {
     if (!user?.istid || calendarLoading) return;
     setCalendarLoading(true);
-    setError("");
 
     try {
       const data = await getCalendarData();
@@ -178,7 +181,6 @@ export default function ProfileClient({
   const handleViewCalendar = async () => {
     if (!user?.istid || calendarLoading) return;
     setCalendarLoading(true);
-    setError("");
 
     try {
       const data = await getCalendarData();
@@ -193,13 +195,13 @@ export default function ProfileClient({
   const onCvUpload = async (file: File | null) => {
     if (!file) return;
     if (file.type !== "application/pdf") {
-      // TODO: (ERROR)
-      setError("Envie apenas ficheiros PDF.");
+      toast.error("Envie apenas ficheiros PDF.", { closeButton: true });
       return;
     }
     setCvLoading(true);
+    let cvToastId: string | number = "";
     try {
-      // TODO: (LOADING) show loading toast while the CV upload is in progress.
+      cvToastId = toast.loading("A enviar CV...");
       const form = new FormData();
       form.append("file", file);
       form.append("istid", user.istid);
@@ -207,10 +209,10 @@ export default function ProfileClient({
       const res = await fetch("/api/user/cv-bank", { method: "POST", body: form });
       if (!res.ok) throw new Error("Falha ao enviar o CV.");
       setHasCV(true);
-      // TODO: (SUCCESS) show success toast after the CV is uploaded.
+      toast.success("Operação concluída com sucesso.", { closeButton: true });
     } catch (e) {
-      // TODO: (ERROR)
-      setError(e instanceof Error ? e.message : "Erro ao enviar o CV.");
+      if (typeof cvToastId !== "undefined") toast.dismiss(cvToastId);
+      toast.error(e instanceof Error ? e.message : "Erro ao enviar o CV.", { closeButton: true });
     } finally {
       setCvLoading(false);
     }
@@ -222,10 +224,9 @@ export default function ProfileClient({
       const res = await fetch("/api/user/cv-bank", { method: "DELETE" });
       if (!res.ok) throw new Error("Falha ao remover o CV.");
       setHasCV(false);
-      // TODO: (SUCCESS) show success toast after the CV is removed.
+      toast.success("Operação concluída com sucesso.", { closeButton: true });
     } catch (e) {
-      // TODO: (ERROR)
-      setError(e instanceof Error ? e.message : "Erro ao remover o CV.");
+      toast.error(e instanceof Error ? e.message : "Erro ao remover o CV.", { closeButton: true });
     } finally {
       setCvLoading(false);
     }
@@ -246,8 +247,9 @@ export default function ProfileClient({
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch (e) {
-      // TODO: (ERROR)
-      setError(e instanceof Error ? e.message : "Erro ao descarregar o CV.");
+      toast.error(e instanceof Error ? e.message : "Erro ao descarregar o CV.", {
+        closeButton: true,
+      });
     } finally {
       setCvLoading(false);
     }
@@ -471,8 +473,6 @@ export default function ProfileClient({
           </div>
         </div>
       </div>
-      {/* TODO: replace this inline error with a toast and remove this fallback once Sonner is implemented here. */}
-      {error && <p className={styles.error}>{error}</p>}
       <ConfirmDialog
         open={showConfirmDialog}
         message={

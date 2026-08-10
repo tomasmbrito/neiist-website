@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import styles from "@/styles/components/admin/AddDepartmentModal.module.css";
+import { toast } from "sonner";
 
 interface Role {
   roleName: string;
@@ -18,7 +19,6 @@ export default function AddDepartmentModal({
   const [deptDesc, setDeptDesc] = useState("");
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
   const addRole = (role: Role) => setRoles((prev) => [...prev, role]);
   const removeRole = (roleName: string) =>
@@ -26,7 +26,6 @@ export default function AddDepartmentModal({
 
   const handleCreate = async () => {
     setLoading(true);
-    setError("");
     try {
       const depRes = await fetch(
         departmentType === "team" ? "/api/admin/teams" : "/api/admin/admin-bodies",
@@ -42,8 +41,7 @@ export default function AddDepartmentModal({
       );
       if (!depRes.ok) {
         const err = await depRes.json();
-        // TODO: (ERROR)
-        setError(err.error || "Erro ao criar departamento");
+        toast.error(err.error || "Erro ao criar departamento", { closeButton: true });
         setLoading(false);
         return;
       }
@@ -59,18 +57,16 @@ export default function AddDepartmentModal({
         });
         if (!roleRes.ok) {
           const err = await roleRes.json();
-          // TODO: (ERROR)
-          setError(err.error || "Erro ao criar cargo");
+          toast.error(err.error || "Erro ao criar cargo", { closeButton: true });
           setLoading(false);
           return;
         }
       }
       setLoading(false);
-      // TODO: (SUCCESS) show success toast after the department and roles are created.
+      toast.success("Operação concluída com sucesso.", { closeButton: true });
       window.location.reload();
     } catch {
-      // TODO: (ERROR)
-      setError("Erro ao criar departamento ou cargos");
+      toast.error("Erro ao criar departamento ou cargos", { closeButton: true });
       setLoading(false);
     }
   };
@@ -153,8 +149,6 @@ export default function AddDepartmentModal({
                     ))}
                   </ul>
                 </div>
-                {/* TODO: replace this inline error with a toast and remove this fallback once Sonner is implemented here. */}
-                {error && <div className={styles.error}>{error}</div>}
                 <div className={styles.actions}>
                   <button className={styles.button} onClick={() => setStep(1)} disabled={loading}>
                     Voltar

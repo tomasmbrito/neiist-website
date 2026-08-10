@@ -7,6 +7,7 @@ import { Membership } from "@/types/memberships";
 import { useUser } from "@/context/UserContext";
 import ConfirmDialog from "@/components/layout/ConfirmDialog";
 import styles from "@/styles/components/admin/MembershipsSearchList.module.css";
+import { toast } from "sonner";
 
 interface Department {
   name: string;
@@ -33,7 +34,6 @@ export default function MembershipsSearchList({
   const [search, setSearch] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [error, setError] = useState("");
   const [newMembership, setNewMembership] = useState({
     userNumber: "",
     departmentName: "",
@@ -108,7 +108,6 @@ export default function MembershipsSearchList({
   };
 
   const addMembership = async () => {
-    setError("");
     if (!newMembership.userNumber || !newMembership.departmentName || !newMembership.roleName)
       return;
     setAdding(true);
@@ -130,15 +129,13 @@ export default function MembershipsSearchList({
         }
         setNewMembership({ userNumber: "", departmentName: "", roleName: "" });
         setRoles([]);
-        // TODO: (SUCCESS) show success toast after the member is added.
+        toast.success("Operação concluída com sucesso.", { closeButton: true });
       } else {
         const error = await response.json();
-        // TODO: (ERROR)
-        setError(error.error || "Erro ao adicionar membro");
+        toast.error(error.error || "Erro ao adicionar membro", { closeButton: true });
       }
     } catch {
-      // TODO: (ERROR)
-      setError("Erro ao adicionar membro");
+      toast.error("Erro ao adicionar membro", { closeButton: true });
     } finally {
       setAdding(false);
     }
@@ -151,7 +148,6 @@ export default function MembershipsSearchList({
 
   const confirmRemove = async () => {
     if (!pendingRemove) return;
-    setError("");
     setConfirmOpen(false);
     try {
       const response = await fetch("/api/admin/memberships", {
@@ -169,15 +165,13 @@ export default function MembershipsSearchList({
           const data = await refreshed.json();
           setMemberships(Array.isArray(data) ? data : []);
         }
-        // TODO: (SUCCESS) show success toast after the member is removed.
+        toast.success("Operação concluída com sucesso.", { closeButton: true });
       } else {
         const error = await response.json();
-        // TODO: (ERROR)
-        setError(error.error || "Erro ao remover membro");
+        toast.error(error.error || "Erro ao remover membro", { closeButton: true });
       }
     } catch {
-      // TODO: (ERROR)
-      setError("Erro ao remover membro");
+      toast.error("Erro ao remover membro", { closeButton: true });
     } finally {
       setPendingRemove(null);
     }
@@ -214,9 +208,9 @@ export default function MembershipsSearchList({
         if (user && user.istid === istid) {
           setUser({ ...user, photo: newPhotoUrl });
         }
-        // TODO: (SUCCESS) show success toast after the member photo is updated.
+        toast.success("Operação concluída com sucesso.", { closeButton: true });
       } else {
-        // TODO: (ERROR) show error toast when updating the member photo fails.
+        toast.error("Ocorreu um erro.", { closeButton: true });
       }
       setEditingPhotoIstid(null);
     };
@@ -296,8 +290,6 @@ export default function MembershipsSearchList({
             {adding ? "A adicionar..." : "Adicionar Membro"}
           </button>
         </div>
-        {/* TODO: replace this inline error with a toast and remove this fallback once Sonner is implemented here. */}
-        {error && <div className={styles.error}>{error}</div>}
       </section>
 
       <section className={styles.section}>

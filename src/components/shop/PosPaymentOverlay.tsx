@@ -104,7 +104,6 @@ export default function PosPaymentOverlay({
     if (!open || paymentMethod !== "sumup-tpa") return;
 
     setReadersLoading(true);
-    setError(null);
 
     fetch("/api/shop/sumup/readers", { cache: "no-store" })
       .then((response) => response.json())
@@ -143,7 +142,6 @@ export default function PosPaymentOverlay({
 
     setPaymentMethod(preferredMethod);
     setSelectedReaderId(initialReaderId ?? "");
-    setError(null);
     setStatusMessage("");
     setFlowState("form");
     setCompletedOrder(null);
@@ -332,7 +330,6 @@ export default function PosPaymentOverlay({
     if (confirmInFlightRef.current) return;
 
     confirmInFlightRef.current = true;
-    setError(null);
     setIsSubmitting(true);
     setFlowState("processing");
     setStatusMessage("A processar pagamento...");
@@ -377,7 +374,9 @@ export default function PosPaymentOverlay({
         setFlowState("form");
       }
     } catch (error) {
-      setError((error as Error).message || "Falha ao processar pagamento.");
+      toast.error((error as Error).message || "Falha ao processar pagamento.", {
+        closeButton: true,
+      });
       setFlowState("form");
     } finally {
       setIsSubmitting(false);

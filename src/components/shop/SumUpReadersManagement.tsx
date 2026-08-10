@@ -4,11 +4,11 @@ import { FiTrash2 } from "react-icons/fi";
 import styles from "@/styles/components/shop/SumUpReadersManagement.module.css";
 import { SumUpReader } from "@/types/sumup";
 import ConfirmDialog from "@/components/layout/ConfirmDialog";
+import { toast } from "sonner";
 
 export default function SumUpReadersManagement() {
   const [readers, setReaders] = useState<SumUpReader[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ pairing_code: "", name: "" });
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [deleteReader, setdeleteReader] = useState<SumUpReader | null>(null);
@@ -18,7 +18,6 @@ export default function SumUpReadersManagement() {
     const silent = opts?.silent ?? false;
     if (!silent) setLoading(true);
 
-    setError(null);
     try {
       const res = await fetch("/api/shop/sumup/readers");
       const data = await res.json();
@@ -26,7 +25,7 @@ export default function SumUpReadersManagement() {
 
       setReaders(data.readers || []);
     } catch (error) {
-      setError((error as Error).message);
+      toast.error((error as Error).message, { closeButton: true });
     } finally {
       if (!silent) setLoading(false);
     }
@@ -38,11 +37,10 @@ export default function SumUpReadersManagement() {
 
   const createReader = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setError(null);
     setActionMessage(null);
 
     if (!form.pairing_code.trim() || !form.name.trim()) {
-      setError("Pairing code and name are required.");
+      toast.error("Pairing code and name are required.", { closeButton: true });
       return;
     }
 
@@ -61,12 +59,11 @@ export default function SumUpReadersManagement() {
       setForm({ pairing_code: "", name: "" });
       fetchReaders();
     } catch (error) {
-      setError((error as Error).message);
+      toast.error((error as Error).message, { closeButton: true });
     }
   };
 
   const removeReader = async () => {
-    setError(null);
     setActionMessage(null);
     setShowConfirm(false);
 
@@ -87,7 +84,7 @@ export default function SumUpReadersManagement() {
       void fetchReaders({ silent: true });
     } catch (error) {
       setReaders(previousReaders);
-      setError((error as Error).message);
+      toast.error((error as Error).message, { closeButton: true });
     } finally {
       setdeleteReader(null);
     }
@@ -131,7 +128,6 @@ export default function SumUpReadersManagement() {
       </form>
 
       {actionMessage && <div className={styles.successMessage}>{actionMessage}</div>}
-      {error && <div className={styles.errorMessage}>{error}</div>}
 
       {loading ? (
         <div className={styles.loadingText}>A carregar leitores...</div>

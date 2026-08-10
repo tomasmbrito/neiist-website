@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import Fuse from "fuse.js";
 import styles from "@/styles/components/admin/TeamsSearchFilter.module.css";
+import { toast } from "sonner";
 
 interface Team {
   name: string;
@@ -39,13 +40,14 @@ export default function TeamsSearchFilter({ initialTeams }: { initialTeams: Team
   }, [teams, search, showInactive, fuse]);
 
   const removeTeam = async (name: string) => {
-    // TODO: show loading toast while the team is being deactivated.
+    const toastId = toast.loading("A desativar...");
     await fetch("/api/admin/teams", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
-    // TODO: show success toast after the team is deactivated, and an error toast if this request fails.
+    toast.dismiss(toastId);
+    toast.success("Concluído", { closeButton: true });
     window.location.reload();
   };
 

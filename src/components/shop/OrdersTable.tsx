@@ -26,6 +26,7 @@ import MultiSelectFilter from "./MultiSelectFilter";
 import DateFilter from "./DateFilter";
 import ActiveFilters from "./ActiveFilters";
 import MobileFiltersDrawer from "./MobileFiltersDrawer";
+import { toast } from "sonner";
 
 function normalizeCampus(campus?: string): string {
   return campus ? campus.trim().toLowerCase() : "";
@@ -322,10 +323,10 @@ export default function OrdersTable({ orders, products }: OrdersTableProps) {
       setSelectedOrders(new Set());
 
       if (failures.length) {
-        // TODO: (WARNING)
+        toast.warning("Aviso", { closeButton: true });
         console.error(`Falha ao atualizar ${failures.length} encomenda(s)`);
       } else {
-        // TODO: (SUCCESS)
+        toast.success("Operação concluída com sucesso.", { closeButton: true });
         router.refresh();
       }
     } finally {
@@ -335,7 +336,7 @@ export default function OrdersTable({ orders, products }: OrdersTableProps) {
 
   const doBulkStatusChange = async (status: OrderStatus) => {
     setBulkLoading(true);
-    // TODO: (LOADING) show loading toast while bulk order status updates are running.
+    const toastId = toast.loading("A atualizar estados...");
     const orderIds = Array.from(selectedOrders)
       .map((id) => Number(id))
       .filter((n) => Number.isFinite(n));
@@ -372,11 +373,12 @@ export default function OrdersTable({ orders, products }: OrdersTableProps) {
       }
       setSelectedOrders(new Set());
       router.refresh();
+      toast.dismiss(toastId);
       if (failures.length) {
-        // TODO: (WARNING)
+        toast.warning("Aviso", { closeButton: true });
         console.warn("Some updates failed:", failures);
       } else {
-        // TODO: (SUCCESS)
+        toast.success("Operação concluída com sucesso.", { closeButton: true });
       }
     } finally {
       setBulkLoading(false);

@@ -21,6 +21,7 @@ import { validateDiscount } from "@/utils/shop/discountUtils";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
+import { toast } from "sonner";
 
 interface Props {
   onClose: () => void;
@@ -148,7 +149,6 @@ export default function NewOrderModal({
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showGuestConfirm, setShowGuestConfirm] = useState(false);
   const [showGuestNameInput, setShowGuestNameInput] = useState(false);
@@ -559,38 +559,37 @@ export default function NewOrderModal({
 
   const handleSubmit = async (stockOverride = false) => {
     if (!selectedProducts.length) {
-      // TODO: (ERROR)
-      setError("Por favor, selecione pelo menos um produto.");
+      toast.error("Por favor, selecione pelo menos um produto.", { closeButton: true });
       return;
     }
     if (!isEditMode && !campus) {
-      // TODO: (ERROR)
-      setError("Por favor, selecione o campus.");
+      toast.error("Por favor, selecione o campus.", { closeButton: true });
       return;
     }
     if (selectedOrderClassification.isMixedInvalid) {
-      setError("Este pedido nao pode misturar categorias especiais com outras categorias.");
+      toast.error("Este pedido nao pode misturar categorias especiais com outras categorias.", {
+        closeButton: true,
+      });
       return;
     }
 
     const guestCheckout = !selectedUser;
     if (guestCheckout) {
       if (isUserRequiredForSelectedOrder && !guestName.trim()) {
-        setError("Por favor, indique o nome do cliente.");
+        toast.error("Por favor, indique o nome do cliente.", { closeButton: true });
         return;
       }
       if (isUserRequiredForSelectedOrder && !guestEmail.trim()) {
-        setError("Por favor, indique o email do cliente.");
+        toast.error("Por favor, indique o email do cliente.", { closeButton: true });
         return;
       }
       if (isUserRequiredForSelectedOrder && !phone.trim()) {
-        setError("Por favor, indique o telemóvel do cliente.");
+        toast.error("Por favor, indique o telemóvel do cliente.", { closeButton: true });
         return;
       }
     }
 
     setIsSubmitting(true);
-    setError(null);
 
     try {
       const orderResponse = await submitOrder(stockOverride);
@@ -602,8 +601,7 @@ export default function NewOrderModal({
       }
 
       if (orderResponse.status === "error") {
-        // TODO: (ERROR)
-        setError(orderResponse.message);
+        toast.error(orderResponse.message, { closeButton: true });
         return;
       }
 
@@ -623,7 +621,6 @@ export default function NewOrderModal({
   };
 
   const startGuestFlow = () => {
-    setError(null);
     setShowGuestConfirm(false);
     if (!isUserRequiredForSelectedOrder) {
       setShowConfirm(true);
@@ -655,9 +652,6 @@ export default function NewOrderModal({
         </Button>
 
         <h2>{isEditMode ? "Editar Encomenda" : "Nova Encomenda"}</h2>
-
-        {/* TODO: replace this inline error with a toast and remove this fallback once Sonner is implemented here. */}
-        {error && <div className={styles.error}>{error}</div>}
 
         <form
           onSubmit={(e) => {
@@ -1031,7 +1025,7 @@ export default function NewOrderModal({
             placeholder="Nome do cliente"
             onConfirm={(value) => {
               if (!value) {
-                setError("Por favor, indique o nome do cliente.");
+                toast.error("Por favor, indique o nome do cliente.", { closeButton: true });
                 return;
               }
               setGuestName(value);
@@ -1051,7 +1045,7 @@ export default function NewOrderModal({
             type="email"
             onConfirm={(value) => {
               if (!value) {
-                setError("Por favor, indique o email do cliente.");
+                toast.error("Por favor, indique o email do cliente.", { closeButton: true });
                 return;
               }
               setGuestEmail(value);
@@ -1071,7 +1065,7 @@ export default function NewOrderModal({
             type="tel"
             onConfirm={(value) => {
               if (!value) {
-                setError("Por favor, indique o telemóvel do cliente.");
+                toast.error("Por favor, indique o telemóvel do cliente.", { closeButton: true });
                 return;
               }
               setPhone(value);
