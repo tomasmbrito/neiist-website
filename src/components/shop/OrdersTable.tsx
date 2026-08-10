@@ -110,7 +110,16 @@ export default function OrdersTable({ orders, products }: OrdersTableProps) {
 
   const uniqueProducts = useMemo(() => {
     const productNameSet = new Set<string>();
-    orders.forEach((order) => order.items.forEach((item) => productNameSet.add(item.product_name)));
+    orders.forEach((order) =>
+      order.items.forEach((item) => {
+        const { text: variantText } = formatVariantSimple(
+          item.variant_options ?? undefined,
+          item.variant_label ?? undefined
+        );
+        const name = variantText ? `${item.product_name} ${variantText}`.trim() : item.product_name;
+        productNameSet.add(name);
+      })
+    );
     return [...productNameSet].sort();
   }, [orders]);
 
@@ -162,7 +171,16 @@ export default function OrdersTable({ orders, products }: OrdersTableProps) {
 
     if (filters.products.length > 0) {
       list = list.filter((order) =>
-        order.items.some((item) => filters.products.includes(item.product_name))
+        order.items.some((item) => {
+          const { text: variantText } = formatVariantSimple(
+            item.variant_options ?? undefined,
+            item.variant_label ?? undefined
+          );
+          const name = variantText
+            ? `${item.product_name} ${variantText}`.trim()
+            : item.product_name;
+          return filters.products.includes(name);
+        })
       );
     }
 
@@ -692,7 +710,7 @@ export default function OrdersTable({ orders, products }: OrdersTableProps) {
                     key={String(order.id)}
                     onClick={() => handleRowClick(order.id)}
                     style={{ cursor: "pointer" }}>
-                    <td className={styles.checkboxCell}>
+                    <td className={styles.checkboxCell} data-label="Selecionar">
                       <div
                         role="button"
                         tabIndex={0}
@@ -704,13 +722,15 @@ export default function OrdersTable({ orders, products }: OrdersTableProps) {
                         {selectedOrders.has(String(order.id)) && <FiCheck size={16} />}
                       </div>
                     </td>
-                    <td>{order.order_number}</td>
-                    <td>{new Date(order.created_at).toLocaleDateString("pt-PT")}</td>
-                    <td>{getFirstAndLastName(order.customer_name)}</td>
-                    <td className={styles.campusCell}>
+                    <td data-label="Número">{order.order_number}</td>
+                    <td data-label="Data">
+                      {new Date(order.created_at).toLocaleDateString("pt-PT")}
+                    </td>
+                    <td data-label="Nome">{getFirstAndLastName(order.customer_name)}</td>
+                    <td className={styles.campusCell} data-label="Campus">
                       {order.campus ? displayCampus(normalizeCampus(order.campus)) : "-"}
                     </td>
-                    <td>
+                    <td data-label="Email">
                       <a
                         href={`mailto:${order.customer_email}`}
                         className={styles.emailCell}
@@ -718,15 +738,15 @@ export default function OrdersTable({ orders, products }: OrdersTableProps) {
                         {order.customer_email}
                       </a>
                     </td>
-                    <td className={styles.productsCell}>
+                    <td className={styles.productsCell} data-label="Produtos">
                       {getCompactProductsSummary(order.items).map((line, i) => (
                         <div key={i} className={styles.productLine}>
                           {line}
                         </div>
                       ))}
                     </td>
-                    <td>{order.total_amount.toFixed(2)}€</td>
-                    <td>
+                    <td data-label="Total">{order.total_amount.toFixed(2)}€</td>
+                    <td data-label="Estado">
                       <span
                         className={`${styles.statusBadge} ${styles[getStatusCssClass(order.status)]}`}>
                         {getOrderStatusLabelForKind(
@@ -748,6 +768,7 @@ export default function OrdersTable({ orders, products }: OrdersTableProps) {
               </tbody>
             </table>
           </div>
+          <div className={styles.counter}>{filtered.length} encomenda(s)</div>
         </div>
       </div>
 
