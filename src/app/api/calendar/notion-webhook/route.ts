@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import pLimit from "p-limit";
 import { Client } from "@notionhq/client";
 import crypto from "crypto";
-import fs from "fs/promises";
-import path from "path";
 import type { NotionPage, NotionApiResponse } from "@/types/notion";
 import { mapNotionResultToPage } from "@/types/notion";
 import type { NotionEvent } from "@/types/events";
@@ -14,7 +12,6 @@ import { parseNotionPageToEvent } from "@/utils/eventsUtils";
 
 const NOTION_API_KEY = process.env.NOTION_API_KEY!;
 const DATABASE_ID = process.env.DATABASE_ID!;
-const ENV_PATH = path.resolve(process.cwd(), ".env");
 
 type NotionWebhookPayload = {
   verification_token?: string;
@@ -100,30 +97,52 @@ async function syncAllEventsToGoogleCalendars(events: NotionEvent[]) {
   return totals;
 }
 
-async function getVerificationToken(): Promise<string | undefined> {
+function getVerificationToken(): string | undefined {
   return process.env.VERIFICATION_TOKEN;
 }
 
-async function saveVerificationTokenToEnv(token: string) {
-  let env = "";
-  try {
-    env = await fs.readFile(ENV_PATH, "utf8");
-  } catch {
-    env = "";
-  }
+// The endpoint is unauthenticated by necessity (the handshake precedes any shared secret), so
+// bound the body before buffering it. Notion webhook payloads are a few KB at most.
+const MAX_BODY_BYTES = 64 * 1024;
 
-  if (/^VERIFICATION_TOKEN=.*/m.test(env)) {
-    env = env.replace(/^VERIFICATION_TOKEN=.*/m, `VERIFICATION_TOKEN=${token}`);
-  } else {
-    if (!env.endsWith("\n")) env += "\n";
-    env += `VERIFICATION_TOKEN=${token}\n`;
-  }
+// Notion verification tokens are URL-safe strings. Anything else is not from Notion, and must
+// never reach the log: the token is written to the log for an operator to copy, so a value
+// containing newlines could forge a second, convincing handshake line and trick them into
+// installing an attacker-chosen HMAC key.
+const NOTION_TOKEN_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
-  await fs.writeFile(ENV_PATH, env, "utf8");
+/**
+ * Constant-time comparison of the Notion request signature.
+ * Returns false on any malformed input rather than throwing.
+ */
+function hasValidSignature(req: NextRequest, bodyText: string, secret: string): boolean {
+  // Headers.get is case-insensitive per spec, so one lookup covers every casing.
+  const signatureHeader = req.headers.get("x-notion-signature") ?? "";
+  if (!signatureHeader) return false;
+
+  const calculatedSignature =
+    "sha256=" + crypto.createHmac("sha256", secret).update(bodyText, "utf8").digest("hex");
+
+  const expected = Buffer.from(calculatedSignature);
+  const received = Buffer.from(signatureHeader);
+  // timingSafeEqual throws when lengths differ, so guard first. This leaks nothing: `expected`
+  // is always 71 bytes ("sha256=" + 64 hex chars), a public constant. The digest comparison
+  // itself remains constant-time.
+  if (expected.length !== received.length) return false;
+  return crypto.timingSafeEqual(expected, received);
 }
 
 export async function POST(req: NextRequest) {
+  const declaredLength = Number(req.headers.get("content-length") ?? 0);
+  if (declaredLength > MAX_BODY_BYTES) {
+    return new NextResponse("Payload too large", { status: 413 });
+  }
+
   const bodyText = await req.text();
+  if (bodyText.length > MAX_BODY_BYTES) {
+    return new NextResponse("Payload too large", { status: 413 });
+  }
+
   let payload: NotionWebhookPayload;
   try {
     payload = JSON.parse(bodyText) as NotionWebhookPayload;
@@ -131,31 +150,41 @@ export async function POST(req: NextRequest) {
     return new NextResponse("Invalid JSON", { status: 400 });
   }
 
+  const verificationToken = getVerificationToken();
+
+  // One-time Notion subscription handshake. Notion sends the token in the clear, before any
+  // signature can exist, so this branch is necessarily unauthenticated — it must therefore
+  // never persist anything. The operator reads the token from the server log and sets
+  // VERIFICATION_TOKEN by hand. See docs/installation.md § Notion calendar webhook.
   if (payload.verification_token) {
-    await saveVerificationTokenToEnv(payload.verification_token);
+    if (verificationToken) {
+      // Already configured: a further handshake is not something Notion initiates.
+      return new NextResponse("Already verified", { status: 409 });
+    }
+    if (!NOTION_TOKEN_PATTERN.test(payload.verification_token)) {
+      return new NextResponse("Invalid verification token", { status: 400 });
+    }
+    // JSON.stringify escapes any control character that slipped through, so a single log
+    // line stays a single log line.
+    console.warn(
+      "[notion-webhook] Handshake received. Set VERIFICATION_TOKEN to " +
+        `${JSON.stringify(payload.verification_token)} and restart. ` +
+        "Confirm this value against the Notion integration page before trusting it."
+    );
     return NextResponse.json({
-      message: "verification_token saved to .env file. Restart your app to use it.",
-      verification_token: payload.verification_token,
+      message: "Verification token received. Check the server logs to complete setup.",
     });
   }
 
-  const verificationToken = await getVerificationToken();
-  if (verificationToken) {
-    const signatureHeader =
-      req.headers.get("X-Notion-Signature") || req.headers.get("x-notion-signature") || "";
-    const calculatedSignature =
-      "sha256=" +
-      crypto.createHmac("sha256", verificationToken).update(bodyText, "utf8").digest("hex");
-    try {
-      if (
-        !signatureHeader ||
-        !crypto.timingSafeEqual(Buffer.from(calculatedSignature), Buffer.from(signatureHeader))
-      ) {
-        return new NextResponse("Invalid signature", { status: 401 });
-      }
-    } catch {
-      return new NextResponse("Invalid signature", { status: 401 });
-    }
+  // Every other request must be signed. Missing configuration is a rejection, not a bypass:
+  // treating an unset token as "no verification needed" would leave the sync open to anyone.
+  if (!verificationToken) {
+    console.error("[notion-webhook] VERIFICATION_TOKEN is not set; rejecting webhook request.");
+    return new NextResponse("Webhook not configured", { status: 503 });
+  }
+
+  if (!hasValidSignature(req, bodyText, verificationToken)) {
+    return new NextResponse("Invalid signature", { status: 401 });
   }
 
   try {

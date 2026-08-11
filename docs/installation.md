@@ -142,6 +142,29 @@ This guide will help you get a local copy up and running follow these simple ste
 
   Change `[ADMIN]` to another role if needed, [ADMIN], [MEMBER], [GUEST].
 
+## Notion calendar webhook
+
+The calendar sync endpoint (`/api/calendar/notion-webhook`) authenticates Notion's requests
+with an HMAC signature keyed on `VERIFICATION_TOKEN`. Until that variable is set, the endpoint
+returns `503` and performs no sync — this is deliberate, so an unconfigured deployment cannot
+be driven by anyone who finds the URL.
+
+Setting it up is a **one-time manual step**:
+
+1. Register the webhook in Notion, pointing at `https://<your-host>/api/calendar/notion-webhook`.
+2. Notion sends a one-off handshake request containing a `verification_token`. The application
+   **logs it and does not store it** — deliberately, since that request is necessarily
+   unauthenticated and an application should never write its own `.env`.
+3. Find the line in the server log:
+   ```
+   [notion-webhook] Handshake received. Set VERIFICATION_TOKEN to "<token>" and restart.
+   ```
+4. **Confirm the value against the Notion integration page before trusting it.** Anyone can
+   POST a handshake to an unconfigured endpoint, so the log line alone is not proof of origin.
+5. Put it in `.env` as `VERIFICATION_TOKEN=<token>` and restart the app.
+
+Once configured, further handshake attempts are refused with `409`.
+
 ## Next Steps
 
 - Now check out the [contributing docs](/docs/contributing.md) for guidelines on how to submit your changes and collaborate with the team.
