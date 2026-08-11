@@ -5,19 +5,27 @@ import { Readable } from "stream";
 import fs from "fs/promises";
 import { getUserFromJWT } from "@/utils/authUtils";
 
-const CREDENTIALS_PATH = process.env.GOOGLE_CLIENT_SECRET_JSON!;
-const TOKEN_PATH = process.env.GDRIVE_TOKEN_PATH!;
-const SWEATS_FOLDER_ID = process.env.GDRIVE_SWEATS_FOLDER_ID!;
 const MAX_SUBMISSIONS = 3;
 const CONTEST_ACTIVE = false;
 
-if (!CREDENTIALS_PATH) throw new Error("Missing env: GOOGLE_CLIENT_SECRET_JSON");
-if (!TOKEN_PATH) throw new Error("Missing env: GDRIVE_TOKEN_PATH");
-if (!SWEATS_FOLDER_ID) throw new Error("Missing env: GDRIVE_SWEATS_FOLDER_ID");
+/**
+ * Reads and validates the Drive env vars. Called lazily from request handling so that
+ * importing this module (e.g. during `next build`) never requires credentials.
+ */
+function getDriveConfig() {
+  const credentialsPath = process.env.GOOGLE_CLIENT_SECRET_JSON;
+  const tokenPath = process.env.GDRIVE_TOKEN_PATH;
+  const sweatsFolderId = process.env.GDRIVE_SWEATS_FOLDER_ID;
+  if (!credentialsPath) throw new Error("Missing env: GOOGLE_CLIENT_SECRET_JSON");
+  if (!tokenPath) throw new Error("Missing env: GDRIVE_TOKEN_PATH");
+  if (!sweatsFolderId) throw new Error("Missing env: GDRIVE_SWEATS_FOLDER_ID");
+  return { credentialsPath, tokenPath, sweatsFolderId };
+}
 
 async function getGoogleDriveClient() {
-  const credentials = JSON.parse(await fs.readFile(CREDENTIALS_PATH, "utf8"));
-  const token = JSON.parse(await fs.readFile(TOKEN_PATH, "utf8"));
+  const { credentialsPath, tokenPath } = getDriveConfig();
+  const credentials = JSON.parse(await fs.readFile(credentialsPath, "utf8"));
+  const token = JSON.parse(await fs.readFile(tokenPath, "utf8"));
   const oAuth2Client = new google.auth.OAuth2(
     credentials.installed.client_id,
     credentials.installed.client_secret,
@@ -32,10 +40,11 @@ function escapeDriveQueryString(value: string): string {
 }
 
 async function getUserSubmissions(username: string): Promise<Array<{ id: string; name: string }>> {
+  const { sweatsFolderId } = getDriveConfig();
   const drive = await getGoogleDriveClient();
   const safeUsername = escapeDriveQueryString(username);
   const res = await drive.files.list({
-    q: `'${SWEATS_FOLDER_ID}' in parents and name contains '${safeUsername}_' and trashed=false`,
+    q: `'${sweatsFolderId}' in parents and name contains '${safeUsername}_' and trashed=false`,
     fields: "files(id, name, createdTime)",
     spaces: "drive",
     orderBy: "createdTime desc",
@@ -50,6 +59,7 @@ async function deleteOldestSubmission(submissions: Array<{ id: string; name: str
 }
 
 async function uploadSubmission(fileBuffer: Buffer, filename: string) {
+  const { sweatsFolderId } = getDriveConfig();
   const drive = await getGoogleDriveClient();
   const bufferStream = new Readable();
   bufferStream.push(fileBuffer);
@@ -58,7 +68,7 @@ async function uploadSubmission(fileBuffer: Buffer, filename: string) {
   const driveRes = await drive.files.create({
     requestBody: {
       name: filename,
-      parents: [SWEATS_FOLDER_ID],
+      parents: [sweatsFolderId],
       mimeType: "application/zip",
     },
     media: {
