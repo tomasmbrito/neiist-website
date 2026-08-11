@@ -16,7 +16,7 @@ export interface User {
   github?: string;
   linkedin?: string;
 }
-interface dbUser {
+interface DbUser {
   istid: string;
   name: string;
   email: string;
@@ -54,7 +54,7 @@ export function mapRoleToUserRole(role: string): UserRole {
   }
 }
 
-export function mapdbUserToUser(dbUser: dbUser): User {
+export function mapDbUserToUser(dbUser: DbUser): User {
   // If userRoles empty, user is guest.
   let userRoles: UserRole[];
   if (!dbUser.roles || dbUser.roles.length === 0) {

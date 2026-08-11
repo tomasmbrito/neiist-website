@@ -3,12 +3,12 @@ export interface Category {
   name: string;
 }
 
-export interface dbCategory {
+export interface DbCategory {
   category_id: number;
   category_name: string;
 }
 
-export function mapdbCategoryToCategory(row: dbCategory): Category {
+export function mapDbCategoryToCategory(row: DbCategory): Category {
   return {
     id: row.category_id,
     name: row.category_name,

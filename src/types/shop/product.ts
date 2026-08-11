@@ -12,18 +12,18 @@ export interface Product {
   variants: ProductVariant[];
 }
 
-export interface dbProduct {
+export interface DbProduct {
   id: number;
   name: string;
   description: string | null;
   price: string | number;
-  images: string[] | null;
+  images: string[];
   category: string | null;
   stock_type: string;
   stock_quantity: number | null;
   order_deadline: string | null;
-  active: boolean | null;
-  variants: dbProductVariant[] | null;
+  active: boolean;
+  variants: DbProductVariant[] | null;
 }
 
 export interface ProductVariant {
@@ -37,12 +37,12 @@ export interface ProductVariant {
   label?: string;
 }
 
-export interface dbProductVariant {
+export interface DbProductVariant {
   id: number;
-  product_id?: number | null;
+  product_id: number;
   sku: string | null;
-  images: string[] | null;
-  price_modifier: number | string | null;
+  images: string[];
+  price_modifier: number | string;
   stock_quantity: number | null;
   active: boolean;
   options: Record<string, string> | null;
@@ -133,7 +133,7 @@ export function restoreVariantOptionOrder(
   }));
 }
 
-export function mapdbProductToProduct(row: dbProduct): Product {
+export function mapDbProductToProduct(row: DbProduct): Product {
   const mappedVariants = (row.variants ?? []).map(
     (variant): ProductVariant => ({
       id: variant.id,

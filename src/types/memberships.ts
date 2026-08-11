@@ -9,7 +9,7 @@ export interface Role {
   access: "guest" | "shop_manager" | "member" | "coordinator" | "admin";
 }
 
-export interface dbRole {
+export interface DbRole {
   roleName?: string;
   role_name?: string;
   access: string;
@@ -28,7 +28,7 @@ export interface Membership {
   userPhoto: string;
 }
 
-export interface dbMembership {
+export interface DbMembership {
   user_istid: string;
   user_name: string;
   department_name: string;
@@ -38,8 +38,8 @@ export interface dbMembership {
   active: boolean;
 }
 
-export function mapdbMembershipToMembership(
-  raw: dbMembership,
+export function mapDbMembershipToMembership(
+  raw: DbMembership,
   userEmail = "",
   userPhoto = "",
   index = 0

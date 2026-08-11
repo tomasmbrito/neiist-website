@@ -17,8 +17,8 @@ export interface DiscountCode {
   current_uses: number;
   expires_at?: string | null;
   active: boolean;
-  created_at?: string;
-  updated_at?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface DiscountCodeInput {
@@ -62,7 +62,7 @@ export interface DiscountCodeUpdateInput {
   active?: boolean;
 }
 
-export interface dbDiscountCode {
+export interface DbDiscountCode {
   id: number;
   code: string;
   discount_type: string;
@@ -87,7 +87,7 @@ export interface DiscountValidationResult {
   error?: string | null;
 }
 
-export function mapdbDiscountCodeToDiscountCode(row: dbDiscountCode): DiscountCode {
+export function mapDbDiscountCodeToDiscountCode(row: DbDiscountCode): DiscountCode {
   return {
     id: row.id,
     code: row.code,

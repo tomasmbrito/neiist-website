@@ -30,14 +30,6 @@
   color: var(--quaternary-colour);
 }
 
-.subtitle {
-  margin-top: 0;
-  margin-bottom: 8rem;
-  color: var(--secondary-colour);
-  font-size: 1.25rem;
-  font-weight: 600;
-  text-align: center;
-}
 
 .heroImage {
   display: flex;

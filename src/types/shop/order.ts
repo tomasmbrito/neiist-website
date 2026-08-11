@@ -31,12 +31,12 @@ export interface Order {
   payment_checked_by?: string;
   delivered_at?: string;
   delivered_by?: string;
-  updated_at?: string;
+  updated_at: string;
   updated_by?: string;
   status: OrderStatus;
 }
 
-export interface dbOrder {
+export interface DbOrder {
   id: number;
   order_number: string;
   customer_name: string;
@@ -46,7 +46,7 @@ export interface dbOrder {
   customer_nif: string | null;
   campus: string | null;
   pickup_deadline: string | null;
-  items: dbOrderItem[] | null;
+  items: DbOrderItem[] | null;
   notes: string | null;
   discount_code: string | null;
   discount_amount: string | number | null;
@@ -59,7 +59,7 @@ export interface dbOrder {
   payment_checked_by: string | null;
   delivered_at: string | null;
   delivered_by: string | null;
-  updated_at: string | null;
+  updated_at: string;
   updated_by: string | null;
   status: string;
 }
@@ -75,7 +75,7 @@ export interface OrderItem {
   total_price: number;
 }
 
-export interface dbOrderItem {
+export interface DbOrderItem {
   product_id: number;
   product_name: string;
   variant_id: number | null;
@@ -86,7 +86,7 @@ export interface dbOrderItem {
   total_price: number | string;
 }
 
-export function mapdbOrderToOrder(row: dbOrder): Order {
+export function mapDbOrderToOrder(row: DbOrder): Order {
   return {
     id: row.id,
     order_number: row.order_number,
@@ -121,7 +121,7 @@ export function mapdbOrderToOrder(row: dbOrder): Order {
     payment_checked_by: row.payment_checked_by ?? undefined,
     delivered_at: row.delivered_at ?? undefined,
     delivered_by: row.delivered_by ?? undefined,
-    updated_at: row.updated_at ?? undefined,
+    updated_at: row.updated_at,
     updated_by: row.updated_by ?? undefined,
     status: row.status as Order["status"],
   };
