@@ -1,5 +1,5 @@
 import { db_query } from "../connection";
-import { Membership, dbMembership, mapdbMembershipToMembership } from "@/types/memberships";
+import { Membership, DbMembership, mapDbMembershipToMembership } from "@/types/memberships";
 import { UserRepository } from "./user.repository";
 
 export class TeamRepository {
@@ -268,14 +268,14 @@ export class TeamRepository {
   static async getAllMemberships(): Promise<Membership[]> {
     try {
       const [dbMemberships, users] = await Promise.all([
-        db_query<dbMembership>("SELECT * FROM neiist.get_all_memberships()").then(
+        db_query<DbMembership>("SELECT * FROM neiist.get_all_memberships()").then(
           (res) => res.rows
         ),
         UserRepository.getAllUsers(),
       ]);
       return dbMemberships.map((raw, idx) => {
         const user = users.find((u) => u.istid === raw.user_istid);
-        return mapdbMembershipToMembership(raw, user?.email || "", user?.photo || "", idx);
+        return mapDbMembershipToMembership(raw, user?.email || "", user?.photo || "", idx);
       });
     } catch (error) {
       console.error("Error fetching memberships:", error);

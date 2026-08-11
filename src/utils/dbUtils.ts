@@ -1,26 +1,26 @@
 import { Pool, QueryResult, QueryResultRow } from "pg";
-import { Membership, dbMembership, mapdbMembershipToMembership } from "@/types/memberships";
-import { User, mapRoleToUserRole, mapdbUserToUser } from "@/types/user";
+import { Membership, DbMembership, mapDbMembershipToMembership } from "@/types/memberships";
+import { User, mapRoleToUserRole, mapDbUserToUser } from "@/types/user";
 import { ValidationError } from "@/lib/errors";
 import {
   Product,
   ProductVariant,
-  dbProduct,
-  dbProductVariant,
+  DbProduct,
+  DbProductVariant,
   decodeVariantOptionsFromStorage,
   encodeVariantOptionsForStorage,
-  mapdbProductToProduct,
+  mapDbProductToProduct,
 } from "@/types/shop/product";
-import { Order, dbOrder, mapdbOrderToOrder } from "@/types/shop/order";
+import { Order, DbOrder, mapDbOrderToOrder } from "@/types/shop/order";
 import { OrderStatus } from "@/types/shop/orderStatus";
-import { Category, dbCategory, mapdbCategoryToCategory } from "@/types/shop/category";
+import { Category, DbCategory, mapDbCategoryToCategory } from "@/types/shop/category";
 import {
   DiscountCode,
   DiscountCodeInput,
   DiscountCodeUpdateInput,
   DiscountValidationResult,
-  dbDiscountCode,
-  mapdbDiscountCodeToDiscountCode,
+  DbDiscountCode,
+  mapDbDiscountCodeToDiscountCode,
 } from "@/types/shop/discountCode";
 import { isSpecialCategory } from "@/utils/shop/orderKindUtils";
 import { SPECIAL_CATEGORIES } from "@/types/shop/orderKind";
@@ -69,7 +69,7 @@ export const createUser = async (user: Partial<User>): Promise<User | null> => {
     );
     if (!newUser) return null;
     newUser.roles = newUser.roles?.map(mapRoleToUserRole);
-    return newUser ? mapdbUserToUser(newUser) : null;
+    return newUser ? mapDbUserToUser(newUser) : null;
   } catch (error) {
     console.error("Error creating user:", error);
     return null;
@@ -86,7 +86,7 @@ export const updateUser = async (istid: string, updates: Partial<User>): Promise
     ]);
     if (!updatedUser) return null;
     updatedUser.roles = updatedUser.roles?.map(mapRoleToUserRole);
-    return updatedUser ? mapdbUserToUser(updatedUser) : null;
+    return updatedUser ? mapDbUserToUser(updatedUser) : null;
   } catch (error) {
     console.error("Error updating user:", error);
     return null;
@@ -113,14 +113,14 @@ export const getUser = async (istid: string): Promise<User | null> => {
     } = await db_query<User>("SELECT * FROM neiist.get_user($1::VARCHAR(50))", [istid]);
     if (!user) return null;
     const dbMemberships = (
-      await db_query<dbMembership>(
+      await db_query<DbMembership>(
         "SELECT * FROM neiist.get_all_memberships() WHERE user_istid = $1 AND active = TRUE",
         [istid]
       )
     ).rows;
 
     const memberships: Membership[] = dbMemberships.map((raw, idx) =>
-      mapdbMembershipToMembership(raw, user.email, user.photo, idx)
+      mapDbMembershipToMembership(raw, user.email, user.photo, idx)
     );
     let highest: { roleName: string; position: number } | null = null;
     const normalize = (s: string) =>
@@ -150,7 +150,7 @@ export const getUser = async (istid: string): Promise<User | null> => {
     const positionName = highest?.roleName ?? memberships[0]?.roleName ?? null;
 
     return {
-      ...mapdbUserToUser(user),
+      ...mapDbUserToUser(user),
       positionName,
     };
   } catch (error) {
@@ -162,7 +162,7 @@ export const getUser = async (istid: string): Promise<User | null> => {
 export const getAllUsers = async (): Promise<User[]> => {
   try {
     const { rows } = await db_query<User>("SELECT * FROM neiist.get_all_users()");
-    return rows.map(mapdbUserToUser);
+    return rows.map(mapDbUserToUser);
   } catch (error) {
     console.error("Error fetching all users:", error);
     return [];
@@ -235,7 +235,7 @@ export const getUsersByAccess = async (access: string): Promise<User[]> => {
       "SELECT istid, name, email, phone, courses, campus, photo_path as photo FROM neiist.get_users_by_access($1)",
       [access]
     );
-    return rows.map(mapdbUserToUser);
+    return rows.map(mapDbUserToUser);
   } catch (error) {
     console.error("Error fetching users by access:", error);
     return [];
@@ -520,12 +520,12 @@ export const removeTeamMember = async (
 export const getAllMemberships = async (): Promise<Membership[]> => {
   try {
     const [dbMemberships, users] = await Promise.all([
-      db_query<dbMembership>("SELECT * FROM neiist.get_all_memberships()").then((res) => res.rows),
+      db_query<DbMembership>("SELECT * FROM neiist.get_all_memberships()").then((res) => res.rows),
       getAllUsers(),
     ]);
     return dbMemberships.map((raw, idx) => {
       const user = users.find((u) => u.istid === raw.user_istid);
-      return mapdbMembershipToMembership(raw, user?.email || "", user?.photo || "", idx);
+      return mapDbMembershipToMembership(raw, user?.email || "", user?.photo || "", idx);
     });
   } catch (error) {
     console.error("Error fetching memberships:", error);
@@ -651,7 +651,7 @@ export const addProduct = async (
 ): Promise<Product | null> => {
   const {
     rows: [row],
-  } = await db_query<dbProduct>(`SELECT * FROM neiist.add_product($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [
+  } = await db_query<DbProduct>(`SELECT * FROM neiist.add_product($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [
     product.name,
     product.description ?? null,
     product.price,
@@ -662,7 +662,7 @@ export const addProduct = async (
     product.order_deadline ?? null,
     product.active ?? true,
   ]);
-  return row ? mapdbProductToProduct(row) : null;
+  return row ? mapDbProductToProduct(row) : null;
 };
 
 export const addProductVariant = async (
@@ -671,7 +671,7 @@ export const addProductVariant = async (
 ): Promise<Product | null> => {
   const {
     rows: [row],
-  } = await db_query<dbProduct>(`SELECT * FROM neiist.add_product_variant($1,$2,$3,$4,$5,$6,$7)`, [
+  } = await db_query<DbProduct>(`SELECT * FROM neiist.add_product_variant($1,$2,$3,$4,$5,$6,$7)`, [
     productId,
     variant.sku ?? null,
     variant.images ?? [],
@@ -680,22 +680,22 @@ export const addProductVariant = async (
     variant.active ?? true,
     JSON.stringify(encodeVariantOptionsForStorage(variant.options ?? {})),
   ]);
-  return row ? mapdbProductToProduct(row) : null;
+  return row ? mapDbProductToProduct(row) : null;
 };
 
 export const getAllProducts = async (includeSpecial: boolean = false): Promise<Product[]> => {
-  const { rows } = await db_query<dbProduct>(`SELECT * FROM neiist.get_all_products()`);
-  const products = rows.map(mapdbProductToProduct);
+  const { rows } = await db_query<DbProduct>(`SELECT * FROM neiist.get_all_products()`);
+  const products = rows.map(mapDbProductToProduct);
   return includeSpecial
     ? products
     : products.filter((product) => !isSpecialCategory(product.category));
 };
 
 export const getAllProductsAdmin = async (): Promise<Product[]> => {
-  const { rows } = await db_query<dbProduct>(
+  const { rows } = await db_query<DbProduct>(
     `SELECT * FROM neiist.get_all_products_including_archived()`
   );
-  return rows.map(mapdbProductToProduct);
+  return rows.map(mapDbProductToProduct);
 };
 
 export const deleteProduct = async (productId: number): Promise<void> => {
@@ -709,8 +709,8 @@ export const deleteProductVariant = async (variantId: number): Promise<void> => 
 export const getProduct = async (productId: number): Promise<Product | null> => {
   const {
     rows: [row],
-  } = await db_query<dbProduct>(`SELECT * FROM neiist.get_product($1)`, [productId]);
-  return row ? mapdbProductToProduct(row) : null;
+  } = await db_query<DbProduct>(`SELECT * FROM neiist.get_product($1)`, [productId]);
+  return row ? mapDbProductToProduct(row) : null;
 };
 
 export const updateProduct = async (
@@ -719,11 +719,11 @@ export const updateProduct = async (
 ): Promise<Product | null> => {
   const {
     rows: [row],
-  } = await db_query<dbProduct>(`SELECT * FROM neiist.update_product($1,$2)`, [
+  } = await db_query<DbProduct>(`SELECT * FROM neiist.update_product($1,$2)`, [
     productId,
     JSON.stringify(updates),
   ]);
-  return row ? mapdbProductToProduct(row) : null;
+  return row ? mapDbProductToProduct(row) : null;
 };
 
 export const updateProductVariant = async (
@@ -732,7 +732,7 @@ export const updateProductVariant = async (
 ): Promise<ProductVariant | null> => {
   const {
     rows: [row],
-  } = await db_query<dbProductVariant>(`SELECT * FROM neiist.update_product_variant($1,$2)`, [
+  } = await db_query<DbProductVariant>(`SELECT * FROM neiist.update_product_variant($1,$2)`, [
     variantId,
     JSON.stringify({
       sku: updates.sku,
@@ -760,10 +760,10 @@ export const updateProductVariant = async (
 
 export const getAllDiscountCodes = async (): Promise<DiscountCode[]> => {
   try {
-    const { rows } = await db_query<dbDiscountCode>(
+    const { rows } = await db_query<DbDiscountCode>(
       `SELECT * FROM neiist.get_all_discount_codes()`
     );
-    return rows.map(mapdbDiscountCodeToDiscountCode);
+    return rows.map(mapDbDiscountCodeToDiscountCode);
   } catch (error) {
     console.error("Error fetching discount codes:", error);
     return [];
@@ -776,7 +776,7 @@ export const createDiscountCode = async (
   try {
     const {
       rows: [row],
-    } = await db_query<dbDiscountCode>(
+    } = await db_query<DbDiscountCode>(
       `SELECT * FROM neiist.add_discount_code($1,$2,$3,$4,$5,$6,$7,$8)`,
       [
         discountCode.code,
@@ -789,7 +789,7 @@ export const createDiscountCode = async (
         discountCode.active ?? true,
       ]
     );
-    return row ? mapdbDiscountCodeToDiscountCode(row) : null;
+    return row ? mapDbDiscountCodeToDiscountCode(row) : null;
   } catch (error) {
     console.error("Error creating discount code:", error);
     return null;
@@ -803,11 +803,11 @@ export const updateDiscountCode = async (
   try {
     const {
       rows: [row],
-    } = await db_query<dbDiscountCode>(`SELECT * FROM neiist.update_discount_code($1, $2)`, [
+    } = await db_query<DbDiscountCode>(`SELECT * FROM neiist.update_discount_code($1, $2)`, [
       discountCodeId,
       JSON.stringify(updates),
     ]);
-    return row ? mapdbDiscountCodeToDiscountCode(row) : null;
+    return row ? mapDbDiscountCodeToDiscountCode(row) : null;
   } catch (error) {
     console.error("Error updating discount code:", error);
     return null;
@@ -857,7 +857,7 @@ export const newOrder = async (
 ): Promise<Order | null> => {
   const {
     rows: [row],
-  } = await db_query<dbOrder>(
+  } = await db_query<DbOrder>(
     `SELECT * FROM neiist.new_order($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
     [
       order.user_istid ?? null,
@@ -883,7 +883,7 @@ export const newOrder = async (
   );
   return row
     ? {
-        ...mapdbOrderToOrder(row),
+        ...mapDbOrderToOrder(row),
         mbway_number: getMbWayNumberForOrder(row.order_number),
       }
     : null;
@@ -964,9 +964,9 @@ export function mapDeleteProductDbErrorToResponse(
 }
 
 export const getAllOrders = async (): Promise<Order[]> => {
-  const { rows } = await db_query<dbOrder>(`SELECT * FROM neiist.get_all_orders()`);
+  const { rows } = await db_query<DbOrder>(`SELECT * FROM neiist.get_all_orders()`);
   return rows.map((row) => ({
-    ...mapdbOrderToOrder(row),
+    ...mapDbOrderToOrder(row),
     mbway_number: getMbWayNumberForOrder(row.order_number),
   }));
 };
@@ -974,10 +974,10 @@ export const getAllOrders = async (): Promise<Order[]> => {
 export const getOrderById = async (orderId: number): Promise<Order | null> => {
   const {
     rows: [row],
-  } = await db_query<dbOrder>(`SELECT * FROM neiist.get_order($1, NULL)`, [orderId]);
+  } = await db_query<DbOrder>(`SELECT * FROM neiist.get_order($1, NULL)`, [orderId]);
   return row
     ? {
-        ...mapdbOrderToOrder(row),
+        ...mapDbOrderToOrder(row),
         mbway_number: getMbWayNumberForOrder(row.order_number),
       }
     : null;
@@ -986,10 +986,10 @@ export const getOrderById = async (orderId: number): Promise<Order | null> => {
 export const getOrderByNumber = async (orderNumber: string): Promise<Order | null> => {
   const {
     rows: [row],
-  } = await db_query<dbOrder>(`SELECT * FROM neiist.get_order($1, NULL)`, [orderNumber]);
+  } = await db_query<DbOrder>(`SELECT * FROM neiist.get_order($1, NULL)`, [orderNumber]);
   return row
     ? {
-        ...mapdbOrderToOrder(row),
+        ...mapDbOrderToOrder(row),
         mbway_number: getMbWayNumberForOrder(row.order_number),
       }
     : null;
@@ -1017,13 +1017,13 @@ export const updateOrder = async (
 ): Promise<Order | null> => {
   const {
     rows: [row],
-  } = await db_query<dbOrder>(`SELECT * FROM neiist.update_order($1,$2,$3,$4)`, [
+  } = await db_query<DbOrder>(`SELECT * FROM neiist.update_order($1,$2,$3,$4)`, [
     orderId,
     JSON.stringify(updates),
     stockOverride,
     user_istid ?? null,
   ]);
-  return row ? mapdbOrderToOrder(row) : null;
+  return row ? mapDbOrderToOrder(row) : null;
 };
 
 export const setOrderState = async (
@@ -1033,12 +1033,12 @@ export const setOrderState = async (
 ): Promise<Order | null> => {
   const {
     rows: [row],
-  } = await db_query<dbOrder>(`SELECT * FROM neiist.set_order_state($1,$2,$3)`, [
+  } = await db_query<DbOrder>(`SELECT * FROM neiist.set_order_state($1,$2,$3)`, [
     orderId,
     status,
     user_istid ?? null,
   ]);
-  return row ? mapdbOrderToOrder(row) : null;
+  return row ? mapDbOrderToOrder(row) : null;
 };
 
 export const getAllCategories = async (includeSpecial: boolean = false): Promise<Category[]> => {
@@ -1056,8 +1056,8 @@ export const addCategory = async (name: string): Promise<Category | null> => {
   try {
     const {
       rows: [row],
-    } = await db_query<dbCategory>(`SELECT * FROM neiist.get_or_create_category($1)`, [name]);
-    return row ? mapdbCategoryToCategory(row) : null;
+    } = await db_query<DbCategory>(`SELECT * FROM neiist.get_or_create_category($1)`, [name]);
+    return row ? mapDbCategoryToCategory(row) : null;
   } catch (error) {
     console.error("Error adding category:", error);
     return null;

@@ -97,7 +97,10 @@ export interface SumUpCardErrorBody {
   error_code?: string;
 }
 
-export type SumUpCardResponseBody = SumUpCardSentBody | SumUpCardErrorBody | Record<string, any>;
+export type SumUpCardResponseBody =
+  | SumUpCardSentBody
+  | SumUpCardErrorBody
+  | Record<string, unknown>;
 
 export interface SumUpCardMountOptions {
   checkoutId: string;
@@ -161,7 +164,7 @@ export interface ApplePaySessionInstance {
   oncancel: (() => void) | null;
   begin(): void;
   abort(): void;
-  completeMerchantValidation(_merchantSession: any): void;
+  completeMerchantValidation(_merchantSession: Record<string, unknown>): void;
   completePayment(_status: number): void;
 }
 

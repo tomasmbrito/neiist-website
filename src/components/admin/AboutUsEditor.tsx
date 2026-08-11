@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { User } from "@/types/user";
-import { Membership, Role, dbRole } from "@/types/memberships";
+import { Membership, Role, DbRole } from "@/types/memberships";
 import { DndContext, closestCenter, DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, arrayMove } from "@dnd-kit/sortable";
 import YearSelector from "@/components/about-us/YearSelector";
@@ -94,7 +94,7 @@ export default function AboutUsEditor({
           (res) => res.json()
         ),
       ]).then(([allRolesRaw, orderRaw]) => {
-        const allRoles: Role[] = (allRolesRaw as dbRole[])
+        const allRoles: Role[] = (allRolesRaw as DbRole[])
           .map((role) => ({
             roleName: role.roleName ?? role.role_name,
             access: role.access,

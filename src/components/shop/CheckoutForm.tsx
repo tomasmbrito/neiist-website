@@ -271,7 +271,7 @@ export default function CheckoutForm({ user }: CheckoutFormProps) {
         });
         if (!merchantRes.ok) throw new Error("Falha na validação Apple Pay");
 
-        const merchantSession = (await merchantRes.json()) as unknown;
+        const merchantSession = (await merchantRes.json()) as Record<string, unknown>;
         session.completeMerchantValidation(merchantSession);
       } catch (error) {
         session.abort();

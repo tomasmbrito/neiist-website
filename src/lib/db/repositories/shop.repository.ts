@@ -2,22 +2,22 @@ import { db_query } from "../connection";
 import {
   Product,
   ProductVariant,
-  dbProduct,
-  dbProductVariant,
+  DbProduct,
+  DbProductVariant,
   decodeVariantOptionsFromStorage,
   encodeVariantOptionsForStorage,
-  mapdbProductToProduct,
+  mapDbProductToProduct,
 } from "@/types/shop/product";
-import { Category, dbCategory, mapdbCategoryToCategory } from "@/types/shop/category";
+import { Category, DbCategory, mapDbCategoryToCategory } from "@/types/shop/category";
 import {
   DiscountCode,
   DiscountCodeInput,
   DiscountCodeUpdateInput,
   DiscountValidationResult,
-  dbDiscountCode,
-  mapdbDiscountCodeToDiscountCode,
+  DbDiscountCode,
+  mapDbDiscountCodeToDiscountCode,
 } from "@/types/shop/discountCode";
-import { Order, dbOrder, mapdbOrderToOrder } from "@/types/shop/order";
+import { Order, DbOrder, mapDbOrderToOrder } from "@/types/shop/order";
 import { isSpecialCategory } from "@/utils/shop/orderKindUtils";
 
 export class ShopRepository {
@@ -32,7 +32,7 @@ export class ShopRepository {
   ): Promise<Product | null> {
     const {
       rows: [row],
-    } = await db_query<dbProduct>(`SELECT * FROM neiist.add_product($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [
+    } = await db_query<DbProduct>(`SELECT * FROM neiist.add_product($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [
       product.name,
       product.description ?? null,
       product.price,
@@ -43,7 +43,7 @@ export class ShopRepository {
       product.order_deadline ?? null,
       product.active ?? true,
     ]);
-    return row ? mapdbProductToProduct(row) : null;
+    return row ? mapDbProductToProduct(row) : null;
   }
 
   static async addProductVariant(
@@ -52,7 +52,7 @@ export class ShopRepository {
   ): Promise<Product | null> {
     const {
       rows: [row],
-    } = await db_query<dbProduct>(
+    } = await db_query<DbProduct>(
       `SELECT * FROM neiist.add_product_variant($1,$2,$3,$4,$5,$6,$7)`,
       [
         productId,
@@ -64,22 +64,22 @@ export class ShopRepository {
         JSON.stringify(encodeVariantOptionsForStorage(variant.options ?? {})),
       ]
     );
-    return row ? mapdbProductToProduct(row) : null;
+    return row ? mapDbProductToProduct(row) : null;
   }
 
   static async getAllProducts(includeSpecial: boolean = false): Promise<Product[]> {
-    const { rows } = await db_query<dbProduct>(`SELECT * FROM neiist.get_all_products()`);
-    const products = rows.map(mapdbProductToProduct);
+    const { rows } = await db_query<DbProduct>(`SELECT * FROM neiist.get_all_products()`);
+    const products = rows.map(mapDbProductToProduct);
     return includeSpecial
       ? products
       : products.filter((product) => !isSpecialCategory(product.category));
   }
 
   static async getAllProductsAdmin(): Promise<Product[]> {
-    const { rows } = await db_query<dbProduct>(
+    const { rows } = await db_query<DbProduct>(
       `SELECT * FROM neiist.get_all_products_including_archived()`
     );
-    return rows.map(mapdbProductToProduct);
+    return rows.map(mapDbProductToProduct);
   }
 
   static async deleteProduct(productId: number): Promise<void> {
@@ -93,8 +93,8 @@ export class ShopRepository {
   static async getProduct(productId: number): Promise<Product | null> {
     const {
       rows: [row],
-    } = await db_query<dbProduct>(`SELECT * FROM neiist.get_product($1)`, [productId]);
-    return row ? mapdbProductToProduct(row) : null;
+    } = await db_query<DbProduct>(`SELECT * FROM neiist.get_product($1)`, [productId]);
+    return row ? mapDbProductToProduct(row) : null;
   }
 
   static async updateProduct(
@@ -103,11 +103,11 @@ export class ShopRepository {
   ): Promise<Product | null> {
     const {
       rows: [row],
-    } = await db_query<dbProduct>(`SELECT * FROM neiist.update_product($1,$2)`, [
+    } = await db_query<DbProduct>(`SELECT * FROM neiist.update_product($1,$2)`, [
       productId,
       JSON.stringify(updates),
     ]);
-    return row ? mapdbProductToProduct(row) : null;
+    return row ? mapDbProductToProduct(row) : null;
   }
 
   static async updateProductVariant(
@@ -116,7 +116,7 @@ export class ShopRepository {
   ): Promise<ProductVariant | null> {
     const {
       rows: [row],
-    } = await db_query<dbProductVariant>(`SELECT * FROM neiist.update_product_variant($1,$2)`, [
+    } = await db_query<DbProductVariant>(`SELECT * FROM neiist.update_product_variant($1,$2)`, [
       variantId,
       JSON.stringify({
         sku: updates.sku,
@@ -145,10 +145,10 @@ export class ShopRepository {
   // DISCOUNT CODES
   static async getAllDiscountCodes(): Promise<DiscountCode[]> {
     try {
-      const { rows } = await db_query<dbDiscountCode>(
+      const { rows } = await db_query<DbDiscountCode>(
         `SELECT * FROM neiist.get_all_discount_codes()`
       );
-      return rows.map(mapdbDiscountCodeToDiscountCode);
+      return rows.map(mapDbDiscountCodeToDiscountCode);
     } catch (error) {
       console.error("Error fetching discount codes:", error);
       return [];
@@ -159,7 +159,7 @@ export class ShopRepository {
     try {
       const {
         rows: [row],
-      } = await db_query<dbDiscountCode>(
+      } = await db_query<DbDiscountCode>(
         `SELECT * FROM neiist.add_discount_code($1,$2,$3,$4,$5,$6,$7,$8)`,
         [
           discountCode.code,
@@ -172,7 +172,7 @@ export class ShopRepository {
           discountCode.active ?? true,
         ]
       );
-      return row ? mapdbDiscountCodeToDiscountCode(row) : null;
+      return row ? mapDbDiscountCodeToDiscountCode(row) : null;
     } catch (error) {
       console.error("Error creating discount code:", error);
       return null;
@@ -186,11 +186,11 @@ export class ShopRepository {
     try {
       const {
         rows: [row],
-      } = await db_query<dbDiscountCode>(`SELECT * FROM neiist.update_discount_code($1,$2)`, [
+      } = await db_query<DbDiscountCode>(`SELECT * FROM neiist.update_discount_code($1,$2)`, [
         discountCodeId,
         JSON.stringify(updates),
       ]);
-      return row ? mapdbDiscountCodeToDiscountCode(row) : null;
+      return row ? mapDbDiscountCodeToDiscountCode(row) : null;
     } catch (error) {
       console.error("Error updating discount code:", error);
       return null;
@@ -225,8 +225,8 @@ export class ShopRepository {
   // CATEGORIES
   static async getAllCategories(includeSpecial: boolean = false): Promise<Category[]> {
     try {
-      const { rows } = await db_query<dbCategory>(`SELECT * FROM neiist.get_all_categories()`);
-      const categories = rows.map(mapdbCategoryToCategory);
+      const { rows } = await db_query<DbCategory>(`SELECT * FROM neiist.get_all_categories()`);
+      const categories = rows.map(mapDbCategoryToCategory);
       return includeSpecial ? categories : categories.filter((c) => !isSpecialCategory(c.name));
     } catch (error) {
       console.error("Error fetching categories:", error);
@@ -238,8 +238,8 @@ export class ShopRepository {
     try {
       const {
         rows: [row],
-      } = await db_query<dbCategory>(`SELECT * FROM neiist.get_or_create_category($1)`, [name]);
-      return row ? mapdbCategoryToCategory(row) : null;
+      } = await db_query<DbCategory>(`SELECT * FROM neiist.get_or_create_category($1)`, [name]);
+      return row ? mapDbCategoryToCategory(row) : null;
     } catch (error) {
       console.error("Error adding category:", error);
       return null;
@@ -254,7 +254,7 @@ export class ShopRepository {
     try {
       const {
         rows: [row],
-      } = await db_query<dbOrder>(
+      } = await db_query<DbOrder>(
         `SELECT * FROM neiist.new_order($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
         [
           order.user_istid ?? null,
@@ -278,7 +278,7 @@ export class ShopRepository {
           stockOverride,
         ]
       );
-      return row ? mapdbOrderToOrder(row) : null;
+      return row ? mapDbOrderToOrder(row) : null;
     } catch (error) {
       console.error("Error creating order:", error);
       throw error;
@@ -287,8 +287,8 @@ export class ShopRepository {
 
   static async getAllOrders(): Promise<Order[]> {
     try {
-      const { rows } = await db_query<dbOrder>(`SELECT * FROM neiist.get_all_orders()`);
-      return rows.map(mapdbOrderToOrder);
+      const { rows } = await db_query<DbOrder>(`SELECT * FROM neiist.get_all_orders()`);
+      return rows.map(mapDbOrderToOrder);
     } catch (error) {
       console.error("Error fetching orders:", error);
       return [];
@@ -299,8 +299,8 @@ export class ShopRepository {
     try {
       const {
         rows: [row],
-      } = await db_query<dbOrder>(`SELECT * FROM neiist.get_order($1, NULL)`, [orderId]);
-      return row ? mapdbOrderToOrder(row) : null;
+      } = await db_query<DbOrder>(`SELECT * FROM neiist.get_order($1, NULL)`, [orderId]);
+      return row ? mapDbOrderToOrder(row) : null;
     } catch (error) {
       console.error("Error fetching order by ID:", error);
       return null;
@@ -311,8 +311,8 @@ export class ShopRepository {
     try {
       const {
         rows: [row],
-      } = await db_query<dbOrder>(`SELECT * FROM neiist.get_order(NULL, $1)`, [orderNumber]);
-      return row ? mapdbOrderToOrder(row) : null;
+      } = await db_query<DbOrder>(`SELECT * FROM neiist.get_order(NULL, $1)`, [orderNumber]);
+      return row ? mapDbOrderToOrder(row) : null;
     } catch (error) {
       console.error("Error fetching order by number:", error);
       return null;
@@ -344,13 +344,13 @@ export class ShopRepository {
     try {
       const {
         rows: [row],
-      } = await db_query<dbOrder>(`SELECT * FROM neiist.update_order($1, $2, $3, $4::UUID)`, [
+      } = await db_query<DbOrder>(`SELECT * FROM neiist.update_order($1, $2, $3, $4::UUID)`, [
         orderId,
         JSON.stringify(updates),
         stockOverride,
         updatedBy,
       ]);
-      return row ? mapdbOrderToOrder(row) : null;
+      return row ? mapDbOrderToOrder(row) : null;
     } catch (error) {
       console.error("Error updating order:", error);
       throw error;

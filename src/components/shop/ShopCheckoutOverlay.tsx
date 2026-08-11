@@ -242,7 +242,7 @@ export default function ShopCheckoutOverlay({ orderId, paymentMethod }: Props) {
         });
         if (!res.ok) throw new Error("Merchant validation failed");
 
-        const merchantSession = (await res.json()) as unknown;
+        const merchantSession = (await res.json()) as Record<string, unknown>;
         session.completeMerchantValidation(merchantSession);
       } catch (err) {
         console.error("Apple Pay merchant validation error:", err);

@@ -1,6 +1,6 @@
-import { User, mapRoleToUserRole, mapdbUserToUser } from "@/types/user";
+import { User, mapRoleToUserRole, mapDbUserToUser } from "@/types/user";
 import { db_query } from "../connection";
-import { dbMembership, Membership, mapdbMembershipToMembership } from "@/types/memberships";
+import { DbMembership, Membership, mapDbMembershipToMembership } from "@/types/memberships";
 
 export class UserRepository {
   static async createUser(user: Partial<User>): Promise<User | null> {
@@ -22,7 +22,7 @@ export class UserRepository {
       );
       if (!newUser) return null;
       newUser.roles = newUser.roles?.map(mapRoleToUserRole);
-      return newUser ? mapdbUserToUser(newUser) : null;
+      return newUser ? mapDbUserToUser(newUser) : null;
     } catch (error) {
       console.error("Error creating user:", error);
       return null;
@@ -39,7 +39,7 @@ export class UserRepository {
       ]);
       if (!updatedUser) return null;
       updatedUser.roles = updatedUser.roles?.map(mapRoleToUserRole);
-      return updatedUser ? mapdbUserToUser(updatedUser) : null;
+      return updatedUser ? mapDbUserToUser(updatedUser) : null;
     } catch (error) {
       console.error("Error updating user:", error);
       return null;
@@ -64,14 +64,14 @@ export class UserRepository {
       if (!user) return null;
 
       const dbMemberships = (
-        await db_query<dbMembership>(
+        await db_query<DbMembership>(
           "SELECT * FROM neiist.get_all_memberships() WHERE user_istid = $1 AND active = TRUE",
           [id]
         )
       ).rows;
 
       const memberships: Membership[] = dbMemberships.map((raw, idx) =>
-        mapdbMembershipToMembership(raw, user.email, user.photo, idx)
+        mapDbMembershipToMembership(raw, user.email, user.photo, idx)
       );
       let highest: { roleName: string; position: number } | null = null;
       const normalize = (s: string) =>
@@ -110,7 +110,7 @@ export class UserRepository {
       const positionName = highest?.roleName ?? memberships[0]?.roleName ?? null;
 
       return {
-        ...mapdbUserToUser(user),
+        ...mapDbUserToUser(user),
         positionName,
       };
     } catch (error) {
@@ -136,7 +136,7 @@ export class UserRepository {
   static async getAllUsers(): Promise<User[]> {
     try {
       const { rows } = await db_query<User>("SELECT * FROM neiist.get_all_users()");
-      return rows.map(mapdbUserToUser);
+      return rows.map(mapDbUserToUser);
     } catch (error) {
       console.error("Error fetching all users:", error);
       return [];
@@ -149,7 +149,7 @@ export class UserRepository {
         "SELECT id, istid, name, email, phone, courses, campus, photo_path as photo FROM neiist.get_users_by_access($1)",
         [access]
       );
-      return rows.map(mapdbUserToUser);
+      return rows.map(mapDbUserToUser);
     } catch (error) {
       console.error("Error fetching users by access:", error);
       return [];
