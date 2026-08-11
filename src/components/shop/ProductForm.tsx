@@ -89,7 +89,7 @@ function ImageGrid({
           <input
             ref={inputRef}
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png"
             multiple
             hidden
             onChange={(e) => {
@@ -175,7 +175,19 @@ async function uploadFiles(files: File[]): Promise<string[]> {
   const fd = new FormData();
   files.forEach((f) => fd.append("files", f));
   const res = await fetch("/api/shop/uploads", { method: "POST", body: fd });
-  if (!res.ok) throw new Error("Upload failed");
+  if (!res.ok) {
+    // The route rejects for several distinct reasons (expired session, wrong role, file too
+    // large, unsupported type). Surfacing its message tells the user which one, instead of
+    // losing a half-filled product form to a generic "Upload failed".
+    const message = await res
+      .json()
+      .then((d) => d?.error)
+      .catch(() => null);
+    throw new Error(
+      message ??
+        (res.status === 401 ? "Sessão expirada. Inicia sessão novamente." : "Upload falhou")
+    );
+  }
   const data = await res.json();
   return data.paths ?? [];
 }

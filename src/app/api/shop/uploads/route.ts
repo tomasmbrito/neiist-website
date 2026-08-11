@@ -9,6 +9,7 @@ import { serverCheckRoles } from "@/utils/permissionUtils";
 // straight from a phone are routinely 5-8 MB, and ProductForm posts a whole image group at once.
 const MAX_FILES_PER_REQUEST = 20;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 60 * 1024 * 1024;
 
 type ImageKind = "jpg" | "png";
 
@@ -35,12 +36,19 @@ export async function POST(req: NextRequest) {
   const permissionCheck = await serverCheckRoles([UserRole._ADMIN]);
   if (!permissionCheck.isAuthorized) return permissionCheck.error;
 
+  // Reject oversized requests before formData() buffers the whole body into memory.
+  const declaredLength = Number(req.headers.get("content-length") ?? 0);
+  if (declaredLength > MAX_TOTAL_BYTES) {
+    return NextResponse.json({ error: "Upload too large" }, { status: 413 });
+  }
+
   try {
     const form = await req.formData();
-    const files = form.getAll("files") as File[];
+    const entries = form.getAll("files");
+    const files = entries.filter((e): e is File => e instanceof File);
 
-    if (files.length === 0) {
-      return NextResponse.json({ error: "No files provided" }, { status: 400 });
+    if (files.length === 0 || files.length !== entries.length) {
+      return NextResponse.json({ error: "Expected one or more image files" }, { status: 400 });
     }
     if (files.length > MAX_FILES_PER_REQUEST) {
       return NextResponse.json(
@@ -49,16 +57,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const uploadDir = path.join(process.cwd(), "public", "products");
-    await fs.mkdir(uploadDir, { recursive: true });
-
-    const paths: string[] = [];
+    // Validate every file before writing any of them. Rejecting mid-loop would leave the
+    // earlier files on disk under generated names, referenced by nothing and unreclaimable.
+    const validated: { name: string; buffer: Buffer }[] = [];
+    let totalBytes = 0;
     for (const f of files) {
       if (f.size > MAX_FILE_BYTES) {
         return NextResponse.json(
           { error: `Each file must be at most ${MAX_FILE_BYTES / (1024 * 1024)} MB` },
           { status: 413 }
         );
+      }
+      totalBytes += f.size;
+      if (totalBytes > MAX_TOTAL_BYTES) {
+        return NextResponse.json({ error: "Upload too large" }, { status: 413 });
       }
 
       const buffer = Buffer.from(await f.arrayBuffer());
@@ -68,9 +80,16 @@ export async function POST(req: NextRequest) {
       }
 
       // A generated name also removes the ability to overwrite an existing product image.
-      const safeName = `${crypto.randomUUID()}.${kind}`;
-      await fs.writeFile(path.join(uploadDir, safeName), buffer);
-      paths.push(`/products/${safeName}`);
+      validated.push({ name: `${crypto.randomUUID()}.${kind}`, buffer });
+    }
+
+    const uploadDir = path.join(process.cwd(), "public", "products");
+    await fs.mkdir(uploadDir, { recursive: true });
+
+    const paths: string[] = [];
+    for (const { name, buffer } of validated) {
+      await fs.writeFile(path.join(uploadDir, name), buffer);
+      paths.push(`/products/${name}`);
     }
 
     return NextResponse.json({ paths } as { paths: string[] });
