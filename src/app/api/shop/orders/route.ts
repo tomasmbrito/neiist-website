@@ -77,10 +77,29 @@ export const POST = withValidation(createOrderPayloadSchema, async (request, bod
     const { orderKind, isMixedInvalid } = getOrderKindFromItems(products as Product[]);
     const orderRules = getOrderKindRules(orderKind, orderSource);
     const userAssignmentRequired = orderRules.requiresUserAssignment;
+
+    // Only a POS operator may place an order in someone else's name. Trusting body.user_istid
+    // let any user attribute orders to another student, which bypassed the per-user purchase
+    // cap entirely (it is keyed on this istid), drained limited stock, and burned the victim's
+    // single-use discount codes.
+    const isPosOperator =
+      orderSource === "pos" &&
+      (userRoles.roles?.some((role) => [UserRole._ADMIN, UserRole._SHOP_MANAGER].includes(role)) ??
+        false);
+    const sessionIstid = userRoles.user?.istid;
+
+    if (!guestCheckout && userAssignmentRequired && !isPosOperator) {
+      if (body.user_istid && body.user_istid !== sessionIstid) {
+        return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+      }
+    }
+
     const orderUserIstid = guestCheckout
       ? undefined
       : userAssignmentRequired
-        ? body.user_istid
+        ? isPosOperator
+          ? body.user_istid
+          : sessionIstid
         : undefined;
 
     if (isMixedInvalid) {
@@ -143,7 +162,10 @@ export const POST = withValidation(createOrderPayloadSchema, async (request, bod
       );
     }
 
-    if (userAssignmentRequired && !body.user_istid && !guestCheckout) {
+    // Checks the resolved istid, not the request body. For a normal checkout the istid now
+    // comes from the session, so validating body.user_istid here would reject a client that
+    // (correctly) no longer needs to send it.
+    if (userAssignmentRequired && !orderUserIstid && !guestCheckout) {
       return NextResponse.json(
         { error: "Utilizador obrigatorio para este tipo de pedido" },
         { status: 400 }
