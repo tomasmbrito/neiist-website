@@ -1,15 +1,8 @@
-"use client";
 import styles from "@/styles/components/shop/ShopProductList.module.css";
 import { Product } from "@/types/shop/product";
-import { Category } from "@/types/shop/category";
 import ProductCard from "@/components/shop/ProductCard";
 
-export default function ShopProductList({
-  products,
-}: {
-  products: Product[];
-  categories: Category[];
-}) {
+export default function ShopProductList({ products }: { products: Product[] }) {
   return (
     <div className={styles.container}>
       <h1 className={styles.title}>

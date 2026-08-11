@@ -2,16 +2,11 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import * as FA from "react-icons/fa";
-import * as MD from "react-icons/md";
-import * as IO from "react-icons/io5";
-import * as TB from "react-icons/tb";
-import * as GI from "react-icons/gi";
-import * as HI from "react-icons/hi2";
-import * as BS from "react-icons/bs";
 import { IoClose, IoLocationOutline, IoShareOutline } from "react-icons/io5";
 import { MdAccessTime } from "react-icons/md";
 import IconPicker from "./IconPicker";
+import EventIcon from "@/components/activities/EventIcon";
+import { DEFAULT_EVENT_ICON_NAME } from "@/components/activities/IconRegistry";
 import { formatEventDateTime } from "@/utils/calendarUtils";
 import { getEventSettings } from "@/types/events";
 import Linkify from "linkify-react";
@@ -25,7 +20,6 @@ import type {
   EventSubscriber,
   CalendarEvent,
 } from "@/types/events";
-import type { IconType } from "react-icons";
 import { Modal } from "@/components/ui/Modal";
 import styles from "@/styles/components/activities/EventDetails.module.css";
 
@@ -58,21 +52,11 @@ export default function EventDetails({
   const [settings, setSettings] = useState<EventSettings>(() => getEventSettings(event.raw));
   const hasChanges = useRef(false);
 
-  const ICON_REGISTRY: Record<string, IconType> = {
-    ...FA,
-    ...MD,
-    ...IO,
-    ...TB,
-    ...GI,
-    ...HI,
-    ...BS,
-  };
   const resolvedIconName =
     settings.customIcon ||
     event.raw.extendedProperties?.private?.customIcon ||
     (event.raw as CalendarEventWithOptionalCustom).customIcon ||
-    "FaCalendar";
-  const EventIcon: IconType = ICON_REGISTRY[resolvedIconName] || FA.FaCalendar;
+    DEFAULT_EVENT_ICON_NAME;
 
   const { startDate, endDate, startTime, endTime, isAllDay } = formatEventDateTime(event.raw);
   const subscriberCount = event.raw.subscriberCount ?? 0;
@@ -260,7 +244,7 @@ export default function EventDetails({
           className={styles.eventIcon}
           onClick={isAdmin ? () => setShowIconPicker(true) : undefined}
           style={{ cursor: isAdmin ? "pointer" : "default" }}>
-          <EventIcon size={48} />
+          <EventIcon name={resolvedIconName} size={48} />
         </div>
         <h2 className={styles.eventTitle}>{event.summary || "Untitled Event"}</h2>
         <button className={styles.shareButton} onClick={handleShare} title="Copiar link do evento">

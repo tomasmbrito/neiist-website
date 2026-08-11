@@ -8,13 +8,8 @@ import EventDetails from "@/components/activities/EventDetails";
 import { normalizeCalendarEvent } from "@/utils/calendarUtils";
 import type { NormalizedCalendarEvent, CalendarEvent } from "@/types/events";
 import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
-import * as FA from "react-icons/fa";
-import * as MD from "react-icons/md";
-import * as IO from "react-icons/io5";
-import * as TB from "react-icons/tb";
-import * as GI from "react-icons/gi";
-import * as HI from "react-icons/hi2";
-import * as BS from "react-icons/bs";
+import EventIcon from "@/components/activities/EventIcon";
+import { DEFAULT_EVENT_ICON_NAME } from "@/components/activities/IconRegistry";
 import styles from "@/styles/components/activities/Calendar.module.css";
 
 const locales = { pt };
@@ -40,29 +35,24 @@ interface ReactBigCalendarEvent {
   resource?: CalendarEvent;
 }
 
-const ALL_ICONS = {
-  ...FA,
-  ...MD,
-  ...IO,
-  ...TB,
-  ...GI,
-  ...HI,
-  ...BS,
-};
-
-function getEventIcon(event: CalendarEvent) {
-  const iconName =
+function getEventIconName(event: CalendarEvent): string {
+  return (
     event?.extendedProperties?.private?.customIcon ||
     (event as CalendarEvent & { customIcon?: string })?.customIcon ||
-    "FaCalendar";
-  const Icon = ALL_ICONS[iconName as keyof typeof ALL_ICONS] || FA.FaCalendar;
-  return <Icon size={18} style={{ marginRight: 6, verticalAlign: "middle" }} />;
+    DEFAULT_EVENT_ICON_NAME
+  );
 }
 
 function IconEventsCard({ event }: { event: ReactBigCalendarEvent }) {
   return (
     <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-      {event.resource && getEventIcon(event.resource)}
+      {event.resource && (
+        <EventIcon
+          name={getEventIconName(event.resource)}
+          size={18}
+          style={{ marginRight: 6, verticalAlign: "middle" }}
+        />
+      )}
       <span>{event.title}</span>
     </span>
   );
