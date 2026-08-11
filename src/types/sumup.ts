@@ -2,6 +2,11 @@ export interface SumUpCheckout {
   id?: string;
   status?: "PENDING" | "FAILED" | "PAID" | "EXPIRED" | null;
   transaction_code?: string;
+  /** Set by us at creation to the order_number — the authoritative link back to the order. */
+  checkout_reference?: string | null;
+  /** Number on checkouts, string on transactions; normalise with toCents(). */
+  amount?: number | string | null;
+  currency?: string | null;
   transactions?: Array<{
     transaction_code?: string;
     status?: string;
