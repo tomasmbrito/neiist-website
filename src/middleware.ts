@@ -66,8 +66,12 @@ function addSecurityHeaders(response: NextResponse) {
 }
 
 function canAccess(path: string, roles: UserRole[]) {
-  if (path === "/" || publicRoutes.slice(1).some((r) => path.startsWith(r))) return true;
+  if (path === "/") return true;
 
+  // Protected rules are consulted BEFORE the public prefix match. "/shop" is public and
+  // "/shop/manage" is admin-only, so testing public prefixes first made every "/shop/*" path
+  // public and left the admin rule unreachable. Rules are ordered most-privileged first so the
+  // narrowest match wins.
   const rules: [string[], UserRole[]][] = [
     [adminRoutes, [UserRole._ADMIN]],
     [coordRoutes, [UserRole._ADMIN, UserRole._COORDINATOR]],
@@ -92,6 +96,9 @@ function canAccess(path: string, roles: UserRole[]) {
       return hasRequiredRole(roles, allowed);
     }
   }
+
+  // slice(1) skips "/home", which is not a real route — the homepage is "/", handled above.
+  if (publicRoutes.slice(1).some((r) => path.startsWith(r))) return true;
 
   return false;
 }

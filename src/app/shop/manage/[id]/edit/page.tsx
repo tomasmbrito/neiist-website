@@ -1,8 +1,12 @@
 import ProductForm from "@/components/shop/ProductForm";
 import { redirect } from "next/navigation";
 import { getAllCategories, getProduct } from "@/utils/dbUtils";
+import { UserRole } from "@/types/user";
+import { requireRoles } from "@/utils/permissionUtils";
 
 export default async function EditProductPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireRoles([UserRole._ADMIN]);
+
   const { id } = await params;
   const productId = Number(id);
 

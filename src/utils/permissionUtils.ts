@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { getUser } from "@/utils/dbUtils";
 import { UserRole, mapRoleToUserRole, hasRequiredRole } from "@/types/user";
@@ -42,4 +43,20 @@ export async function serverCheckRoles(required: UserRole[]) {
       error: NextResponse.json({ error: "Internal server error" }, { status: 500 }),
     };
   }
+}
+
+/**
+ * Page-level authorization guard for Server Components.
+ *
+ * `serverCheckRoles` returns a `NextResponse`, which a page cannot render, so pages had no
+ * usable guard and relied entirely on middleware. Middleware is an optimisation, not a
+ * boundary — it is one routing bug away from being bypassed, and it does not run for every
+ * rendering path. Call this before any privileged data is fetched.
+ *
+ * Redirects rather than returning, so it never falls through on the caller's side.
+ */
+export async function requireRoles(required: UserRole[]) {
+  const check = await serverCheckRoles(required);
+  if (!check.isAuthorized) redirect("/unauthorized");
+  return check;
 }
