@@ -11,6 +11,7 @@ export default function Hero() {
   const [isStudentFlipped, setStudentFlipped] = useState(false);
   const campusRef = useRef<HTMLDivElement>(null);
   const studentRef = useRef<HTMLImageElement>(null);
+  const dimensionsRef = useRef({ campusWidth: 0, studentWidth: 0 });
   const [showStudent, setStudent] = useState(false);
 
   useEffect(() => {
@@ -24,10 +25,23 @@ export default function Hero() {
   }, []);
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
+    if (!campusRef.current || !studentRef.current) return;
+    const observer = new ResizeObserver(() => {
       if (!campusRef.current || !studentRef.current) return;
-      const campusWidth = campusRef.current.offsetWidth;
-      const studentWidth = studentRef.current.offsetWidth;
+      dimensionsRef.current = {
+        campusWidth: campusRef.current.offsetWidth,
+        studentWidth: studentRef.current.offsetWidth,
+      };
+    });
+    observer.observe(campusRef.current);
+    observer.observe(studentRef.current);
+    return () => observer.disconnect();
+  }, [showStudent]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const { campusWidth, studentWidth } = dimensionsRef.current;
+      if (!campusWidth || !studentWidth) return;
 
       const marginPercent = 5;
       const minPercent = 0 - marginPercent;
@@ -70,7 +84,7 @@ export default function Hero() {
             alt="Student"
             className={styles.student + (isStudentFlipped ? " " + styles.flipped : "")}
             style={{ left: `${studentMovementPosition}%` }}
-            preload
+            priority
           />
         )}
       </div>

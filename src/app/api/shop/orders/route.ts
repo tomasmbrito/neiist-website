@@ -4,7 +4,7 @@ import {
   newOrder,
   getUser,
   updateUser,
-  mapOrderDbErrorToResponse,
+  throwIfOrderDbError,
   getProduct,
   getUserOrderedProductsInCategory,
 } from "@/utils/dbUtils";
@@ -18,6 +18,7 @@ import { serverCheckRoles } from "@/utils/permissionUtils";
 import { sendEmail, getPendingOrderEmailTemplate } from "@/utils/emailUtils";
 import { withValidation } from "@/utils/security/validationUtils";
 import { createOrderPayloadSchema } from "@/schemas/shop";
+import { handleApiError } from "@/lib/errors/apiErrorHandler";
 
 function parseOrderSource(value: string): OrderSource {
   switch (value) {
@@ -42,8 +43,8 @@ export async function GET() {
   try {
     const orders = await getAllOrders();
     return NextResponse.json(orders);
-  } catch {
-    return NextResponse.json({ error: "Failed to fetch orders" }, { status: 500 });
+  } catch (error) {
+    return handleApiError(error);
   }
 }
 
@@ -221,11 +222,12 @@ export const POST = withValidation(createOrderPayloadSchema, async (request, bod
 
     return NextResponse.json(order);
   } catch (error) {
-    const mappedError = mapOrderDbErrorToResponse(error);
-    if (mappedError)
-      return NextResponse.json({ error: mappedError.error }, { status: mappedError.status });
-
+    try {
+      throwIfOrderDbError(error);
+    } catch (e) {
+      return handleApiError(e);
+    }
     console.error("orders POST error:", error);
-    return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
+    return handleApiError(error);
   }
 });

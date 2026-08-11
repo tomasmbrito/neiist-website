@@ -1,6 +1,7 @@
 import { Pool, QueryResult, QueryResultRow } from "pg";
 import { Membership, dbMembership, mapdbMembershipToMembership } from "@/types/memberships";
 import { User, mapRoleToUserRole, mapdbUserToUser } from "@/types/user";
+import { ValidationError } from "@/lib/errors";
 import {
   Product,
   ProductVariant,
@@ -888,80 +889,61 @@ export const newOrder = async (
     : null;
 };
 
-export function mapOrderDbErrorToResponse(
-  error: unknown
-): { error: string; status: number } | null {
+export function throwIfOrderDbError(error: unknown): void {
   const dbError = error as { message?: string; code?: string };
   const message = dbError?.message ?? "";
 
   if (message.includes("Order deadline has passed for product")) {
-    return {
-      error: "O prazo de encomenda do produto ja terminou",
-      status: 400,
-    };
+    throw new ValidationError("O prazo de encomenda do produto ja terminou");
   }
 
   if (message.includes("Insufficient variant stock")) {
-    return {
-      error: "Stock insuficiente para a variante selecionada",
-      status: 400,
-    };
+    throw new ValidationError("Stock insuficiente para a variante selecionada");
   }
 
   if (message.includes("Insufficient product stock")) {
-    return {
-      error: "Stock insuficiente para o produto selecionado",
-      status: 400,
-    };
+    throw new ValidationError("Stock insuficiente para o produto selecionado");
   }
 
   if (message.includes("Product") && message.includes("not found or inactive")) {
-    return { error: "Produto indisponivel", status: 400 };
+    throw new ValidationError("Produto indisponivel");
   }
 
   if (message.includes("Variant") && message.includes("not found or inactive")) {
-    return { error: "Variante indisponivel", status: 400 };
+    throw new ValidationError("Variante indisponivel");
   }
 
   if (message.includes("Discount code is required")) {
-    return { error: "Código de desconto obrigatório", status: 400 };
+    throw new ValidationError("Código de desconto obrigatório");
   }
 
   if (message.includes("Discount code not found or inactive")) {
-    return { error: "Código de desconto inválido ou inativo", status: 400 };
+    throw new ValidationError("Código de desconto inválido ou inativo");
   }
 
   if (message.includes("Discount code expired")) {
-    return { error: "Código de desconto expirado", status: 400 };
+    throw new ValidationError("Código de desconto expirado");
   }
 
   if (message.includes("Discount code max uses reached")) {
-    return { error: "Código de desconto esgotado", status: 400 };
+    throw new ValidationError("Código de desconto esgotado");
   }
 
   if (message.includes("Discount code not valid for user")) {
-    return {
-      error: "Código de desconto não é válido para este utilizador",
-      status: 400,
-    };
+    throw new ValidationError("Código de desconto não é válido para este utilizador");
   }
 
   if (message.includes("Discount code not applicable to these products")) {
-    return {
-      error: "Código de desconto não é aplicável a estes produtos",
-      status: 400,
-    };
+    throw new ValidationError("Código de desconto não aplicável aos produtos selecionados");
   }
 
   if (message.includes("Invalid quantity for product_id")) {
-    return { error: "Quantidade invalida", status: 400 };
+    throw new ValidationError("Quantidade invalida");
   }
 
   if (dbError?.code === "P0001") {
-    return { error: "Pedido invalido", status: 400 };
+    throw new ValidationError(message || "Pedido invalido");
   }
-
-  return null;
 }
 
 export function mapDeleteProductDbErrorToResponse(

@@ -73,7 +73,7 @@ export default function Hero({
             />
           </svg>
 
-          <Image alt="NEIIST Team" className={styles.teamImage} src={teamImage} />
+          <Image alt="NEIIST Team" className={styles.teamImage} src={teamImage} priority />
         </div>
       </div>
 

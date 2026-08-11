@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAllUsers, createUser } from "@/utils/dbUtils";
 import { UserRole } from "@/types/user";
 import { serverCheckRoles } from "@/utils/permissionUtils";
+import { handleApiError } from "@/lib/errors/apiErrorHandler";
+import { ValidationError } from "@/lib/errors";
 
 export async function GET() {
   const userRoles = await serverCheckRoles([
@@ -15,8 +17,8 @@ export async function GET() {
   try {
     const users = await getAllUsers();
     return NextResponse.json(users);
-  } catch {
-    return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 });
+  } catch (error) {
+    return handleApiError(error);
   }
 }
 
@@ -35,21 +37,15 @@ export async function POST(request: NextRequest) {
     const { istid, name, email } = body;
 
     if (!istid || !name || !email) {
-      return NextResponse.json(
-        { error: "Missing required fields: istid, name, and email are required" },
-        { status: 400 }
-      );
+      throw new ValidationError("Missing required fields: istid, name, and email are required");
     }
     const istIdPattern = /^ist\d+$/i;
     if (!istIdPattern.test(istid.trim())) {
-      return NextResponse.json(
-        { error: "Invalid IST ID format. Must be in format: istXXXXXX" },
-        { status: 400 }
-      );
+      throw new ValidationError("Invalid IST ID format. Must be in format: istXXXXXX");
     }
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailPattern.test(email.trim())) {
-      return NextResponse.json({ error: "Invalid email format" }, { status: 400 });
+      throw new ValidationError("Invalid email format");
     }
     const newUser = await createUser({
       istid: istid.trim(),
@@ -58,16 +54,6 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json(newUser, { status: 201 });
   } catch (error) {
-    console.error("Error creating user:", error);
-    if (error instanceof Error) {
-      if (error.message.includes("duplicate") || error.message.includes("unique")) {
-        return NextResponse.json(
-          { error: "User with this IST ID or email already exists" },
-          { status: 409 }
-        );
-      }
-    }
-
-    return NextResponse.json({ error: "Failed to create user" }, { status: 500 });
+    return handleApiError(error);
   }
 }

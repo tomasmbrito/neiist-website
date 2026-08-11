@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  updateOrder,
-  setOrderState,
-  mapOrderDbErrorToResponse,
-  getOrderById,
-} from "@/utils/dbUtils";
+import { updateOrder, setOrderState, getOrderById, throwIfOrderDbError } from "@/utils/dbUtils";
 import { UserRole } from "@/types/user";
 import { getOrderKindRules, getOrderKindFromItems } from "@/utils/shop/orderKindUtils";
 import { getStatusLabel } from "@/utils/shop/orderStatusUtils";
@@ -17,6 +12,7 @@ import {
   getStatusUpdateOrderEmailTemplate,
   sendEmail,
 } from "@/utils/emailUtils";
+import { handleApiError } from "@/lib/errors/apiErrorHandler";
 
 function isShopManagerOrAbove(roles: UserRole[]) {
   return (
@@ -31,22 +27,26 @@ function isOrderOwner(order: Order, user: User) {
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const userRoles = await serverCheckRoles([]);
-  if (!userRoles.isAuthorized) return userRoles.error;
+  try {
+    const userRoles = await serverCheckRoles([]);
+    if (!userRoles.isAuthorized) return userRoles.error;
 
-  const { user, roles } = userRoles;
+    const { user, roles } = userRoles;
 
-  const { id } = await params;
-  const orderId = Number(id);
-  if (!orderId) return NextResponse.json({ error: "Invalid order id" }, { status: 400 });
+    const { id } = await params;
+    const orderId = Number(id);
+    if (!orderId) return NextResponse.json({ error: "Invalid order id" }, { status: 400 });
 
-  const order = await getOrderById(orderId);
-  if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    const order = await getOrderById(orderId);
+    if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
-  if (!isOrderOwner(order, user!) && !isShopManagerOrAbove(roles ?? []))
-    return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+    if (!isOrderOwner(order, user!) && !isShopManagerOrAbove(roles ?? []))
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
 
-  return NextResponse.json(order);
+    return NextResponse.json(order);
+  } catch (error) {
+    return handleApiError(error);
+  }
 }
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -199,18 +199,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json(updatedOrder);
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("Item "))
-      return NextResponse.json({ error: error.message }, { status: 400 });
-
-    const mappedError = mapOrderDbErrorToResponse(error);
-    if (mappedError)
-      return NextResponse.json({ error: mappedError.error }, { status: mappedError.status });
-
-    console.error("Order PUT error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update order" },
-      { status: 500 }
-    );
+    try {
+      throwIfOrderDbError(error);
+    } catch (e) {
+      return handleApiError(e);
+    }
+    return handleApiError(error);
   }
 }
 
@@ -260,7 +254,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json(updatedOrder);
   } catch (error) {
     console.error("Order update error:", error);
-    return NextResponse.json({ error: "Failed to update order" }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -287,8 +281,12 @@ export async function DELETE(
     return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
   }
 
-  const updatedOrder = await setOrderState(orderId, "cancelled", user!.istid);
-  if (!updatedOrder) return NextResponse.json({ error: "Failed to cancel order" }, { status: 500 });
-
-  return NextResponse.json(updatedOrder);
+  try {
+    const updatedOrder = await setOrderState(orderId, "cancelled", user!.istid);
+    if (!updatedOrder)
+      return NextResponse.json({ error: "Failed to cancel order" }, { status: 500 });
+    return NextResponse.json(updatedOrder);
+  } catch (error) {
+    return handleApiError(error);
+  }
 }

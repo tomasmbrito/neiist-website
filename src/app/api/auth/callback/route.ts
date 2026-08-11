@@ -1,6 +1,7 @@
 // ...existing code...
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { handleApiError } from "@/lib/errors/apiErrorHandler";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -80,8 +81,7 @@ export async function GET(request: Request) {
     response.cookies.set(clearedRedirectCookie);
     return response;
   } catch (error) {
-    console.error("Error in Callback:", error);
-    const res = NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    const res = handleApiError(error);
     res.cookies.set(clearedStateCookie);
     res.cookies.set(clearedRedirectCookie);
     return res;

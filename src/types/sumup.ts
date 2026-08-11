@@ -6,7 +6,6 @@ export interface SumUpCheckout {
     transaction_code?: string;
     status?: string;
   }>;
-  [key: string]: unknown;
 }
 
 export interface SumUpCheckoutPayload {
@@ -22,7 +21,6 @@ export interface SumUpCheckoutPayload {
 export interface SumUpTransaction {
   status?: string;
   transaction_code?: string;
-  [key: string]: unknown;
 }
 
 export interface SumUpReaderStatus {
@@ -35,15 +33,12 @@ export interface SumUpReaderStatus {
   };
   created_at?: string;
   updated_at?: string;
-  [key: string]: unknown;
 }
 
 export interface SumUpReaderCheckoutResponse {
   data?: {
     client_transaction_id?: string;
-    [key: string]: unknown;
   };
-  [key: string]: unknown;
 }
 
 export interface SumUpReaderCheckoutPayload {
@@ -57,7 +52,6 @@ export interface SumUpReaderCheckoutPayload {
 
 export interface SumUpReadersListResponse {
   items?: SumUpReaderStatus[];
-  [key: string]: unknown;
 }
 
 export interface CreateCheckoutRequestBody {
@@ -96,19 +90,14 @@ export type SumUpCardResponseType =
 export interface SumUpCardSentBody {
   last_4_digits?: string;
   card_type?: string;
-  [key: string]: unknown;
 }
 
 export interface SumUpCardErrorBody {
   message?: string;
   error_code?: string;
-  [key: string]: unknown;
 }
 
-export type SumUpCardResponseBody =
-  | SumUpCardSentBody
-  | SumUpCardErrorBody
-  | Record<string, unknown>;
+export type SumUpCardResponseBody = SumUpCardSentBody | SumUpCardErrorBody | Record<string, any>;
 
 export interface SumUpCardMountOptions {
   checkoutId: string;
@@ -172,7 +161,7 @@ export interface ApplePaySessionInstance {
   oncancel: (() => void) | null;
   begin(): void;
   abort(): void;
-  completeMerchantValidation(_merchantSession: unknown): void;
+  completeMerchantValidation(_merchantSession: any): void;
   completePayment(_status: number): void;
 }
 

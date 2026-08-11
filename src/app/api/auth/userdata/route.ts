@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { handleApiError } from "@/lib/errors/apiErrorHandler";
 import fs from "fs/promises";
 import path from "path";
 import { getUser, createUser, getEmailVerificationByUser } from "@/utils/dbUtils";
@@ -110,7 +111,6 @@ export async function GET() {
     });
     return response;
   } catch (error) {
-    console.error("Error in UserData API:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return handleApiError(error);
   }
 }
