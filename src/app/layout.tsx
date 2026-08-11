@@ -1,6 +1,11 @@
 import { ReactNode } from "react";
 import { Metadata } from "next";
+import { cookies } from "next/headers";
 import { Secular_One } from "next/font/google";
+import { getUserFromJWT } from "@/utils/authUtils";
+import { getUser } from "@/utils/dbUtils";
+import { User } from "@/types/user";
+import { ThemeProvider } from "@/components/ThemeProvider";
 import NavBar from "@/components/layout/navbar/NavBar";
 import Footer from "@/components/layout/Footer";
 import Cart from "@/components/shop/Cart";
@@ -23,16 +28,23 @@ export const metadata: Metadata = {
   description: "Núcleo Estudantil de Informática do Instituto Superior Técnico",
 };
 
-async function getInitialUser() {
+/**
+ * Resolves the signed-in user on the server.
+ *
+ * This used to fetch the app's own /api/auth/userdata over HTTP with `headers: { cookie: "" }`,
+ * which guaranteed the route saw no session and returned 401 — so the layout always rendered
+ * logged-out, then flipped once UserContext refetched on the client. That produced a visible
+ * flash on every authenticated page load, and made the root layout issue a blocking request to
+ * itself on every render.
+ */
+async function getInitialUser(): Promise<User | null> {
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/userdata`, {
-      cache: "no-store",
-      credentials: "include",
-      headers: { cookie: "" },
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
+    const sessionToken = (await cookies()).get("session")?.value;
+    const jwtUser = getUserFromJWT(sessionToken);
+    if (!jwtUser) return null;
+    return (await getUser(jwtUser.istid)) ?? null;
+  } catch (error) {
+    console.error("Failed to resolve the initial user", error);
     return null;
   }
 }
@@ -42,25 +54,29 @@ export default async function Layout({ children }: { children: ReactNode }) {
   return (
     <html lang="pt" suppressHydrationWarning>
       <body className={secularOne.className}>
-        <ShopProvider>
-          <UserProvider initialUser={user}>
-            <NavBar />
-            <Cart />
-            <Toaster
-              position="top-right"
-              offset={{ top: "96px", right: "16px", left: "16px" }}
-              mobileOffset={{ top: "80px", right: "16px", left: "16px" }}
-              toastOptions={{
-                style: {
-                  background: "white",
-                  color: "var(--foreground-colour)",
-                },
-              }}
-            />
-            <main>{children}</main>
-            <Footer />
-          </UserProvider>
-        </ShopProvider>
+        <ThemeProvider>
+          <ShopProvider>
+            <UserProvider initialUser={user}>
+              <NavBar />
+              <Cart />
+              <Toaster
+                position="top-right"
+                offset={{ top: "96px", right: "16px", left: "16px" }}
+                mobileOffset={{ top: "80px", right: "16px", left: "16px" }}
+                toastOptions={{
+                  style: {
+                    // Was hardcoded to white, which is unreadable once dark mode works.
+                    background: "var(--background-colour)",
+                    color: "var(--foreground-colour)",
+                    border: "1px solid var(--hover)",
+                  },
+                }}
+              />
+              <main>{children}</main>
+              <Footer />
+            </UserProvider>
+          </ShopProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
