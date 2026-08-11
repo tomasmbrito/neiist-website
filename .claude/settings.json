@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(yarn type:check)",
+      "Bash(yarn lint)",
+      "Bash(yarn lint:fix)",
+      "Bash(yarn format:check)",
+      "Bash(yarn format)",
+      "Bash(yarn build)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npx eslint *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git branch *)",
+      "Bash(git fetch *)",
+      "Bash(git remote *)",
+      "Bash(git rev-parse *)",
+      "Bash(git rev-list *)",
+      "Bash(git merge-base *)",
+      "Bash(git ls-files *)",
+      "Bash(git ls-tree *)",
+      "Bash(git checkout -b *)",
+      "Bash(git add *)",
+      "Bash(gh issue list *)",
+      "Bash(gh issue view *)",
+      "Bash(gh pr list *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr diff *)",
+      "Bash(gh project item-list *)",
+      "Bash(gh project field-list *)",
+      "Bash(gh project view *)",
+      "Bash(gh repo view *)",
+      "Bash(gh api *)",
+      "Bash(bash scripts/ai/secret-scan.sh)",
+      "Bash(bash scripts/ai/validate-local.sh)",
+      "Bash(rg *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(wc *)",
+      "Bash(jq *)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh issue create *)",
+      "Bash(gh project item-create *)",
+      "Bash(yarn add *)",
+      "Bash(yarn remove *)",
+      "Bash(npm install *)",
+      "Bash(docker *)",
+      "Bash(yarn db:reset)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./docker/.env)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)",
+      "Read(./**/google-key.json)",
+      "Read(./**/client_secret.json)",
+      "Read(./**/token.json)",
+      "Write(./.env)",
+      "Write(./docker/.env)",
+      "Edit(./.env)",
+      "Edit(./docker/.env)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session-context.sh\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Read|Edit|Write|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-secrets.sh\"",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-git.sh\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/check-edit.sh\"",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}
