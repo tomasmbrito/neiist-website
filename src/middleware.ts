@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { UserRole, hasRequiredRole } from "@/types/user";
-import { decodeJWTPayload } from "./utils/authUtils";
+import { verifyJwtEdge } from "@/utils/security/edgeJwt";
 import { rateLimit } from "@/utils/security/rateLimitUtils";
 import { CSP } from "@/utils/security/cspUtils";
 import { getRateLimitRule } from "@/lib/rateLimitRules";
@@ -26,6 +26,7 @@ const adminRoutes = [
 const protectedRoutes = [guestRoutes, memberRoutes, coordRoutes, adminRoutes].flat();
 
 const isDev = process.env.NODE_ENV === "development";
+const JWT_SECRET = process.env.JWT_SECRET;
 
 const MARKDOWN_SITE = `# NEIIST — Núcleo Estudantil de Informática do IST
 
@@ -103,7 +104,7 @@ function canAccess(path: string, roles: UserRole[]) {
   return false;
 }
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
 
   if (isBot(req)) {
@@ -121,7 +122,9 @@ export function middleware(req: NextRequest) {
     const rule = getRateLimitRule(path);
     if (rule) {
       const sessionToken = req.cookies.get("session")?.value;
-      const jwtUser = decodeJWTPayload(sessionToken);
+      // Verified, not merely decoded: an unverified istid let anyone exhaust another user's
+      // rate-limit budget by presenting a forged cookie carrying the victim's istid.
+      const jwtUser = rule.useUser ? await verifyJwtEdge(sessionToken, JWT_SECRET) : null;
       const identifier = rule.useUser ? (jwtUser?.istid ?? getIp(req)) : getIp(req);
       const bucketKey = `${path.split("/").slice(0, 4).join("/")}:${identifier}`;
       const result = rateLimit(bucketKey, rule.limit, rule.windowMs);
@@ -148,7 +151,8 @@ export function middleware(req: NextRequest) {
 
   const accessToken = req.cookies.get("access_token")?.value;
   const sessionToken = req.cookies.get("session")?.value;
-  const isAuthenticated = !!accessToken || !!decodeJWTPayload(sessionToken);
+  const sessionUser = await verifyJwtEdge(sessionToken, JWT_SECRET);
+  const isAuthenticated = !!accessToken || !!sessionUser;
 
   if (!isAuthenticated && protectedRoutes.some((r) => path.startsWith(r))) {
     if (path !== "/api/auth/login") {
@@ -165,8 +169,7 @@ export function middleware(req: NextRequest) {
   }
 
   if (isAuthenticated) {
-    const jwtUser = decodeJWTPayload(sessionToken);
-    const roles = jwtUser?.roles || [UserRole._GUEST];
+    const roles = sessionUser?.roles || [UserRole._GUEST];
 
     if (!canAccess(path, roles)) {
       if (path !== "/unauthorized") {
