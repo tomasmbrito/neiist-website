@@ -11,6 +11,7 @@ import ShoppingCart from "@/components/layout/navbar/ShoppingCart";
 import LoginButton from "@/components/layout/navbar/LoginButton";
 import LoginModal from "@/components/layout/navbar/LoginModal";
 import UserMenu from "@/components/layout/navbar/UserMenu";
+import { ThemeToggle } from "@/components/layout/navbar/ThemeToggle";
 import styles from "@/styles/components/layout/navbar/NavBar.module.css";
 
 const navLinks = [
@@ -95,6 +96,7 @@ export default function NavBar() {
         <div className={styles.navItems}>{renderNavItems()}</div>
       </nav>
       <div className={styles.actions}>
+        <ThemeToggle />
         <ShoppingCart />
         {user ? (
           <UserMenu userData={user} logout={handleLogout} />

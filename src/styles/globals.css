@@ -1,4 +1,5 @@
-@import url("https://fonts.googleapis.com/css2?family=Secular+One&display=swap");
+/* Secular One is self-hosted via next/font in app/layout.tsx. A Google Fonts @import here
+   loaded it a second time — render-blocking, a third-party round trip, and a CSP surface. */
 
 :root {
   --background-colour: #f2f2f7;
@@ -14,10 +15,19 @@
   --light-secondary-colour: #d4e6f6;
 }
 
+/* Every token defined in :root must be redefined here, or it keeps its light value and renders
+   light-on-dark. --hover previously read `(224, 224, 224, 0.1)` — missing `rgba`, so the whole
+   declaration was invalid, silently dropped, and hover stayed near-black on a dark background.
+
+   The four brand colours are deliberately unchanged: they are bright blues that already carry
+   enough contrast against #1e1e1e, and they are the identity of the site. */
 .dark {
   --background-colour: #1e1e1e;
+  --background-colour-hover: #2a2a2a;
   --foreground-colour: #e0e0e0;
-  --hover: (224, 224, 224, 0.1);
+  --hover: rgba(224, 224, 224, 0.1);
+  --light-foreground-colour: #9a9aa8;
+  --light-secondary-colour: #2f3b47;
 }
 
 html,
