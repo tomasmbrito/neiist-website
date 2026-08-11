@@ -1,5 +1,9 @@
 # Dependencies
 /node_modules
+# Yarn is the authoritative package manager (docs/ai-workflow/decision-log.md,
+# 2026-08-11). A second lockfile can resolve a different dependency tree.
+package-lock.json
+pnpm-lock.yaml
 /.pnp
 .pnp.*
 .yarn/*
