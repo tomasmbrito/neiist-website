@@ -9,6 +9,7 @@ import {
 } from "@/utils/sumupUtils";
 import type { ApplePayPaymentToken, VerifyCheckoutRequestBody, SumUpCheckout } from "@/types/sumup";
 import { finalizePaidOrder } from "@/utils/shop/orderFinalization";
+import { verifyCheckoutBinding } from "@/utils/shop/paymentVerification";
 
 export async function POST(req: NextRequest) {
   const auth = await serverCheckRoles([]);
@@ -89,6 +90,18 @@ export async function POST(req: NextRequest) {
     const transactionCode = checkout.transaction_code;
     if (!transactionCode) {
       return NextResponse.json({ pending: true, status });
+    }
+
+    // A PAID checkout is not proof that THIS order was paid. Without binding the checkout to
+    // the order, one genuine cheap payment could be replayed to finalize any later order.
+    const binding = verifyCheckoutBinding(checkout, order);
+    if (!binding.ok) {
+      console.error(
+        `Checkout ${checkoutId} rejected for order ${orderId}: ${binding.reason}` +
+          ` (checkout ref ${checkout.checkout_reference}, amount ${checkout.amount},` +
+          ` order ${order.order_number}, total ${order.total_amount})`
+      );
+      return sumupErrorResponse("Payment does not match this order", 400);
     }
 
     const result = await finalizePaidOrder({
