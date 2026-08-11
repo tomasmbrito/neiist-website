@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Type check, lint, format, build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+
+      - name: Install Dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Type Check
+        run: yarn type:check
+
+      - name: Lint
+        run: yarn lint
+
+      - name: Format Check
+        run: yarn format:check
+
+      # Runs without any secrets on purpose: the build must never need credentials or a
+      # reachable database.
+      - name: Build
+        run: yarn build

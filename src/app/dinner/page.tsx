@@ -15,6 +15,11 @@ const handelsonTwo = localFont({
   display: "swap",
 });
 
+// The page renders per-user (session cookie) from live shop data, so it must never be
+// prerendered at build time — doing so both froze the guest variant into the build output and
+// required a reachable database to build.
+export const dynamic = "force-dynamic";
+
 export default async function DinnerPage() {
   const userRoles = await serverCheckRoles([]);
   const products = await getAllProducts(true);

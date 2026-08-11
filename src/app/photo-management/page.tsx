@@ -3,6 +3,10 @@ import { Membership } from "@/types/memberships";
 import PhotoTeamMembers from "@/components/photo-management/PhotoTeamMembers";
 import styles from "@/styles/components/photo-management/PhotoTeamMembers.module.css";
 
+// Reads live membership data on every request; prerendering froze it into the build output and
+// made a reachable database a build-time requirement.
+export const dynamic = "force-dynamic";
+
 export default async function PhotoTeamMembersPage() {
   const memberships = await getAllMemberships();
   const departments = await getAllDepartments();
