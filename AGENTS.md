@@ -82,6 +82,12 @@ public/           # Static assets
 - **Database access**: All queries go through `src/utils/dbUtils.ts` using
   parameterized SQL via the `pg` pool. No ORM. Mappers like `mapDbUserToUser()`
   convert DB rows to typed interfaces.
+  - **Identity is `istid`**, decided 2026-08-12 (#82). A parallel `src/lib/db/repositories/*`
+    layer targeting a UUID migration was deleted — it had zero call sites and had never run.
+    Do not reintroduce a second data layer; the plan is to adopt the upstream
+    `src/utils/db/*` split. See CLAUDE.md §4.
+  - **No transactions exist.** `db_query` is `pool.query()`, so every multi-statement
+    operation is non-atomic by construction.
 - **API routes**: Use Next.js App Router route handlers (`route.ts` files).
 - **Authentication**: Fenix OAuth via API callbacks.
 - **Styling**: Component-level CSS modules / global styles.

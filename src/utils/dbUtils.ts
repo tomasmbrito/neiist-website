@@ -130,13 +130,23 @@ export const getUser = async (istid: string): Promise<User | null> => {
         .replace(/[\u0300-\u036f]/g, "")
         .trim();
 
+    // Role orders are fetched once per DISTINCT department, in parallel, rather than once per
+    // membership in sequence. A user in five departments previously cost five awaited
+    // round-trips here, and duplicates were re-fetched. getUser runs inside serverCheckRoles,
+    // so this is on the path of every guarded page and API route.
+    const uniqueDepartments = Array.from(new Set(memberships.map((m) => m.departmentName)));
+    const roleOrders = await Promise.all(
+      uniqueDepartments.map((department) =>
+        db_query<{ role_name: string; position: number }>(
+          "SELECT role_name, position FROM neiist.get_department_role_order($1)",
+          [department]
+        ).then((result) => [department, result.rows] as const)
+      )
+    );
+    const roleOrderByDepartment = new Map(roleOrders);
+
     for (const membership of memberships) {
-      const { rows: roleOrder } = await db_query<{
-        role_name: string;
-        position: number;
-      }>("SELECT role_name, position FROM neiist.get_department_role_order($1)", [
-        membership.departmentName,
-      ]);
+      const roleOrder = roleOrderByDepartment.get(membership.departmentName) ?? [];
       const found = roleOrder.find(
         (r) => normalize(r.role_name) === normalize(membership.roleName)
       );
@@ -984,9 +994,14 @@ export const getOrderById = async (orderId: number): Promise<Order | null> => {
 };
 
 export const getOrderByNumber = async (orderNumber: string): Promise<Order | null> => {
+  // get_order(p_order_id INT, p_order_number TEXT) — the number goes in the SECOND argument.
+  // Passing it first sent the order number into p_order_id. Order numbers are all digits
+  // (YYYYMMDD + sequence, see neiist.generate_order_number), so this did not raise a cast
+  // error: it looked the value up as a primary key and quietly returned null for every real
+  // order number.
   const {
     rows: [row],
-  } = await db_query<DbOrder>(`SELECT * FROM neiist.get_order($1, NULL)`, [orderNumber]);
+  } = await db_query<DbOrder>(`SELECT * FROM neiist.get_order(NULL, $1)`, [orderNumber]);
   return row
     ? {
         ...mapDbOrderToOrder(row),
