@@ -98,13 +98,10 @@ src/
 │   ├── shop/             largest + most complex area
 │   ├── admin/, activities/, homepage/, about-us/, layout/, dinner/
 ├── lib/
-│   ├── db/
-│   │   ├── connection.ts       pg Pool singleton
-│   │   └── repositories/       user | shop | team | event  <- the target pattern
 │   └── errors/                 domain error classes + apiErrorHandler
 ├── schemas/              Zod request schemas
 ├── utils/
-│   ├── dbUtils.ts        LEGACY god object, ~1065 lines  <- being dismantled
+│   ├── dbUtils.ts        the ONLY data layer, ~1075 lines  <- to be split, see §4
 │   ├── shop/             order finalization, discounts, auto-cancel, status
 │   ├── security/         validation, rate limiting, CSP
 │   └── authUtils.ts, googleCalendar.ts, emailUtils.ts, sumupUtils.ts
@@ -114,39 +111,34 @@ src/
 └── middleware.ts         route protection
 ```
 
-### The data layer is forked in two — read this before touching any query
+### The data layer — resolved 2026-08-12
 
-This is the single most important thing to understand about this codebase, and it is not what
-it looks like.
+**The identity model is `istid`.** Decided in #82 and no longer open.
 
-`src/lib/db/repositories/*.repository.ts` looks like a completed repository-pattern migration.
-**It is entirely dead code.** Verified: **55 files import `@/utils/dbUtils`; zero files import
-anything under `@/lib/db`.** The only cross-reference is one repository importing another.
+This repository used to carry two parallel implementations of ~63 database functions:
+`src/utils/dbUtils.ts` (which ran) and `src/lib/db/repositories/*` (1,053 lines, **zero call
+sites, never executed**), the latter written against a UUID migration that
+`docker-compose.yml` never applied.
 
-So there are two parallel implementations of ~63 database functions:
+**That half has been deleted**, along with `docker/migrations/001_user_uuid.sql`. The two real
+fixes it contained were ported into `dbUtils.ts` first: the `getUser` N+1 (role orders are now
+fetched once per distinct department, in parallel) and `getOrderByNumber` (it passed the order
+number into `get_order`'s INT id parameter).
 
-| | `src/utils/dbUtils.ts` | `src/lib/db/repositories/*` |
-|---|---|---|
-| Lines | ~1065 | ~1030 across 4 files |
-| Call sites | 55 | **0** |
-| Pool | its own `new Pool()`, no HMR guard | `connection.ts`, HMR-safe |
-| Schema targeted | `docker/schema.sql` (istid `VARCHAR` PK) | `docker/migrations/001_user_uuid.sql` (UUID PK) |
+What this means now:
 
-**The two halves target different database schemas.** The repositories were written against a
-UUID identity migration that `docker-compose.yml` never applies. Wiring a repository up today
-would throw `22P02 invalid input syntax for type uuid` against the live schema.
+- **`src/utils/dbUtils.ts` is the data layer.** There is no second one. Change it freely for
+  live behaviour.
+- The decision was settled by evidence from `neiist-dev`, which kept `istid`, built its voting
+  system on `istid` foreign keys, and had already shipped the dbUtils split this fork attempted.
+- **The remaining work is to adopt that split** — `src/utils/db/{dbClient,errorMapper,
+  userQueries,shopQueries,eventQueries}.ts` — rather than reinvent it. Tracked as Wave 2 in
+  [`docs/ai-workflow/upstream-sync-plan.md`](docs/ai-workflow/upstream-sync-plan.md) and #72.
+- External (Google OAuth) users get a synthetic `istid` inside the existing `VARCHAR(10)`
+  column, not a UUID primary key.
 
-Consequences for you:
-- **Do not assume a repository method works.** None of them have ever run.
-- **Do not "just switch a call site over"** to a repository as a drive-by. It will break.
-- Some repository versions contain *fixes* the dbUtils version lacks (an N+1 fix in `getUser`,
-  a correct `getOrderByNumber`); some contain *bugs* dbUtils lacks (wrong column names). Diff
-  the specific function before trusting either side.
-- Resolving this — pick istid or UUID, then delete one half — is the highest-leverage
-  architectural decision available. It is tracked on the board and needs a human decision.
-
-Until it is resolved: **change `dbUtils.ts` when fixing live behaviour** (that is the code that
-runs), and say so explicitly rather than silently editing the dead half.
+**Adopting the upstream split will not introduce transactions** — their `dbClient.ts` is still
+`pool.query()`. #78/#79/#80/#100 stand on their own.
 
 ### Integrations
 
@@ -227,31 +219,39 @@ is not written down will cost an hour again.
 
 Things you should know before proposing work, so you don't "discover" them as new:
 
-- **Open security issues.** A full audit found unauthenticated payment confirmation, an
-  unauthenticated file upload, and an unauthenticated write into `.env`, among others. They are
-  tracked as P0 board items. Treat anything under `api/shop/sumup/**`,
-  `api/shop/uploads`, and `api/calendar/notion-webhook` as known-vulnerable until fixed.
-- **Middleware authorizes from an *unverified* JWT** (`decodeJWTPayload` base64-decodes without
-  checking the signature) and several server pages fetch privileged data without their own
-  role check. Never rely on middleware as the only authorization layer — add
-  `serverCheckRoles` in the page/route too.
+- **Authorization is now two-layered, and must stay that way.** Middleware verifies JWT
+  signatures (#101, `verifyJwtEdge`) and every privileged page calls `requireRoles()` before
+  fetching (#116). **Never rely on middleware alone** — it is an optimisation, not a boundary.
+  Note the trap that caught `/shop/manage` (#97) and `/shop/pos` (#117): a privileged path
+  nested under a public prefix falls through to the public match unless a rule claims it.
+- **`serverCheckRoles` swallows Next's `DynamicServerError`** — its blanket `catch` eats the
+  signal Next uses to mark a route dynamic. That is why pages needed `force-dynamic`. Tracked
+  in #111; needs approval as auth code.
 - **No transactions exist anywhere.** `db_query` is `pool.query()`, so there is no way to
   express one. Every multi-statement operation in TypeScript is non-atomic by construction.
   The only atomicity comes from logic that happens to live entirely inside a `plpgsql` function.
-- **No tests, no CI gates.** `.github/workflows/` only deploys. `deploy-staging.yml` fires on
-  every push to `main` with no typecheck, lint, or build gate in front of it.
-- **Two lockfiles**: `yarn.lock` and `package-lock.json` are both committed. Only one package
-  manager can be authoritative. Upstream has since moved to **pnpm** — this needs a decision.
-- **`node-cron` is in `devDependencies`** but imported by `src/lib/autoCancelScheduler.ts` at
-  runtime — a `--production` install would crash at boot.
-- **`src/utils/dbUtils.ts`** is still ~1065 lines and is the code that actually runs (see §4).
+  Adopting the upstream data layer will **not** change this.
+- **There is a CI gate now** (`.github/workflows/ci.yml`: type-check, lint, format, build) and
+  it passes. It failed on every run from #106 until #109 because `next-env.d.ts` is gitignored
+  and absent from a fresh checkout — see #110. `deploy-staging.yml` still fires on every push
+  to `main`. **There are still no tests and no test runner** (#52).
+- **`/activities` renders against Notion.** An empty events table triggers a sync during
+  render; it is now guarded (#118), but the page still depends on a third party at request time.
 - **`xlsx`** is installed from a SheetJS CDN tarball URL, not the npm registry — it is outside
   normal audit/lockfile integrity tooling.
 - **Uploaded product images go to `public/products`**, which is gitignored and lives inside the
   build directory — blue/green deploys can lose them.
 - **Upstream has features the fork lacks**: a pg_notify/SSE voting system, Google service
-  accounts loaded from env instead of JSON files, dinner-page work, and security dependency
-  bumps. See `.claude/skills/upstream-sync/SKILL.md` before merging any of it.
+  accounts loaded from env instead of credential files on disk, dinner-page work, and security
+  dependency bumps. It has also renamed `src/middleware.ts` to `src/proxy.ts` (Next 16 warns
+  about this on every dev start) and split `dbUtils.ts`.
+  **Read [`docs/ai-workflow/upstream-sync-plan.md`](docs/ai-workflow/upstream-sync-plan.md)
+  before adopting any of it** — it has the measured 42-file collision surface and the wave
+  ordering. Their version is not automatically the better one: their Notion webhook fails open
+  when `VERIFICATION_TOKEN` is unset, which this fork already fixed in #96.
+- **`yarn dev` needs port 5432 free.** If another Postgres holds it, the container starts
+  without publishing its port and the app silently connects elsewhere. `scripts/dev-db-check.sh`
+  now fails loudly; override with `POSTGRES_PORT` and keep `DATABASE_URL` in step (#105).
 
 ---
 
