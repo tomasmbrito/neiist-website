@@ -49,6 +49,21 @@ yarn install --frozen-lockfile
 echo "🏗️ Building project..."
 NODE_OPTIONS="--max-old-space-size=4096" yarn build
 
+# Database migrations run AFTER the build (so a broken build never touches the database) and
+# BEFORE the new instance starts. During this window the *previous* release is still serving
+# traffic against the migrated schema, so every migration must be backward-compatible with the
+# release before it. See docs/ai-workflow/database-migrations.md.
+#
+# `set -e` is in force: a failed migration aborts the deploy and leaves the old instance running,
+# which is the correct outcome. Running new code against an unmigrated schema is not.
+echo "🗄️ Applying database migrations..."
+if [ -f .env ]; then
+    set -a
+    . ./.env
+    set +a
+fi
+yarn db:migrate
+
 echo "♻️ Restarting PM2 process for $DEPLOYING_TO_NAME..."
 pm2 restart $DEPLOYING_TO_NAME || pm2 start ecosystem.config.js
 
