@@ -209,6 +209,9 @@ enforcement hooks in `.claude/hooks/`.
 
 ## 7. Project memory
 
+**Start here for current state: [`docs/ai-workflow/project-status.md`](docs/ai-workflow/project-status.md)**
+— what has shipped, what is open, which decisions are waiting on a human, and what to do next.
+
 Record things that future sessions cannot re-derive from the code:
 
 - `docs/ai-workflow/problem-registry.md` — bugs: symptom, root cause, fix, regression guard.
