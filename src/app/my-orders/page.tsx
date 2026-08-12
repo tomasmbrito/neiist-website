@@ -1,7 +1,7 @@
 import MyOrdersList from "@/components/shop/MyOrdersList";
 import OrderDetailOverlay from "@/components/shop/OrderDetailsOverlay";
 import { getUserFromJWT } from "@/utils/authUtils";
-import { getAllOrders, getAllProducts } from "@/utils/dbUtils";
+import { getAllOrders, getAllProducts } from "@/utils/db/shopQueries";
 import { cookies } from "next/headers";
 
 interface PageProps {

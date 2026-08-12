@@ -1,6 +1,6 @@
 import OrdersTable from "@/components/shop/OrdersTable";
 import OrderDetailOverlay from "@/components/shop/OrderDetailsOverlay";
-import { getAllOrders, getAllProducts } from "@/utils/dbUtils";
+import { getAllOrders, getAllProducts } from "@/utils/db/shopQueries";
 import { requireRoles } from "@/utils/permissionUtils";
 import { redactCustomerData } from "@/utils/shop/orderPrivacy";
 import { UserRole } from "@/types/user";

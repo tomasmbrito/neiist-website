@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllUsers, createUser } from "@/utils/dbUtils";
+import { getAllUsers, createUser } from "@/utils/db/userQueries";
 import { UserRole } from "@/types/user";
 import { serverCheckRoles } from "@/utils/permissionUtils";
 import { handleApiError } from "@/lib/errors/apiErrorHandler";

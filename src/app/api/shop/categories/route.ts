@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { UserRole } from "@/types/user";
-import { getAllCategories, addCategory } from "@/utils/dbUtils";
+import { getAllCategories, addCategory } from "@/utils/db/shopQueries";
 import { serverCheckRoles } from "@/utils/permissionUtils";
 
 export async function POST(request: NextRequest) {

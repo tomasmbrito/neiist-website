@@ -1,4 +1,4 @@
-import { getAllMemberships, getAllUsers, getAllDepartments } from "@/utils/dbUtils";
+import { getAllMemberships, getAllUsers, getAllDepartments } from "@/utils/db/userQueries";
 import MembershipsSearchList from "./MembershipsSearchList";
 import styles from "@/styles/components/admin/MembershipsManagement.module.css";
 import { Membership } from "@/types/memberships";

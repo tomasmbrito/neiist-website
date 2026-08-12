@@ -1,4 +1,5 @@
-import { getOrderById, updateOrder, setOrderState, signUpToEvent } from "@/utils/dbUtils";
+import { signUpToEvent } from "@/utils/db/eventQueries";
+import { getOrderById, updateOrder, setOrderState } from "@/utils/db/shopQueries";
 import { getPaidOrderEmailTemplate, sendEmail } from "@/utils/emailUtils";
 import { Order } from "@/types/shop/order";
 import { getOrderKindRules } from "@/utils/shop/orderKindUtils";

@@ -1,4 +1,4 @@
-import { getAllAdminBodies } from "@/utils/dbUtils";
+import { getAllAdminBodies } from "@/utils/db/userQueries";
 import AdminBodiesSearchFilter from "@/components/admin/AdminBodiesSearchFilter";
 import AddDepartmentModal from "@/components/admin/AddDepartmentModal";
 import styles from "@/styles/components/admin/AdminBodiesManagement.module.css";

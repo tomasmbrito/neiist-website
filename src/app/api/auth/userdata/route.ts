@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { handleApiError } from "@/lib/errors/apiErrorHandler";
 import fs from "fs/promises";
 import path from "path";
-import { getUser, createUser, getEmailVerificationByUser } from "@/utils/dbUtils";
+import { getUser, createUser, getEmailVerificationByUser } from "@/utils/db/userQueries";
 import { signUserJWT, getUserFromJWT } from "@/utils/authUtils";
 
 type FenixRegistration = {

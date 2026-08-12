@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
-import { getUser } from "@/utils/dbUtils";
+import { getUser } from "@/utils/db/userQueries";
 import { UserRole, mapRoleToUserRole, hasRequiredRole } from "@/types/user";
 import { getUserFromJWT } from "@/utils/authUtils";
 

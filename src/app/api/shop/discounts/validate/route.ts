@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { validateDiscountCode } from "@/utils/dbUtils";
+import { validateDiscountCode } from "@/utils/db/shopQueries";
 import { cookies } from "next/headers";
 import { getUserFromJWT } from "@/utils/authUtils";
 

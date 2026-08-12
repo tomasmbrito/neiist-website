@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { addEmailVerification } from "@/utils/dbUtils";
+import { addEmailVerification } from "@/utils/db/userQueries";
 import { sendEmail, getEmailVerificationTemplate } from "@/utils/emailUtils";
 import { cookies } from "next/headers";
 import { getUserFromJWT } from "@/utils/authUtils";

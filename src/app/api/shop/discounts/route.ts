@@ -5,7 +5,7 @@ import {
   deleteDiscountCode,
   getAllDiscountCodes,
   updateDiscountCode,
-} from "@/utils/dbUtils";
+} from "@/utils/db/shopQueries";
 import { serverCheckRoles } from "@/utils/permissionUtils";
 import { sendEmail, getDiscountCampaignEmailTemplate } from "@/utils/emailUtils";
 import type {

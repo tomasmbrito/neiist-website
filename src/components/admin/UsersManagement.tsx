@@ -1,5 +1,5 @@
 import { User } from "@/types/user";
-import { getAllUsers, getAllMemberships, getDepartmentRoles } from "@/utils/dbUtils";
+import { getAllUsers, getAllMemberships, getDepartmentRoles } from "@/utils/db/userQueries";
 import UsersSearchList from "@/components/admin/UsersSearchList";
 import styles from "@/styles/components/admin/UsersManagement.module.css";
 import { Membership } from "@/types/memberships";

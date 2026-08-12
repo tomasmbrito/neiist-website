@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrderById } from "@/utils/dbUtils";
+import { getOrderById } from "@/utils/db/shopQueries";
 import { serverCheckRoles } from "@/utils/permissionUtils";
 import {
   validateSumUpCredentials,

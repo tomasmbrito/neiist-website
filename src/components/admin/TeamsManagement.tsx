@@ -1,4 +1,4 @@
-import { getAllTeams } from "@/utils/dbUtils";
+import { getAllTeams } from "@/utils/db/userQueries";
 import TeamsSearchFilter from "@/components/admin/TeamsSearchFilter";
 import AddDepartmentModal from "@/components/admin/AddDepartmentModal";
 import styles from "@/styles/components/admin/TeamsManagement.module.css";

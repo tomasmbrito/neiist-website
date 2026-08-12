@@ -3,7 +3,7 @@ import {
   addValidDepartmentRole,
   removeValidDepartmentRole,
   getDepartmentRoles,
-} from "@/utils/dbUtils";
+} from "@/utils/db/userQueries";
 import { UserRole } from "@/types/user";
 import { serverCheckRoles } from "@/utils/permissionUtils";
 

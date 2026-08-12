@@ -1,5 +1,5 @@
 import ShopManagement from "@/components/shop/ShopManagement";
-import { getAllProductsAdmin, getAllCategories } from "@/utils/dbUtils";
+import { getAllProductsAdmin, getAllCategories } from "@/utils/db/shopQueries";
 import { UserRole } from "@/types/user";
 import { requireRoles } from "@/utils/permissionUtils";
 
