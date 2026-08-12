@@ -243,10 +243,18 @@ Things you should know before proposing work, so you don't "discover" them as ne
 - **`serverCheckRoles` swallows Next's `DynamicServerError`** — its blanket `catch` eats the
   signal Next uses to mark a route dynamic. That is why pages needed `force-dynamic`. Tracked
   in #111; needs approval as auth code.
-- **No transactions exist anywhere.** `db_query` is `pool.query()`, so there is no way to
-  express one. Every multi-statement operation in TypeScript is non-atomic by construction.
-  The only atomicity comes from logic that happens to live entirely inside a `plpgsql` function.
-  Adopting the upstream data layer did **not** change this — confirmed in #142.
+- **Transactions exist as of #80, but almost nothing uses them yet.** `withTransaction(fn)` is in
+  `src/utils/db/dbClient.ts`; the callback receives a `Querier` that **must** be threaded into
+  every query function that should take part. Two operations are converted (product edit, discount
+  campaign); **all order handling is still non-atomic.** Three rules when you use it:
+  1. **Thread `q` everywhere inside.** A pool query inside an open transaction is a bug; the
+     `AsyncLocalStorage` tripwire throws on it in dev.
+  2. **A query function used with `q` must let its errors throw.** Only 6 of ~64 do; the rest still
+     `catch { return null }`, which inside a transaction means the writes are silently discarded.
+     `withTransaction` checks the tag `COMMIT` returns and throws if the transaction was already
+     aborted — **do not remove that check**, it is the only thing making the other ~58 survivable.
+  3. **No email, SumUp, or other network calls inside `fn`.** It holds a pooled connection for the
+     whole round-trip, and no rollback can unsend an email.
 - **There is a CI gate now** (`.github/workflows/ci.yml`: type-check, lint, format, build) and
   it passes. It failed on every run from #106 until #109 because `next-env.d.ts` is gitignored
   and absent from a fresh checkout — see #110. `deploy-staging.yml` still fires on every push

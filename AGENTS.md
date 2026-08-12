@@ -93,8 +93,13 @@ public/           # Static assets
   - **`neiist.users.istid` is `VARCHAR(50)`** and every cast must say `::VARCHAR(50)`.
     External users get a synthetic 36-char `ext_<uuid>`; a `::VARCHAR(10)` cast (which upstream
     uses) **truncates silently rather than erroring**.
-  - **No transactions exist.** `db_query` is `pool.query()`, so every multi-statement
-    operation is non-atomic by construction. The #142 split did not change this.
+  - **Transactions exist as of #80** — `withTransaction(fn)` in `src/utils/db/dbClient.ts`. Thread
+    the `Querier` it passes you into every query function that must take part; a pool query inside
+    an open transaction throws in dev. Only 6 of ~64 query functions accept one, and the rest still
+    `catch { return null }`, which inside a transaction discards the writes — so
+    `withTransaction` also throws if `COMMIT` reports the transaction was already aborted. Never
+    put email or other network calls inside it. **All order handling is still non-atomic**
+    (#78/#79/#100).
 - **API routes**: Use Next.js App Router route handlers (`route.ts` files).
 - **Authentication**: Fenix OAuth via API callbacks.
 - **Styling**: Component-level CSS modules / global styles.

@@ -180,9 +180,10 @@ CI on main        GREEN     (first green runs in this repository's history)
 
 - **No tests and no test runner** (#52). Gates prove compilation and formatting. They cannot
   catch wrong totals, missing authorization, race conditions, or React effect bugs.
-- **No transactions anywhere.** `db_query` is `pool.query()`, so nothing can issue `BEGIN`.
-  Every multi-table write is non-atomic by construction. Adopting the upstream data layer
-  **did not** fix this, exactly as predicted — theirs is `pool.query()` too. Confirmed by #142.
+- **Transactions exist as of #80** — `withTransaction` in `src/utils/db/dbClient.ts`. Two
+  operations use it (product edit, discount campaign); **everything else is still non-atomic**,
+  including all of order handling. The mechanism is there, the conversions are not. Adopting the
+  upstream data layer did **not** provide this — theirs is `pool.query()` too (#142).
 - **The data layer is now `src/utils/db/*`** (`dbClient`, `errorMapper`, `userQueries`,
   `eventQueries`, `shopQueries`). `src/utils/dbUtils.ts` **no longer exists** — do not recreate it,
   and do not add queries to a single god file again.
@@ -275,19 +276,19 @@ Full wave ordering: [`upstream-sync-plan.md`](upstream-sync-plan.md).
 
 ### Immediate — this is where the work is now
 
-1. **#80 — transaction support and a hardened pool. The active item.** Plan proposed in
-   [`.claude/plans/80-transaction-support.md`](../../.claude/plans/80-transaction-support.md),
-   awaiting approval. It needs no schema, auth, SumUp or dependency change, which is exactly why
-   it goes first. Two things found while planning that are not in issue #80's body:
-   - **The "two pools" half of #80 is already fixed.** `src/lib/db/connection.ts` went with the
-     dead layer in #119; there is exactly one `new Pool` in `src/` now. What remains is the HMR
-     leak, the missing pool config, and the missing `pool.on("error")` — without that last one an
-     error on an idle pooled client terminates the Node process.
-   - **The `catch { return null }` house pattern silently defeats a transaction.** A swallowed
-     error leaves the transaction aborted, the callback does not throw, so `COMMIT` runs — and
-     **`COMMIT` on an aborted transaction succeeds, returning the tag `ROLLBACK`, with no error to
-     the client.** Proven against the live database. Any function threaded into a transaction must
-     propagate first; `createDiscountCode` is the one that currently does not.
+1. ~~**#80 — transaction support and a hardened pool.**~~ **Done, PR #145.** `withTransaction`
+   exists in `src/utils/db/dbClient.ts`, the pool is HMR-guarded and configured with an
+   `error` handler, and the two operations in #80's acceptance criteria are atomic. **This
+   unblocks #78, #79 and #100** — they are now writable, and they are the next work.
+   Three things worth carrying forward:
+   - **Only 6 of ~64 query functions take a `Querier`.** Widening is mechanical, but do it per
+     operation that needs it, not speculatively.
+   - **The other ~58 still swallow their errors**, which is unsafe inside a transaction. That is
+     survivable only because `withTransaction` checks the tag `COMMIT` returns and throws if the
+     transaction was already aborted. Do not remove that check.
+   - **Never put email, SumUp, or any network call inside `withTransaction`** — it holds a pooled
+     connection for the round-trip and no rollback can undo it. The discount campaign commits all
+     codes first, then sends.
 2. **#111 — `serverCheckRoles` swallows `DynamicServerError`.** Its blanket `catch` eats the
    signal Next uses to mark a route dynamic; that is why pages needed `force-dynamic`. Re-throw
    anything with a `digest`. 21 call sites, so high leverage. *Auth code — approval.*
@@ -359,6 +360,13 @@ It also changes three existing items:
 - **#143** — errorMapper: one mapping mechanism instead of two, and fix Portuguese strings that
   are missing accents (`"ja terminou"`, `"indisponivel"`, `"Quantidade invalida"`) on pages that
   handle money.
+- **#146** — `ON CONFLICT DO NOTHING` on the two `user_courses` inserts, split out of #122 so the
+  schema decision is tracked rather than parked inside a closed bug. *Schema — approval.*
+- **#147** — `withValidation` validates the body **before** the handler runs `serverCheckRoles`, so
+  an anonymous `POST /api/shop/discounts` gets a 400 with full Zod field detail for an `_ADMIN`-only
+  endpoint instead of a 401. Found while smoke-testing #80's routes; structural and pre-existing.
+  Authorize first, then validate — best fixed in the wrapper, since the current shape makes the
+  wrong order the default. *Auth — approval.*
 
 ### Board state — reconciled 2026-08-12 after Wave 2
 
@@ -366,27 +374,44 @@ Moved, because the facts were unambiguous:
 
 | Item | Change | Why |
 |---|---|---|
-| **#80** | Backlog → **Ready**, P1 → **P0** | Its three dependants were already P0; it is the keystone they need |
-| **#78 · #79 · #100** | Backlog → **Ready** | Their blocker (Wave 2) is merged. Still gated on #80 |
-| **#52** | Backlog → **Ready / P1** | #126 escalates it and #80 finally gives it a first test worth writing |
-| **#28** | In review → **Done** | Delivered by PR #142, merged as `aab9d38` |
+| **#80** | Backlog → **In review**, P1 → **P0** | PR #145. Its three dependants were already P0; it is the keystone they need |
+| **#78 · #79 · #100** | Backlog → **Ready** | Their blocker (Wave 2) is merged, and #80 makes them writable |
+| **#52** | Backlog → **Ready / P1 / M** | #126 escalates it, and #80 produced a concrete first test to port |
+| **#28** | In review → **Done**, retitled, closed | Delivered by PR #142, merged as `aab9d38` |
+| **#121** | In review → **Done**, closed | Criteria verified at runtime — see below |
+| **#122** | In review → **Done**, closed | App fix merged in #120; schema half split out as **#146** |
+| **#146** | new → **Ready / P1 / XS** | `ON CONFLICT DO NOTHING` on `user_courses`. Schema → approval |
+| **#141** | P0 → **P2** | The exposed password is an old one, not the current credential |
 
-**Still drifting — needs a human decision, not silently "fixed":**
+**Drift resolved (Tomás delegated the judgement calls):**
 
-- **#28's title and body are wrong even though it is now Done.** It says "Split the God Object
-  **Repository**" and its body describes splitting `ShopRepository`. The god object was never the
-  repository layer — that had zero call sites and was deleted in #119. It was `dbUtils.ts`.
-  Retitle, or close as delivered-under-a-wrong-name?
-- **#4 "[Epic 2.1] Repository Pattern Implementation"** is *Done*, but #119 deleted that layer
-  entirely. Misleading to anyone reading the board cold.
-- **#121** sits in *In review* with PR #118 merged, but all four of its acceptance criteria are
-  still unchecked — they are verification steps nobody has run. Verify then close, or close now?
-- **#122** sits in *In review* and its application fix merged in PR #120, but two acceptance
-  criteria are genuinely open: a real Fenix login by a multi-registration student, and the
-  decision on `ON CONFLICT DO NOTHING` in `schema.sql`. **Left alone deliberately** — moving it to
-  Done would bury an open schema question.
-- **#51 and #52 still say Jest** in their bodies while `decision-log.md` records Vitest.
-  Commented on #52; not rewriting either body unilaterally.
+- **#28** retitled to "Split the God Object — `dbUtils.ts` into `src/utils/db/*`" and closed. The
+  goal was delivered by #142; only the name was wrong. Its task list (`ProductRepository`,
+  `OrderRepository`, …) describes a design abandoned when #82 settled on `istid` over UUID, and is
+  left as history rather than rewritten.
+- **#4** retitled to "Data layer consolidation (repository pattern attempted, superseded by
+  `src/utils/db/*`)" and annotated. It stays Done: the *outcome* — one non-duplicated data layer —
+  exists, reached by a different route than the title implies.
+- **#121 verified and closed.** All four criteria were run against a production build with the
+  `activities` table empty: 200 with Notion unconfigured, 200 with Notion configured-but-broken and
+  the failure logged (`[activities] Notion sync failed … API token is invalid`), calendar rendering
+  rather than the error boundary, and the webhook still returning 500 on a sync failure. That run
+  also re-verified **#96** — the webhook returned `503 "Webhook not configured"` with
+  `VERIFICATION_TOKEN` unset, i.e. it fails closed where upstream's fails open.
+- **#122 closed, and its schema half split out as #146.** The application fix (#120) is in place at
+  `userdata/route.ts:67`. Keeping a P0 open to hold a schema decision was hiding that decision
+  rather than tracking it. The criterion "a real Fenix login by a multi-registration student
+  succeeds" is marked **unverifiable locally** — it needs live Fenix and a specific student's
+  registration history — rather than silently ticked.
+- **#51/#52 already said Vitest.** That drift item was itself stale: both bodies were corrected in
+  an earlier session and carry an explicit "previously specified Jest" note.
+- **#141 downgraded P0 → P2.** Tomás confirms the password on that Notion page is an **old** one, so
+  there is no live credential exposure. `notion-to-website-plan.md` §1 overstates it. The GDPR half
+  of that issue — `Members`, `Recrutamento` and `Encomendas Sweats Verdes` readable by every
+  workspace member — is untouched by the correction and is the real argument for #126.
+
+**Still open on the board and genuinely undecided:** nothing from the old drift list. New items
+needing a human: **#146** (schema), **#111** (auth), **#52** (dependency).
 
 ---
 

@@ -45,14 +45,23 @@ Each entry records root cause and fix for future reference.
   -- probe table gone; nothing was written; no error ever reached the client.
   ```
 
-- **Fix**: not yet applied. Any query function threaded into a transaction must propagate its
-  errors. Audited: the five product/variant functions in `shopQueries.ts` have no `try/catch` and
-  are safe as-is; **`createDiscountCode` swallows everything** and must be narrowed to SQLSTATE
-  `23505` (unique violation → retry signal) with everything else rethrown. Plan in
-  `.claude/plans/80-transaction-support.md`.
+- **Fix**: applied in #80, in two layers.
+  1. `createDiscountCode` now returns `null` **only** on SQLSTATE `23505` (the collision-retry
+     signal) and rethrows everything else. The five product/variant functions never had a
+     `try/catch`, so they were already safe.
+  2. **`withTransaction` inspects the command tag that `COMMIT` returns and throws if it is
+     `ROLLBACK`.** This is the layer that matters, because the other ~58 query functions in
+     `src/utils/db/*` still swallow: if one of them is ever threaded into a transaction, the
+     transaction now fails loudly instead of returning success with the writes discarded.
+- **Verified**: without the tag check, `withTransaction` returned `"looked fine"` while the
+  update vanished. With it, the same script gets
+  `Transaction was already aborted at COMMIT, so every write in it was discarded`.
 - **Why it is worth writing down**: the failure is invisible from the application side, and the
   instinct when adding transactions is to trust the existing query functions. It is the same shape
   as the `::VARCHAR(10)` truncation — the database silently does something reasonable-looking
   instead of erroring.
-- **Regression test?** None yet — no test runner (#52). This is the strongest candidate for the
-  first test once Vitest lands: `withTransaction` must roll back and rethrow, not return `null`.
+- **Regression test?** None committed — no test runner (#52). Verified with a throwaway script
+  that compiled `dbClient.ts` standalone (it imports only `pg` and `node:async_hooks`) and ran it
+  against the dev database: 10 assertions covering rollback, commit, the swallowed-error case, the
+  `AsyncLocalStorage` tripwire and pool reuse. **This is the first thing to port to Vitest** — the
+  script proves the behaviour once, a test would prove it on every change.
