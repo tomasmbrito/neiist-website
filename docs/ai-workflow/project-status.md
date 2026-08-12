@@ -360,6 +360,13 @@ It also changes three existing items:
 - **#143** — errorMapper: one mapping mechanism instead of two, and fix Portuguese strings that
   are missing accents (`"ja terminou"`, `"indisponivel"`, `"Quantidade invalida"`) on pages that
   handle money.
+- **#146** — `ON CONFLICT DO NOTHING` on the two `user_courses` inserts, split out of #122 so the
+  schema decision is tracked rather than parked inside a closed bug. *Schema — approval.*
+- **#147** — `withValidation` validates the body **before** the handler runs `serverCheckRoles`, so
+  an anonymous `POST /api/shop/discounts` gets a 400 with full Zod field detail for an `_ADMIN`-only
+  endpoint instead of a 401. Found while smoke-testing #80's routes; structural and pre-existing.
+  Authorize first, then validate — best fixed in the wrapper, since the current shape makes the
+  wrong order the default. *Auth — approval.*
 
 ### Board state — reconciled 2026-08-12 after Wave 2
 
