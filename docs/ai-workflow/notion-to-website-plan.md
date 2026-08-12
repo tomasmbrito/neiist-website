@@ -39,7 +39,11 @@ These are live now and do not depend on any migration decision.
 | 4 | `Encomendas Sweats Verdes` holds **istid + email + payment status** for merch buyers — a second, uncontrolled copy of order data the website already owns. | Strongest single argument for migration: this data should never have left the site. |
 | 5 | Team home pages embed **Google Drive links and a Drive-based credential flow** ("pedir acesso aos Coordenadores"). | Replace with role-derived access once the site owns identity. |
 
-Finding 1 is the only one that is an emergency. Do it today.
+> **Correction, 2026-08-12:** Tomás confirms the password on that page is an **old** one, not the
+> account's current credential. Finding 1 is therefore **not** an emergency and #141 is now P2 —
+> still worth purging from the page and its history, since it reveals the pattern the account has
+> used, but there is no live credential to rotate. Findings 2–5 stand unchanged, and they are the
+> ones that actually argue for this migration: they are GDPR exposures, not a single leaked secret.
 
 ---
 
@@ -424,7 +428,8 @@ the núcleo, and this plan is the first thing that would make members actually u
 Morale and momentum are real. So:
 
 **Do these two things in parallel, now, without waiting:**
-- **Rotate the Gmail password** (§1) — today, unrelated to everything else.
+- ~~**Rotate the Gmail password** (§1) — today, unrelated to everything else.~~ **Superseded:** the
+  password is an old one (see the correction in §1). Purging it from the page is P2, not urgent.
 - **Phase 1 read-only:** surface events and meetings from Notion on the website as a read
   view — no writes, no new tables, using the Notion integration that already exists. It gives
   the núcleo something visible within days, validates the data model against reality, and

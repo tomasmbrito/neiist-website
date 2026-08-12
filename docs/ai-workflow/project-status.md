@@ -367,27 +367,44 @@ Moved, because the facts were unambiguous:
 
 | Item | Change | Why |
 |---|---|---|
-| **#80** | Backlog → **Ready**, P1 → **P0** | Its three dependants were already P0; it is the keystone they need |
-| **#78 · #79 · #100** | Backlog → **Ready** | Their blocker (Wave 2) is merged. Still gated on #80 |
-| **#52** | Backlog → **Ready / P1** | #126 escalates it and #80 finally gives it a first test worth writing |
-| **#28** | In review → **Done** | Delivered by PR #142, merged as `aab9d38` |
+| **#80** | Backlog → **In review**, P1 → **P0** | PR #145. Its three dependants were already P0; it is the keystone they need |
+| **#78 · #79 · #100** | Backlog → **Ready** | Their blocker (Wave 2) is merged, and #80 makes them writable |
+| **#52** | Backlog → **Ready / P1 / M** | #126 escalates it, and #80 produced a concrete first test to port |
+| **#28** | In review → **Done**, retitled, closed | Delivered by PR #142, merged as `aab9d38` |
+| **#121** | In review → **Done**, closed | Criteria verified at runtime — see below |
+| **#122** | In review → **Done**, closed | App fix merged in #120; schema half split out as **#146** |
+| **#146** | new → **Ready / P1 / XS** | `ON CONFLICT DO NOTHING` on `user_courses`. Schema → approval |
+| **#141** | P0 → **P2** | The exposed password is an old one, not the current credential |
 
-**Still drifting — needs a human decision, not silently "fixed":**
+**Drift resolved (Tomás delegated the judgement calls):**
 
-- **#28's title and body are wrong even though it is now Done.** It says "Split the God Object
-  **Repository**" and its body describes splitting `ShopRepository`. The god object was never the
-  repository layer — that had zero call sites and was deleted in #119. It was `dbUtils.ts`.
-  Retitle, or close as delivered-under-a-wrong-name?
-- **#4 "[Epic 2.1] Repository Pattern Implementation"** is *Done*, but #119 deleted that layer
-  entirely. Misleading to anyone reading the board cold.
-- **#121** sits in *In review* with PR #118 merged, but all four of its acceptance criteria are
-  still unchecked — they are verification steps nobody has run. Verify then close, or close now?
-- **#122** sits in *In review* and its application fix merged in PR #120, but two acceptance
-  criteria are genuinely open: a real Fenix login by a multi-registration student, and the
-  decision on `ON CONFLICT DO NOTHING` in `schema.sql`. **Left alone deliberately** — moving it to
-  Done would bury an open schema question.
-- **#51 and #52 still say Jest** in their bodies while `decision-log.md` records Vitest.
-  Commented on #52; not rewriting either body unilaterally.
+- **#28** retitled to "Split the God Object — `dbUtils.ts` into `src/utils/db/*`" and closed. The
+  goal was delivered by #142; only the name was wrong. Its task list (`ProductRepository`,
+  `OrderRepository`, …) describes a design abandoned when #82 settled on `istid` over UUID, and is
+  left as history rather than rewritten.
+- **#4** retitled to "Data layer consolidation (repository pattern attempted, superseded by
+  `src/utils/db/*`)" and annotated. It stays Done: the *outcome* — one non-duplicated data layer —
+  exists, reached by a different route than the title implies.
+- **#121 verified and closed.** All four criteria were run against a production build with the
+  `activities` table empty: 200 with Notion unconfigured, 200 with Notion configured-but-broken and
+  the failure logged (`[activities] Notion sync failed … API token is invalid`), calendar rendering
+  rather than the error boundary, and the webhook still returning 500 on a sync failure. That run
+  also re-verified **#96** — the webhook returned `503 "Webhook not configured"` with
+  `VERIFICATION_TOKEN` unset, i.e. it fails closed where upstream's fails open.
+- **#122 closed, and its schema half split out as #146.** The application fix (#120) is in place at
+  `userdata/route.ts:67`. Keeping a P0 open to hold a schema decision was hiding that decision
+  rather than tracking it. The criterion "a real Fenix login by a multi-registration student
+  succeeds" is marked **unverifiable locally** — it needs live Fenix and a specific student's
+  registration history — rather than silently ticked.
+- **#51/#52 already said Vitest.** That drift item was itself stale: both bodies were corrected in
+  an earlier session and carry an explicit "previously specified Jest" note.
+- **#141 downgraded P0 → P2.** Tomás confirms the password on that Notion page is an **old** one, so
+  there is no live credential exposure. `notion-to-website-plan.md` §1 overstates it. The GDPR half
+  of that issue — `Members`, `Recrutamento` and `Encomendas Sweats Verdes` readable by every
+  workspace member — is untouched by the correction and is the real argument for #126.
+
+**Still open on the board and genuinely undecided:** nothing from the old drift list. New items
+needing a human: **#146** (schema), **#111** (auth), **#52** (dependency).
 
 ---
 
