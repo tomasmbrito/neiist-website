@@ -40,3 +40,62 @@ jobs:
       # reachable database.
       - name: Build
         run: yarn build
+
+  # Deliberately a separate job from `quality`. The build must keep proving it needs no database
+  # (#106/#109), so it must not run anywhere near one.
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: admin
+          POSTGRES_DB: neiist
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: admin
+      PGPASSWORD: admin
+      PGDATABASE: neiist
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+
+      - name: Install Dependencies
+        run: yarn install --frozen-lockfile
+
+      # The service container cannot mount /docker-entrypoint-initdb.d/, so the schema is applied
+      # here instead. `--set ON_ERROR_STOP=1` matters: without it psql reports success after
+      # failing statements and the tests then fail for the wrong reason.
+      - name: Load schema
+        run: |
+          psql --set ON_ERROR_STOP=1 -f docker/schema.sql
+          psql --set ON_ERROR_STOP=1 -f docker/init.sql
+
+      # Two roles, as in production: the tests exercise code that runs as the privilege-stripped
+      # application role, while the harness needs an owner connection to clean up. Neither
+      # credential is a secret — both are literals in docker/schema.sql and docker-compose.yml,
+      # and this database exists for the length of one job.
+      - name: Test
+        run: yarn test
+        env:
+          DATABASE_URL: postgresql://neiist_app_user:neiist_app_user_password@localhost:5432/neiist
+          MIGRATION_DATABASE_URL: postgresql://admin:admin@localhost:5432/neiist
