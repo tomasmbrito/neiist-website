@@ -5,7 +5,7 @@
   "scripts": {
     "setup": "chmod +x ./scripts/setup.sh && ./scripts/setup.sh",
     "release": "yarn changeset && yarn changeset version && yarn changeset publish",
-    "dev": "docker compose -f ./docker/docker-compose.yml up -d && next dev --turbopack; docker compose -f ./docker/docker-compose.yml stop > /dev/null 2>&1",
+    "dev": "docker compose -f ./docker/docker-compose.yml up -d && ./scripts/dev-db-check.sh && next dev --turbopack; docker compose -f ./docker/docker-compose.yml stop > /dev/null 2>&1",
     "build": "next build",
     "start": "next start",
     "lint": "eslint -c ./config/eslint/eslint.config.mjs .",

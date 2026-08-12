@@ -129,6 +129,45 @@ This guide will help you get a local copy up and running follow these simple ste
   - **Password:** `admin`
   - **Database:** `neiist`
 
+### Troubleshooting: `role "neiist_app_user" does not exist`
+
+**Symptom.** `yarn dev` starts without complaint, but every page that reads the database
+returns a 500 with:
+
+```
+error: role "neiist_app_user" does not exist
+```
+
+Confusingly, the container *is* running and *does* contain the correct schema and role —
+`docker exec neiist_db psql -U admin -d neiist -c '\du'` confirms it.
+
+**Cause.** Something else — usually a Homebrew `postgresql@14` service, or a second checkout —
+already holds port 5432. Docker starts the container but cannot publish its port, so the app
+connects to the *other* Postgres, which has no `neiist` schema.
+
+**Diagnose.**
+
+```sh
+lsof -nP -iTCP:5432 -sTCP:LISTEN   # what else is listening
+docker ps                          # ours shows 5432/tcp with NO host mapping
+```
+
+**Fix — either one.**
+
+```sh
+brew services stop postgresql@14   # free the port, or
+```
+
+move ours by setting `POSTGRES_PORT` in `.env` and updating `DATABASE_URL` to match:
+
+```
+POSTGRES_PORT=5433
+DATABASE_URL=postgresql://admin:admin@127.0.0.1:5433/neiist
+```
+
+`yarn dev` now runs a preflight check (`scripts/dev-db-check.sh`) that fails with this
+explanation rather than starting into a misleading runtime error.
+
 ## Additional Tips
 
 - Husky is set up for pre-commit hooks to help maintain code quality.
