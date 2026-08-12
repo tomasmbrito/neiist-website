@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { UserRole } from "@/types/user";
-import { addProduct, addProductVariant, getProduct } from "@/utils/dbUtils";
+import { addProduct, addProductVariant, getProduct } from "@/utils/db/shopQueries";
 import { serverCheckRoles } from "@/utils/permissionUtils";
 import { withValidation } from "@/utils/security/validationUtils";
 import { productPayloadSchema } from "@/schemas/shop";

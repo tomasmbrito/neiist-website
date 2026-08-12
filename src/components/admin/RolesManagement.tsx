@@ -1,4 +1,4 @@
-import { getAllDepartments, getDepartmentRoles } from "@/utils/dbUtils";
+import { getAllDepartments, getDepartmentRoles } from "@/utils/db/userQueries";
 import RolesSearchFilter from "@/components/admin/RolesSearchFilter";
 import styles from "@/styles/components/admin/RolesManagement.module.css";
 

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import ProfileClient from "@/components/Profile";
 import styles from "@/styles/pages/ProfilePage.module.css";
 import { getUserFromJWT } from "@/utils/authUtils";
-import { getUser } from "@/utils/dbUtils";
+import { getUser } from "@/utils/db/userQueries";
 
 export default async function ProfilePage() {
   const cookieStore = await cookies();

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { User, UserRole } from "@/types/user";
-import { getUser, updateUser, updateUserPhoto } from "@/utils/dbUtils";
+import { getUser, updateUser, updateUserPhoto } from "@/utils/db/userQueries";
 import fs from "fs/promises";
 import path from "path";
 import { serverCheckRoles } from "@/utils/permissionUtils";

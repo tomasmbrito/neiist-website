@@ -1,4 +1,4 @@
-import { getAllMemberships, getAllDepartments } from "@/utils/dbUtils";
+import { getAllMemberships, getAllDepartments } from "@/utils/db/userQueries";
 import { Membership } from "@/types/memberships";
 import PhotoTeamMembers from "@/components/photo-management/PhotoTeamMembers";
 import { requireRoles } from "@/utils/permissionUtils";

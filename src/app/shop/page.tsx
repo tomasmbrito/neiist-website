@@ -1,4 +1,4 @@
-import { getAllProducts } from "@/utils/dbUtils";
+import { getAllProducts } from "@/utils/db/shopQueries";
 import ShopProductList from "@/components/shop/ShopProductList";
 import styles from "@/styles/pages/Shop.module.css";
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { addTeam, removeTeam, getAllTeams } from "@/utils/dbUtils";
+import { addTeam, removeTeam, getAllTeams } from "@/utils/db/userQueries";
 import { UserRole } from "@/types/user";
 import { serverCheckRoles } from "@/utils/permissionUtils";
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateOrder, setOrderState, getOrderById, throwIfOrderDbError } from "@/utils/dbUtils";
+import { throwIfOrderDbError } from "@/utils/db/errorMapper";
+import { updateOrder, setOrderState, getOrderById } from "@/utils/db/shopQueries";
 import { UserRole } from "@/types/user";
 import { getOrderKindRules, getOrderKindFromItems } from "@/utils/shop/orderKindUtils";
 import { getStatusLabel } from "@/utils/shop/orderStatusUtils";

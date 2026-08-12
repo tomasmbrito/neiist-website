@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { getAllProducts, getAllOrders } from "@/utils/dbUtils";
+import { getAllProducts, getAllOrders } from "@/utils/db/shopQueries";
 import { isJantarDeCursoCategory } from "@/utils/shop/orderKindUtils";
 import { serverCheckRoles } from "@/utils/permissionUtils";
 import InfoListItem from "@/components/dinner/InfoListItem";

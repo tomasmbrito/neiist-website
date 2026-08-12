@@ -1,5 +1,5 @@
 import Calendar from "@/components/activities/Calendar";
-import { getActivitiesEventsFromDb } from "@/utils/dbUtils";
+import { getActivitiesEventsFromDb } from "@/utils/db/eventQueries";
 import { syncNotionEventsToDb, isNotionConfigured } from "@/utils/eventsUtils";
 import { UserRole } from "@/types/user";
 import { serverCheckRoles } from "@/utils/permissionUtils";

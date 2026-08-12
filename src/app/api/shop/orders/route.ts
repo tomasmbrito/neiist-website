@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
+import { throwIfOrderDbError } from "@/utils/db/errorMapper";
 import {
   getAllOrders,
   newOrder,
-  getUser,
-  updateUser,
-  throwIfOrderDbError,
   getProduct,
   getUserOrderedProductsInCategory,
-} from "@/utils/dbUtils";
+} from "@/utils/db/shopQueries";
+import { getUser, updateUser } from "@/utils/db/userQueries";
 import { UserRole } from "@/types/user";
 import { PAYMENT_METHODS, PENDING_PAYMENT_METHODS, PaymentMethod } from "@/types/shop/payment";
 import { OrderSource } from "@/types/shop/orderKind";

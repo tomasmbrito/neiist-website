@@ -1,4 +1,4 @@
-import { getAllUsers, getAllMemberships, getAllValidDepartmentRoles } from "@/utils/dbUtils";
+import { getAllUsers, getAllMemberships, getAllValidDepartmentRoles } from "@/utils/db/userQueries";
 import CoordinatorTeamManagementSearch from "@/components/team-management/CoordinatorTeamManagementSearch";
 import { UserRole } from "@/types/user";
 import { Membership } from "@/types/memberships";

@@ -3,7 +3,7 @@ import { Metadata } from "next";
 import { cookies } from "next/headers";
 import { Secular_One } from "next/font/google";
 import { getUserFromJWT } from "@/utils/authUtils";
-import { getUser } from "@/utils/dbUtils";
+import { getUser } from "@/utils/db/userQueries";
 import { User } from "@/types/user";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import NavBar from "@/components/layout/navbar/NavBar";

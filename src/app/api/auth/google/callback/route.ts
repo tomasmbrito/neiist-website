@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getUser, createUser, db_query } from "@/utils/dbUtils";
+import { db_query } from "@/utils/db/dbClient";
+import { getUser, createUser } from "@/utils/db/userQueries";
 import { signUserJWT } from "@/utils/authUtils";
 
 export async function GET(request: Request) {

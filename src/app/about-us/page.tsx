@@ -4,7 +4,7 @@ import {
   getAllAdminBodies,
   getDepartmentRoleOrder,
   getAllUsers,
-} from "@/utils/dbUtils";
+} from "@/utils/db/userQueries";
 import { getFirstAndLastName } from "@/utils/userUtils";
 import teamImage from "@/assets/team.png";
 import styles from "@/styles/pages/AboutUs.module.css";

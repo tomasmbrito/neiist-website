@@ -1,5 +1,5 @@
 import ProductDetail from "@/components/shop/ProductDetail";
-import { getProduct } from "@/utils/dbUtils";
+import { getProduct } from "@/utils/db/shopQueries";
 import styles from "@/styles/pages/ProductDetail.module.css";
 
 export default async function ProductDetailPage({ params }: { params: { id: string } }) {

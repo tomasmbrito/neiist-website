@@ -1,5 +1,6 @@
 import DiscountCodeForm from "@/components/shop/DiscountCodeForm";
-import { getAllProductsAdmin, getAllUsers } from "@/utils/dbUtils";
+import { getAllProductsAdmin } from "@/utils/db/shopQueries";
+import { getAllUsers } from "@/utils/db/userQueries";
 import { UserRole } from "@/types/user";
 import { requireRoles } from "@/utils/permissionUtils";
 

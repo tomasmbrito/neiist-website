@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getUser } from "@/utils/dbUtils";
+import { getUser } from "@/utils/db/userQueries";
 import {
   getOrCreateUserCalendar,
   getAddCalendarLink,

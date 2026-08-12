@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrderById } from "@/utils/dbUtils";
+import { getOrderById } from "@/utils/db/shopQueries";
 import { getSumUpClient, sumupErrorResponse, validateSumUpCredentials } from "@/utils/sumupUtils";
 import type { SumUpCheckout } from "@/types/sumup";
 import { finalizePaidOrder } from "@/utils/shop/orderFinalization";

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { addTeamMember, removeTeamMember, getAllMemberships } from "@/utils/dbUtils";
+import { addTeamMember, removeTeamMember, getAllMemberships } from "@/utils/db/userQueries";
 import { UserRole } from "@/types/user";
 import { serverCheckRoles } from "@/utils/permissionUtils";
 import type { Membership } from "@/types/memberships";

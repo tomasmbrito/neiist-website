@@ -1,5 +1,5 @@
 import ProductForm from "@/components/shop/ProductForm";
-import { getAllCategories } from "@/utils/dbUtils";
+import { getAllCategories } from "@/utils/db/shopQueries";
 import { UserRole } from "@/types/user";
 import { requireRoles } from "@/utils/permissionUtils";
 

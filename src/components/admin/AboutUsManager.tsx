@@ -1,4 +1,4 @@
-import { getAllDepartments, getAllMemberships, getAllUsers } from "@/utils/dbUtils";
+import { getAllDepartments, getAllMemberships, getAllUsers } from "@/utils/db/userQueries";
 import AboutUsEditor from "@/components/admin/AboutUsEditor";
 import { Membership } from "@/types/memberships";
 

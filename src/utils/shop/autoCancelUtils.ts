@@ -1,4 +1,4 @@
-import { getAllOrders, setOrderState } from "@/utils/dbUtils";
+import { getAllOrders, setOrderState } from "@/utils/db/shopQueries";
 import { getAutoCancelledOrderEmailTemplate, sendEmail } from "@/utils/emailUtils";
 import { getOrderKindRules, getOrderKindFromItems } from "@/utils/shop/orderKindUtils";
 import { Order } from "@/types/shop/order";

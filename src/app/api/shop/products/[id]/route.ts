@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { UserRole } from "@/types/user";
+import { mapDeleteProductDbErrorToResponse } from "@/utils/db/errorMapper";
 import {
   updateProduct,
   updateProductVariant,
@@ -7,8 +8,7 @@ import {
   addProductVariant,
   deleteProduct,
   deleteProductVariant,
-  mapDeleteProductDbErrorToResponse,
-} from "@/utils/dbUtils";
+} from "@/utils/db/shopQueries";
 import { serverCheckRoles } from "@/utils/permissionUtils";
 import { withValidation } from "@/utils/security/validationUtils";
 import { productPayloadSchema } from "@/schemas/shop";

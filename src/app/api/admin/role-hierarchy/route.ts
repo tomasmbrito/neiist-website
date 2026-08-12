@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDepartmentRoleOrder, setDepartmentRoleOrder } from "@/utils/dbUtils";
+import { getDepartmentRoleOrder, setDepartmentRoleOrder } from "@/utils/db/userQueries";
 import { UserRole } from "@/types/user";
 import { serverCheckRoles } from "@/utils/permissionUtils";
 

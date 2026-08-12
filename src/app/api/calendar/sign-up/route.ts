@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { signUpToEvent, removeSignUpFromEvent } from "@/utils/dbUtils";
+import { signUpToEvent, removeSignUpFromEvent } from "@/utils/db/eventQueries";
 import { getUserFromJWT } from "@/utils/authUtils";
 
 export async function POST(req: NextRequest) {

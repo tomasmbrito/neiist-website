@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { UserRole } from "@/types/user";
-import { updateActivityProperties, getEventSubscribers } from "@/utils/dbUtils";
+import { updateActivityProperties, getEventSubscribers } from "@/utils/db/eventQueries";
 import { serverCheckRoles } from "@/utils/permissionUtils";
 
 export async function POST(request: NextRequest) {
