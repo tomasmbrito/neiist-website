@@ -7,8 +7,11 @@ import styles from "@/styles/components/photo-management/PhotoTeamMembers.module
 
 // Reads live membership data on every request; prerendering froze it into the build output and
 // made a reachable database a build-time requirement.
-export const dynamic = "force-dynamic";
-
+//
+// It carried `export const dynamic = "force-dynamic"` to force that. Since #111 the
+// `requireRoles` call below is itself the signal: it reads `cookies()`, whose DynamicServerError
+// now escapes instead of being swallowed, and Next marks the route dynamic. Keep the guard ahead
+// of the data reads — it is what aborts the prerender, as well as the authorization boundary.
 export default async function PhotoTeamMembersPage() {
   // Mirrors the coordinator rule in middleware. Enforced here too, because middleware is one
   // routing bug away from being bypassed and does not run for every rendering path.

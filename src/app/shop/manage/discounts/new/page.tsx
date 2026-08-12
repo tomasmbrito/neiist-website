@@ -4,8 +4,9 @@ import { getAllUsers } from "@/utils/db/userQueries";
 import { UserRole } from "@/types/user";
 import { requireRoles } from "@/utils/permissionUtils";
 
-export const dynamic = "force-dynamic";
-
+// Carried `export const dynamic = "force-dynamic"` until #111. The `requireRoles` call below is
+// now the signal that marks this route dynamic: it reads `cookies()`, whose DynamicServerError
+// escapes instead of being swallowed. Keep it ahead of the data reads.
 export default async function NewDiscountPage() {
   await requireRoles([UserRole._ADMIN]);
 

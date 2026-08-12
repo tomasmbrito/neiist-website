@@ -18,8 +18,11 @@ const handelsonTwo = localFont({
 // The page renders per-user (session cookie) from live shop data, so it must never be
 // prerendered at build time — doing so both froze the guest variant into the build output and
 // required a reachable database to build.
-export const dynamic = "force-dynamic";
-
+//
+// It carried `export const dynamic = "force-dynamic"` to force that. Since #111 the
+// `serverCheckRoles` call below is itself the signal: it reads `cookies()`, whose
+// DynamicServerError now escapes instead of being swallowed, and Next marks the route dynamic.
+// Keep the session read ahead of the data reads — it is what aborts the prerender.
 export default async function DinnerPage() {
   const userRoles = await serverCheckRoles([]);
   const products = await getAllProducts(true);

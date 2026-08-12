@@ -5,6 +5,24 @@ import { getUser } from "@/utils/db/userQueries";
 import { UserRole, mapRoleToUserRole, hasRequiredRole } from "@/types/user";
 import { getUserFromJWT } from "@/utils/authUtils";
 
+/**
+ * Next signals control flow by *throwing*, not by returning: `cookies()` outside a request scope
+ * throws `DynamicServerError` to mark the route dynamic, `redirect()` throws `NEXT_REDIRECT`,
+ * `notFound()` throws `NEXT_NOT_FOUND`. Every one of them carries a `digest`.
+ *
+ * A blanket `catch` therefore does not just log an error — it *cancels the framework's control
+ * flow*. `serverCheckRoles` swallowed `DynamicServerError`, so the signal Next uses to decide a
+ * route is dynamic never reached it, and the route stayed a prerender candidate. That is the
+ * whole reason pages needed `export const dynamic = "force-dynamic"` (#111).
+ *
+ * These are not our errors to handle. Re-throw them and only then fall back to the 500.
+ */
+const isFrameworkSignal = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  "digest" in error &&
+  typeof (error as { digest: unknown }).digest === "string";
+
 export async function serverCheckRoles(required: UserRole[]) {
   try {
     const sessionToken = (await cookies()).get("session")?.value;
@@ -37,6 +55,8 @@ export async function serverCheckRoles(required: UserRole[]) {
 
     return { isAuthorized: true, user: currentUser, roles: currentUserRoles };
   } catch (err) {
+    if (isFrameworkSignal(err)) throw err;
+
     console.error("Error checking permissions:", err);
     return {
       isAuthorized: false,
