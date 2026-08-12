@@ -17,13 +17,23 @@ const publicRoutes = [
 const guestRoutes = ["/profile", "/my-orders", "/shop/cart", "/shop/checkout", "/voting"];
 const memberRoutes = ["/orders"];
 const coordRoutes = ["/team-management", "/photo-management"];
+// SumUp card-reader management. It was in no list at all, so it fell through to the public
+// "/shop" prefix below and was reachable by anyone — the same failure #97 fixed for
+// "/shop/manage". Roles match what the reader API routes already require.
+const shopManagerRoutes = ["/shop/pos"];
 const adminRoutes = [
   "/users-management",
   "/departments-management",
   "/shop/manage",
   "/voting/admin",
 ];
-const protectedRoutes = [guestRoutes, memberRoutes, coordRoutes, adminRoutes].flat();
+const protectedRoutes = [
+  guestRoutes,
+  memberRoutes,
+  coordRoutes,
+  shopManagerRoutes,
+  adminRoutes,
+].flat();
 
 const isDev = process.env.NODE_ENV === "development";
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -75,6 +85,7 @@ function canAccess(path: string, roles: UserRole[]) {
   // narrowest match wins.
   const rules: [string[], UserRole[]][] = [
     [adminRoutes, [UserRole._ADMIN]],
+    [shopManagerRoutes, [UserRole._ADMIN, UserRole._SHOP_MANAGER]],
     [coordRoutes, [UserRole._ADMIN, UserRole._COORDINATOR]],
     [
       memberRoutes,
