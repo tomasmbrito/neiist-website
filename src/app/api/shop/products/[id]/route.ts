@@ -9,6 +9,7 @@ import {
   deleteProduct,
   deleteProductVariant,
 } from "@/utils/db/shopQueries";
+import { withTransaction } from "@/utils/db/dbClient";
 import { serverCheckRoles } from "@/utils/permissionUtils";
 import { withValidation } from "@/utils/security/validationUtils";
 import { productPayloadSchema } from "@/schemas/shop";
@@ -23,24 +24,6 @@ export const PUT = withValidation(
       const { id } = await params;
       const productId = Number(id);
 
-      await updateProduct(productId, {
-        name: body.name,
-        description: body.description ?? "",
-        price: body.price,
-        category: body.category ?? undefined,
-        images: body.images,
-        stock_type: body.stock_type,
-        stock_quantity: body.stock_quantity ?? undefined,
-        order_deadline: body.order_deadline ?? undefined,
-        active: body.active ?? true,
-      });
-
-      if (Array.isArray(body.variantsToDelete) && body.variantsToDelete.length > 0) {
-        for (const variantId of body.variantsToDelete) {
-          await deleteProductVariant(Number(variantId));
-        }
-      }
-
       // Build a map of group images: "optType::optVal" -> string[]
       const groupImagePaths: Record<string, string[]> = {};
       if (body.group_image_uploads) {
@@ -49,43 +32,68 @@ export const PUT = withValidation(
         }
       }
 
-      if (Array.isArray(body.variants) && body.variants.length > 0) {
-        for (const variant of body.variants) {
-          let variantImages: string[] = variant.images || [];
+      // One transaction for the whole edit. Previously this was 1 + 2N statements in 1 + 2N
+      // separate transactions, so a failure partway through left the product priced at the new
+      // value with some variants deleted and others stale — and anyone checking out during the
+      // window paid a blend of two states, with no audit trail to detect or undo it.
+      await withTransaction(async (q) => {
+        await updateProduct(
+          productId,
+          {
+            name: body.name,
+            description: body.description ?? "",
+            price: body.price,
+            category: body.category ?? undefined,
+            images: body.images,
+            stock_type: body.stock_type,
+            stock_quantity: body.stock_quantity ?? undefined,
+            order_deadline: body.order_deadline ?? undefined,
+            active: body.active ?? true,
+          },
+          q
+        );
 
-          // Apply group images to variants that have no images of their own
-          if (variantImages.length === 0) {
-            for (const [optType, optVal] of Object.entries(variant.options || {})) {
-              const key = `${optType}::${optVal}`;
-              if (groupImagePaths[key]?.length > 0) {
-                variantImages = groupImagePaths[key];
-                break; // use first matching group's images
-              }
-            }
-          }
-
-          if (variant.id) {
-            await updateProductVariant(variant.id as number, {
-              sku: variant.sku ?? "",
-              images: variantImages,
-              price_modifier: variant.price_modifier ?? 0,
-              stock_quantity: variant.stock_quantity ?? undefined,
-              active: variant.active ?? true,
-              options: variant.options ?? {},
-            });
-          } else {
-            await addProductVariant(productId, {
-              sku: variant.sku ?? "",
-              images: variantImages,
-              price_modifier: variant.price_modifier ?? 0,
-              stock_quantity: variant.stock_quantity ?? undefined,
-              active: variant.active ?? true,
-              options: variant.options ?? {},
-            });
+        if (Array.isArray(body.variantsToDelete) && body.variantsToDelete.length > 0) {
+          for (const variantId of body.variantsToDelete) {
+            await deleteProductVariant(Number(variantId), q);
           }
         }
-      }
 
+        if (Array.isArray(body.variants) && body.variants.length > 0) {
+          for (const variant of body.variants) {
+            let variantImages: string[] = variant.images || [];
+
+            // Apply group images to variants that have no images of their own
+            if (variantImages.length === 0) {
+              for (const [optType, optVal] of Object.entries(variant.options || {})) {
+                const key = `${optType}::${optVal}`;
+                if (groupImagePaths[key]?.length > 0) {
+                  variantImages = groupImagePaths[key];
+                  break; // use first matching group's images
+                }
+              }
+            }
+
+            const variantPayload = {
+              sku: variant.sku ?? "",
+              images: variantImages,
+              price_modifier: variant.price_modifier ?? 0,
+              stock_quantity: variant.stock_quantity ?? undefined,
+              active: variant.active ?? true,
+              options: variant.options ?? {},
+            };
+
+            if (variant.id) {
+              await updateProductVariant(variant.id as number, variantPayload, q);
+            } else {
+              await addProductVariant(productId, variantPayload, q);
+            }
+          }
+        }
+      });
+
+      // Read after the commit, so the client is handed committed state rather than a view from
+      // inside the transaction.
       const updatedProduct = await getProduct(productId);
       if (!updatedProduct) {
         return NextResponse.json(

@@ -21,7 +21,8 @@ import {
 import { isSpecialCategory } from "@/utils/shop/orderKindUtils";
 import { SPECIAL_CATEGORIES } from "@/types/shop/orderKind";
 import { getMbWayNumberForOrder } from "@/lib/mbwayNumbers";
-import { db_query } from "@/utils/db/dbClient";
+import { db_query, type Querier } from "@/utils/db/dbClient";
+import { isUniqueViolation } from "@/utils/db/errorMapper";
 
 export const addProduct = async (
   product: Partial<Product> & {
@@ -49,11 +50,12 @@ export const addProduct = async (
 
 export const addProductVariant = async (
   productId: number,
-  variant: Partial<ProductVariant> & { price_modifier?: number }
+  variant: Partial<ProductVariant> & { price_modifier?: number },
+  q: Querier = db_query
 ): Promise<Product | null> => {
   const {
     rows: [row],
-  } = await db_query<DbProduct>(`SELECT * FROM neiist.add_product_variant($1,$2,$3,$4,$5,$6,$7)`, [
+  } = await q<DbProduct>(`SELECT * FROM neiist.add_product_variant($1,$2,$3,$4,$5,$6,$7)`, [
     productId,
     variant.sku ?? null,
     variant.images ?? [],
@@ -84,24 +86,31 @@ export const deleteProduct = async (productId: number): Promise<void> => {
   await db_query(`SELECT neiist.delete_product($1)`, [productId]);
 };
 
-export const deleteProductVariant = async (variantId: number): Promise<void> => {
-  await db_query(`SELECT neiist.delete_product_variant($1)`, [variantId]);
+export const deleteProductVariant = async (
+  variantId: number,
+  q: Querier = db_query
+): Promise<void> => {
+  await q(`SELECT neiist.delete_product_variant($1)`, [variantId]);
 };
 
-export const getProduct = async (productId: number): Promise<Product | null> => {
+export const getProduct = async (
+  productId: number,
+  q: Querier = db_query
+): Promise<Product | null> => {
   const {
     rows: [row],
-  } = await db_query<DbProduct>(`SELECT * FROM neiist.get_product($1)`, [productId]);
+  } = await q<DbProduct>(`SELECT * FROM neiist.get_product($1)`, [productId]);
   return row ? mapDbProductToProduct(row) : null;
 };
 
 export const updateProduct = async (
   productId: number,
-  updates: Partial<Product> & { category?: string; active?: boolean }
+  updates: Partial<Product> & { category?: string; active?: boolean },
+  q: Querier = db_query
 ): Promise<Product | null> => {
   const {
     rows: [row],
-  } = await db_query<DbProduct>(`SELECT * FROM neiist.update_product($1,$2)`, [
+  } = await q<DbProduct>(`SELECT * FROM neiist.update_product($1,$2)`, [
     productId,
     JSON.stringify(updates),
   ]);
@@ -110,11 +119,12 @@ export const updateProduct = async (
 
 export const updateProductVariant = async (
   variantId: number,
-  updates: Partial<ProductVariant>
+  updates: Partial<ProductVariant>,
+  q: Querier = db_query
 ): Promise<ProductVariant | null> => {
   const {
     rows: [row],
-  } = await db_query<DbProductVariant>(`SELECT * FROM neiist.update_product_variant($1,$2)`, [
+  } = await q<DbProductVariant>(`SELECT * FROM neiist.update_product_variant($1,$2)`, [
     variantId,
     JSON.stringify({
       sku: updates.sku,
@@ -152,29 +162,40 @@ export const getAllDiscountCodes = async (): Promise<DiscountCode[]> => {
   }
 };
 
+/**
+ * Returns `null` only when the generated code collided with an existing one — the signal the
+ * caller uses to retry with a different random code. Every other database error is rethrown.
+ *
+ * The previous blanket `catch` made those two cases indistinguishable, and made this function
+ * unusable inside `withTransaction`: a swallowed error leaves the transaction aborted while the
+ * caller continues, and the subsequent COMMIT silently discards the whole campaign.
+ */
 export const createDiscountCode = async (
-  discountCode: DiscountCodeInput
+  discountCode: DiscountCodeInput,
+  q: Querier = db_query
 ): Promise<DiscountCode | null> => {
   try {
     const {
       rows: [row],
-    } = await db_query<DbDiscountCode>(
-      `SELECT * FROM neiist.add_discount_code($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [
-        discountCode.code,
-        discountCode.discount_type,
-        discountCode.discount_value,
-        discountCode.valid_product_ids ?? null,
-        discountCode.valid_istids ?? null,
-        discountCode.max_uses ?? null,
-        discountCode.expires_at ?? null,
-        discountCode.active ?? true,
-      ]
-    );
+    } = await q<DbDiscountCode>(`SELECT * FROM neiist.add_discount_code($1,$2,$3,$4,$5,$6,$7,$8)`, [
+      discountCode.code,
+      discountCode.discount_type,
+      discountCode.discount_value,
+      discountCode.valid_product_ids ?? null,
+      discountCode.valid_istids ?? null,
+      discountCode.max_uses ?? null,
+      discountCode.expires_at ?? null,
+      discountCode.active ?? true,
+    ]);
     return row ? mapDbDiscountCodeToDiscountCode(row) : null;
   } catch (error) {
-    console.error("Error creating discount code:", error);
-    return null;
+    if (isUniqueViolation(error)) {
+      console.warn("Discount code collided with an existing one; caller should retry:", {
+        code: discountCode.code,
+      });
+      return null;
+    }
+    throw error;
   }
 };
 

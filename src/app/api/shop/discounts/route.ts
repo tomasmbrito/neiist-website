@@ -6,6 +6,7 @@ import {
   getAllDiscountCodes,
   updateDiscountCode,
 } from "@/utils/db/shopQueries";
+import { withTransaction, type Querier } from "@/utils/db/dbClient";
 import { serverCheckRoles } from "@/utils/permissionUtils";
 import { sendEmail, getDiscountCampaignEmailTemplate } from "@/utils/emailUtils";
 import type {
@@ -27,23 +28,29 @@ function generateCode(): string {
 
 async function createCodeForRecipient(
   recipient: DiscountBulkGenerateInput["recipients"][number],
-  payload: Omit<DiscountBulkGenerateInput, "recipients" | "email_subject" | "email_intro_line">
+  payload: Omit<DiscountBulkGenerateInput, "recipients" | "email_subject" | "email_intro_line">,
+  q: Querier
 ): Promise<Awaited<ReturnType<typeof createDiscountCode>> | null> {
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const created = await createDiscountCode({
-      code: generateCode(),
-      discount_type: payload.discount_type,
-      discount_value: payload.discount_value,
-      valid_product_ids: payload.valid_product_ids ?? null,
-      valid_istids: recipient.istid ? [recipient.istid] : [],
-      max_uses: payload.max_uses ?? 1,
-      expires_at: payload.expires_at ?? null,
-      active: payload.active ?? true,
-    } satisfies DiscountCodeInput);
+    const created = await createDiscountCode(
+      {
+        code: generateCode(),
+        discount_type: payload.discount_type,
+        discount_value: payload.discount_value,
+        valid_product_ids: payload.valid_product_ids ?? null,
+        valid_istids: recipient.istid ? [recipient.istid] : [],
+        max_uses: payload.max_uses ?? 1,
+        expires_at: payload.expires_at ?? null,
+        active: payload.active ?? true,
+      } satisfies DiscountCodeInput,
+      q
+    );
 
     if (created) return created;
   }
 
+  // Five random 6-character codes all collided. Since createDiscountCode now rethrows anything
+  // that is not a unique violation, this really is exhausted retries and not a hidden DB error.
   return null;
 }
 
@@ -65,30 +72,52 @@ export const POST = withValidation(bulkDiscountCodePayloadSchema, async (request
       return NextResponse.json({ error: "O texto do email é obrigatório." }, { status: 400 });
     }
 
-    const createdCodes = [] as NonNullable<Awaited<ReturnType<typeof createDiscountCode>>>[];
     const failedRecipients: Array<{ istid: string; error: string }> = [];
     let sentCount = 0;
 
-    for (const recipient of body.recipients) {
-      const created = await createCodeForRecipient(recipient, {
-        discount_type: body.discount_type,
-        discount_value: body.discount_value,
-        valid_product_ids: body.valid_product_ids ?? null,
-        max_uses: body.max_uses ?? 1,
-        expires_at: body.expires_at ?? null,
-        active: body.active ?? true,
-      });
+    // Every code is generated and committed in ONE transaction, before any email goes out.
+    //
+    // Emails are deliberately NOT in the transaction: an SMTP round-trip would hold a pooled
+    // connection open for its whole duration, and no ROLLBACK can unsend a delivered message.
+    // The trade is explicit — a code whose email failed is recoverable and is reported in
+    // failed_recipients, whereas an email promising a code that was rolled back is not. The
+    // previous interleaved loop had that same exposure plus a worse one: a crash midway left
+    // half a campaign generated with no record of which recipients had been emailed.
+    const generated = await withTransaction(async (q) => {
+      const results: Array<{
+        recipient: DiscountBulkGenerateInput["recipients"][number];
+        code: NonNullable<Awaited<ReturnType<typeof createDiscountCode>>>;
+      }> = [];
 
-      if (!created) {
-        failedRecipients.push({
-          istid: recipient.istid ?? "",
-          error: "Não foi possível gerar o código.",
-        });
-        continue;
+      for (const recipient of body.recipients) {
+        const created = await createCodeForRecipient(
+          recipient,
+          {
+            discount_type: body.discount_type,
+            discount_value: body.discount_value,
+            valid_product_ids: body.valid_product_ids ?? null,
+            max_uses: body.max_uses ?? 1,
+            expires_at: body.expires_at ?? null,
+            active: body.active ?? true,
+          },
+          q
+        );
+
+        if (!created) {
+          failedRecipients.push({
+            istid: recipient.istid ?? "",
+            error: "Não foi possível gerar o código.",
+          });
+          continue;
+        }
+
+        results.push({ recipient, code: created });
       }
 
-      createdCodes.push(created);
+      return results;
+    });
 
+    for (const { recipient, code } of generated) {
       const sent = await sendEmail({
         to: recipient.email,
         subject: body.email_subject,
@@ -96,7 +125,7 @@ export const POST = withValidation(bulkDiscountCodePayloadSchema, async (request
           recipientName: recipient.name ?? "",
           recipientIstid: recipient.istid ?? "",
           recipientEmail: recipient.email,
-          code: created.code,
+          code: code.code,
           discountType: body.discount_type,
           discountValue: body.discount_value,
           expiresAt: body.expires_at ?? null,
@@ -113,6 +142,8 @@ export const POST = withValidation(bulkDiscountCodePayloadSchema, async (request
         });
       }
     }
+
+    const createdCodes = generated.map(({ code }) => code);
 
     return NextResponse.json(
       {

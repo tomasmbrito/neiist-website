@@ -180,9 +180,10 @@ CI on main        GREEN     (first green runs in this repository's history)
 
 - **No tests and no test runner** (#52). Gates prove compilation and formatting. They cannot
   catch wrong totals, missing authorization, race conditions, or React effect bugs.
-- **No transactions anywhere.** `db_query` is `pool.query()`, so nothing can issue `BEGIN`.
-  Every multi-table write is non-atomic by construction. Adopting the upstream data layer
-  **did not** fix this, exactly as predicted — theirs is `pool.query()` too. Confirmed by #142.
+- **Transactions exist as of #80** — `withTransaction` in `src/utils/db/dbClient.ts`. Two
+  operations use it (product edit, discount campaign); **everything else is still non-atomic**,
+  including all of order handling. The mechanism is there, the conversions are not. Adopting the
+  upstream data layer did **not** provide this — theirs is `pool.query()` too (#142).
 - **The data layer is now `src/utils/db/*`** (`dbClient`, `errorMapper`, `userQueries`,
   `eventQueries`, `shopQueries`). `src/utils/dbUtils.ts` **no longer exists** — do not recreate it,
   and do not add queries to a single god file again.
@@ -275,19 +276,19 @@ Full wave ordering: [`upstream-sync-plan.md`](upstream-sync-plan.md).
 
 ### Immediate — this is where the work is now
 
-1. **#80 — transaction support and a hardened pool. The active item.** Plan proposed in
-   [`.claude/plans/80-transaction-support.md`](../../.claude/plans/80-transaction-support.md),
-   awaiting approval. It needs no schema, auth, SumUp or dependency change, which is exactly why
-   it goes first. Two things found while planning that are not in issue #80's body:
-   - **The "two pools" half of #80 is already fixed.** `src/lib/db/connection.ts` went with the
-     dead layer in #119; there is exactly one `new Pool` in `src/` now. What remains is the HMR
-     leak, the missing pool config, and the missing `pool.on("error")` — without that last one an
-     error on an idle pooled client terminates the Node process.
-   - **The `catch { return null }` house pattern silently defeats a transaction.** A swallowed
-     error leaves the transaction aborted, the callback does not throw, so `COMMIT` runs — and
-     **`COMMIT` on an aborted transaction succeeds, returning the tag `ROLLBACK`, with no error to
-     the client.** Proven against the live database. Any function threaded into a transaction must
-     propagate first; `createDiscountCode` is the one that currently does not.
+1. ~~**#80 — transaction support and a hardened pool.**~~ **Done, PR #145.** `withTransaction`
+   exists in `src/utils/db/dbClient.ts`, the pool is HMR-guarded and configured with an
+   `error` handler, and the two operations in #80's acceptance criteria are atomic. **This
+   unblocks #78, #79 and #100** — they are now writable, and they are the next work.
+   Three things worth carrying forward:
+   - **Only 6 of ~64 query functions take a `Querier`.** Widening is mechanical, but do it per
+     operation that needs it, not speculatively.
+   - **The other ~58 still swallow their errors**, which is unsafe inside a transaction. That is
+     survivable only because `withTransaction` checks the tag `COMMIT` returns and throws if the
+     transaction was already aborted. Do not remove that check.
+   - **Never put email, SumUp, or any network call inside `withTransaction`** — it holds a pooled
+     connection for the round-trip and no rollback can undo it. The discount campaign commits all
+     codes first, then sends.
 2. **#111 — `serverCheckRoles` swallows `DynamicServerError`.** Its blanket `catch` eats the
    signal Next uses to mark a route dynamic; that is why pages needed `force-dynamic`. Re-throw
    anything with a `digest`. 21 call sites, so high leverage. *Auth code — approval.*

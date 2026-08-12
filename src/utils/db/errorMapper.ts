@@ -1,5 +1,16 @@
 import { ValidationError } from "@/lib/errors";
 
+/**
+ * Postgres SQLSTATE `23505`, unique_violation.
+ *
+ * Exists so a caller can distinguish "this collided, retry" from "the database is broken" without
+ * a blanket `catch` that swallows both. That distinction is mandatory for any query function used
+ * inside `withTransaction`, where a swallowed error becomes a silently discarded COMMIT.
+ */
+export function isUniqueViolation(error: unknown): boolean {
+  return (error as { code?: string } | null | undefined)?.code === "23505";
+}
+
 export function throwIfOrderDbError(error: unknown): void {
   const dbError = error as { message?: string; code?: string };
   const message = dbError?.message ?? "";

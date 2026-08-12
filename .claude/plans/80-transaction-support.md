@@ -1,6 +1,15 @@
 # Plan: #80 — transaction support and a single hardened connection pool
 
-**Status: proposal, awaiting Tomás's approval. No application code written yet.**
+**Status: implemented and approved. All six steps shipped, including the ALS tripwire in Step 6.**
+
+**One addition beyond the plan**, made because verification showed the plan was not sufficient:
+`withTransaction` now checks the command tag returned by `COMMIT` and throws if it is `ROLLBACK`.
+The plan assumed that making the threaded functions propagate was enough. It is not — the other
+~58 query functions in `src/utils/db/*` still swallow, so anyone threading one of them later would
+have hit exactly the silent-no-op described in §1.1. The tag check makes that impossible to miss:
+the transaction fails loudly instead of reporting success with the writes discarded. Confirmed
+empirically — without it the verification script's `withTransaction` returned `"looked fine"` while
+the write vanished.
 
 #80 is the keystone of the order-integrity batch. #78, #79 and #100 are all "make this
 multi-statement operation atomic", and none of them is *expressible* today: `db_query` is
