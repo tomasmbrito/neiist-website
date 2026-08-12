@@ -60,8 +60,62 @@ Each entry records root cause and fix for future reference.
   instinct when adding transactions is to trust the existing query functions. It is the same shape
   as the `::VARCHAR(10)` truncation — the database silently does something reasonable-looking
   instead of erroring.
-- **Regression test?** None committed — no test runner (#52). Verified with a throwaway script
-  that compiled `dbClient.ts` standalone (it imports only `pg` and `node:async_hooks`) and ran it
-  against the dev database: 10 assertions covering rollback, commit, the swallowed-error case, the
-  `AsyncLocalStorage` tripwire and pool reuse. **This is the first thing to port to Vitest** — the
-  script proves the behaviour once, a test would prove it on every change.
+- **Regression test?** **Yes, as of #52 (PR #150)** — `src/utils/db/dbClient.test.ts`. The
+  throwaway script described above was ported rather than replaced. Confirmed to actually guard:
+  removing the aborted-`COMMIT` tag check turns `5 passed` into `1 failed | 4 passed`, and the
+  failing test is the swallowed-error one.
+
+---
+
+## The database had no migration path — and never had one (#146, PR #148)
+
+- **Symptom**: none, which is the point. A schema fix could be written, reviewed, merged, and
+  never take effect on any database that already had data.
+- **Root cause**: `docker/schema.sql` is mounted into `/docker-entrypoint-initdb.d/`, which
+  Postgres runs **only when the data directory is empty**. Neither `deploy_prod.sh` nor
+  `deploy_staging.sh` contained a `psql` step, a migration runner, or any database step at all.
+  `docker/migrations/001_user_uuid.sql` was mounted nowhere and was deleted unapplied in #119.
+- **Scope**: `docker/schema.sql` has been edited in **53 commits**. The same hole exists in
+  `upstream/main`, so it is not a fork regression — neither side ever had one.
+- **Consequence, still open**: `docker/schema.sql` describes what a *new* database gets. **It has
+  never described production**, and production's real schema is unmeasured — it is whatever the
+  file looked like when that volume was created plus anything typed into a `psql` session since.
+- **Fix**: PR #148. `scripts/migrate.mts`, `docker/migrations/`, `neiist.schema_migrations`, and a
+  migration step in both deploy scripts, after the build and before the restart.
+- **Verified**: against a local database that predated the `schema.sql` edit — deliberately, since
+  that is the situation production is in. `add_user(..., ARRAY['MEIC-A','MEIC-A'])` failed with
+  `duplicate key ... user_courses_pkey` before, returned `{MEIC-A}` after one `yarn db:migrate`.
+  Guard rails each exercised: checksum drift refused, a failing migration rolled back and not
+  recorded, the advisory lock made a second runner wait, and both the missing-schema and
+  missing-connection-string guards fired.
+- **Why it is worth writing down**: the plan for #78/#79/#100 spent a section asking "who applies
+  DDL to production?" and could not answer it. The answer was *nobody, ever*. A question a plan
+  cannot answer about its own deployment is usually pointing at a missing mechanism, not a
+  missing person.
+
+---
+
+## A blanket `catch` cancels the framework's control flow (#111, PR #149)
+
+- **Symptom**: four pages needed `export const dynamic = "force-dynamic"` to render correctly,
+  with no obvious reason why Next would not work it out.
+- **Root cause**: Next signals control flow by **throwing** — `cookies()` outside a request scope
+  throws `DynamicServerError` to mark a route dynamic, `redirect()` throws `NEXT_REDIRECT`,
+  `notFound()` throws `NEXT_NOT_FOUND`, all carrying a `digest`. `serverCheckRoles` wrapped its
+  body in a blanket `catch` that turned every throw into a 500 response. The signal never reached
+  Next, so the route stayed a prerender candidate.
+- **Fix**: re-throw anything carrying a string `digest` before the 500 fallback.
+- **Verified by building with no database reachable** (the #106/#109 invariant), with a control:
+
+  ```
+  all four force-dynamic removed, with the fix -> FAILS on /shop
+  three removed, with the fix                  -> PASSES, three routes now f (Dynamic)
+  three removed, WITHOUT the fix               -> FAILS on /dinner    <- the control
+  ```
+
+  `/shop` keeps its directive because it is the only one that never touches the session: its
+  only dynamism is a database read, which Next does not treat as a signal.
+- **Still present, deliberately**: `src/app/layout.tsx:40-49` has the identical defect.
+- **Why it is worth writing down**: "log and return a default" is normally good defensive style.
+  In a framework that signals by throwing, it is a bug — and a silent one, because the fallback
+  value is plausible. Any blanket `catch` in a Server Component path is now suspect.

@@ -4,6 +4,37 @@
 or application code.** All three issues need SQL function changes, which require human approval
 (`CLAUDE.md` §2 / §9).
 
+---
+
+## 0. What changed since this plan was written (2026-08-12 refresh)
+
+This plan was researched before #142, #80 and #148. The **analysis in §1 is still accurate** —
+it was read against the live schema and re-spot-checked — but four of its conclusions are now
+out of date. Read this section before acting on anything below.
+
+| Was | Now |
+|---|---|
+| `src/utils/dbUtils.ts` holds all ~64 query functions | **It no longer exists.** #142 split it into `src/utils/db/{dbClient,errorMapper,userQueries,eventQueries,shopQueries}.ts`. Every `dbUtils.ts:NNNN` reference in §4 means `shopQueries.ts` (orders, products) or `errorMapper.ts` (`throwIfOrderDbError`). Line numbers are stale; the function names are not. |
+| §3: `withTransaction` does not exist, and `src/lib/db/connection.ts` is dead code | **`withTransaction` exists** in `src/utils/db/dbClient.ts` (#80), along with a `Querier` type, an aborted-`COMMIT` guard and an `AsyncLocalStorage` tripwire. The `connection.ts` blocker described in §3 is gone — that file was deleted with the dead repository layer in #119. §3's conclusion still holds: this batch does not *need* `withTransaction`, because each fix is a single SQL statement. |
+| §5: **"there is no automated path from this repository to the production database schema"** — flagged as the blocking open question | **Answered, and fixed.** There was none, and there never had been, in this fork or upstream. PR #148 adds `scripts/migrate.mts`, `docker/migrations/`, `neiist.schema_migrations`, and a migration step in both deploy scripts. §5's "who applies DDL by hand" question is void: **nobody does, and nobody should.** Write `docker/migrations/002_order_integrity.sql` and let the deploy apply it. |
+| §8: "No test file will be written, because nothing would run it" | **Wrong now.** #52 added Vitest with a Postgres service container in CI. The concurrency proofs in §8.2 should be written as **tests**, not as a documented manual procedure. Two `psql` sessions become two `pg.Client` connections; the interleavings are the same. |
+
+**One new constraint, from #148.** Every migration must be **idempotent** and
+**backward-compatible with the previous release**, because the deploy applies it while the old
+instance is still serving traffic. The `DROP FUNCTION` + `CREATE FUNCTION` swaps in §2.2 and §2.4
+satisfy this — the runner already wraps each file in one transaction, so §5's "wrap drop+create
+in a transaction" instruction is now automatic — and the new parameters all default to `NULL`, so
+the old app's shorter calls keep resolving. That property is load-bearing; do not remove it.
+
+**One new risk, and it is the largest one in this document.** Production's actual schema is
+**unmeasured**. `docker/schema.sql` has been edited in 53 commits and none of them ever reached
+a database with data in it, so the production bodies of `set_order_state` and `new_order` are
+*assumed*, not known. This batch rewrites exactly those two functions. **A
+`pg_dump --schema-only` of production, diffed against a container built from
+`docker/schema.sql`, must happen before Step 1 ships** — it needs production credentials, so it
+is a human task. If production has drifted, `CREATE OR REPLACE` will silently overwrite whatever
+is actually there.
+
 ## Why one batch
 
 The three issues are the same defect seen from three angles: **the database is never asked to
@@ -870,10 +901,16 @@ enumerates every call site that has not been updated. Same for the new `newOrder
 they are added to a required-ish input type. Gates to run and paste: `yarn type:check`,
 `yarn lint`, `yarn build`.
 
-### 8.2 Concurrency proofs, two `psql` sessions against a local `yarn db:reset` database
+### 8.2 Concurrency proofs — **write these as Vitest tests, not as a manual procedure**
 
-These are the actual acceptance criteria of the three issues. Proposed as a committed
-`docker/verification/order-integrity.md` (documented manual procedure, not an unrunnable test).
+> **Refresh note.** This section originally proposed a committed manual procedure, because no
+> test runner existed. #52 changed that: `yarn test` runs against a real Postgres, in CI too.
+> The interleavings below are unchanged — they just become two `pg.Client` connections instead
+> of two `psql` sessions, in the style of `src/utils/db/dbClient.test.ts`. Each one is a genuine
+> concurrency test, so `fileParallelism: false` (already set) matters.
+>
+> These are the actual acceptance criteria of the three issues, and they are exactly the class of
+> bug the gates cannot see. **A fix here without a test for it should not be merged.**
 
 **#79 — two concurrent finalizations produce one winner**
 ```
@@ -954,8 +991,18 @@ with `changed = f` and raises nothing.
 
 ## 9. Open questions for the human (blocking)
 
-1. **DDL to production**: who applies it, against which database, is there a staging DB
-   (§5)? Without an answer, Steps 1–3 can be written and reviewed but not shipped.
+**Question 1 is answered. Questions 2–5 are still open and still block Steps 1–3.**
+
+1. ~~**DDL to production**: who applies it, against which database, is there a staging DB (§5)?~~
+   **Answered 2026-08-12: nobody ever has, and now nobody has to.** PR #148 built the migration
+   path. Superseded by a new blocking item, **1b**.
+
+1b. **Production schema drift must be measured before Step 1 ships.** `docker/schema.sql` has
+   been edited 53 times and none of those edits ever reached a database with data. This batch
+   rewrites `set_order_state` and `new_order` with `CREATE OR REPLACE`, which will silently
+   overwrite whatever is actually in production. Needed: `pg_dump --schema-only` of production,
+   diffed against a container built from `docker/schema.sql`. **Production credentials — human.**
+
 2. **R1**: do shop managers currently bulk-mark `pending` orders as `delivered` without marking
    them paid? If yes, do we fix the bulk paid path (recommended) or widen the matrix?
 3. **R3**: does anyone un-cancel an order today? If yes, `cancelled` cannot simply become
@@ -965,3 +1012,7 @@ with `changed = f` and raises nothing.
    should `stock_override` also bypass the cap for POS sales? Recommend keeping parity.
 5. **Matrix shape**: §2.1 permissive superset (recommended) or strict mirror of the TypeScript
    matrix?
+
+Questions 2 and 3 are about how the shop is **actually operated** and cannot be answered from
+the code — they need a shop manager, not a reader. They are the reason this batch is not simply
+written and opened as a PR: §7 R1 is a workflow that could break on the day it ships.
