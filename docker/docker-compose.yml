@@ -8,8 +8,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin}
       POSTGRES_DB: ${POSTGRES_DB:-neiist}
+    # Host port is overridable so a machine that already runs Postgres on 5432 can move ours
+    # instead of fighting over it. Set POSTGRES_PORT in .env and keep DATABASE_URL in step.
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-admin} -d $${POSTGRES_DB:-neiist}"]
       interval: 10s
