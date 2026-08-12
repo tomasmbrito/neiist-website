@@ -57,21 +57,32 @@ export async function GET() {
     const phone = info.phone ?? null;
 
     const registrations = (info?.roles?.student?.registrations ?? []) as FenixRegistration[];
-    const courses: string[] = registrations
-      .map((r) => {
-        const nameField = r?.degree?.name;
-        if (nameField && typeof nameField === "object") {
-          return (
-            nameField["pt-PT"] ??
-            nameField["en-GB"] ??
-            Object.values(nameField)[0] ??
-            r?.degree?.acronym ??
-            null
-          );
-        }
-        return (nameField as string) ?? r?.degree?.acronym ?? null;
-      })
-      .filter((c): c is string => Boolean(c));
+
+    // Deduplicated: Fenix returns one registration per enrolment, so a student who enrolled in
+    // the same degree more than once (a re-registration, or a transfer) yields the same course
+    // name twice. neiist.user_courses is PRIMARY KEY (user_istid, course_name) and add_user
+    // inserts without ON CONFLICT, so a repeat made the whole insert fail with
+    // `23505 duplicate key value violates unique constraint "user_courses_pkey"` — which meant
+    // createUser returned null and the student could not create an account or log in at all.
+    const courses: string[] = [
+      ...new Set(
+        registrations
+          .map((r) => {
+            const nameField = r?.degree?.name;
+            if (nameField && typeof nameField === "object") {
+              return (
+                nameField["pt-PT"] ??
+                nameField["en-GB"] ??
+                Object.values(nameField)[0] ??
+                r?.degree?.acronym ??
+                null
+              );
+            }
+            return (nameField as string) ?? r?.degree?.acronym ?? null;
+          })
+          .filter((c): c is string => Boolean(c))
+      ),
+    ];
 
     let user = await getUser(istid);
     if (!user) {
