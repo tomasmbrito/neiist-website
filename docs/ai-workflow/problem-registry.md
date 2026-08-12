@@ -21,3 +21,38 @@ Each entry records root cause and fix for future reference.
 - **Fix**: not yet applied. Construct these clients lazily inside the handler. Tracked in #84.
 - **Consequence**: `yarn build` cannot be used as a PR quality gate until this is fixed — handing a PR-triggered workflow real Google credentials would be exfiltratable. Use `type:check` + `lint` + `format:check` on PRs in the meantime.
 - **Regression test?** None — no test runner exists (#52).
+
+### `COMMIT` on an aborted transaction succeeds silently — so `catch { return null }` will eat a rollback
+
+- **Date**: 2026-08-12
+- **Problem**: latent, found while planning #80 rather than in production — but it would have made
+  the first transaction written in this repo silently lose data.
+- **Root cause**: two behaviours combining.
+  1. Almost every function in `src/utils/db/*` follows the house pattern
+     `try { ... } catch (e) { console.error(e); return null; }`.
+  2. **Postgres lets you `COMMIT` an already-aborted transaction. It returns the command tag
+     `ROLLBACK` and raises no error.**
+
+  So inside a `withTransaction`: a statement fails → Postgres aborts the transaction → the `catch`
+  swallows it and returns `null` → the callback does not throw → `withTransaction` runs `COMMIT` →
+  Postgres discards everything and reports success. The caller sees a successful no-op.
+- **Proven, not argued** (live dev database):
+
+  ```
+  BEGIN; CREATE TEMP TABLE probe(id INT PRIMARY KEY); INSERT INTO probe VALUES (1);
+  INSERT INTO probe VALUES (1);   -- ERROR: duplicate key ... probe_pkey
+  COMMIT;                         -- tag returned: ROLLBACK, no exception
+  -- probe table gone; nothing was written; no error ever reached the client.
+  ```
+
+- **Fix**: not yet applied. Any query function threaded into a transaction must propagate its
+  errors. Audited: the five product/variant functions in `shopQueries.ts` have no `try/catch` and
+  are safe as-is; **`createDiscountCode` swallows everything** and must be narrowed to SQLSTATE
+  `23505` (unique violation → retry signal) with everything else rethrown. Plan in
+  `.claude/plans/80-transaction-support.md`.
+- **Why it is worth writing down**: the failure is invisible from the application side, and the
+  instinct when adding transactions is to trust the existing query functions. It is the same shape
+  as the `::VARCHAR(10)` truncation — the database silently does something reasonable-looking
+  instead of erroring.
+- **Regression test?** None yet — no test runner (#52). This is the strongest candidate for the
+  first test once Vitest lands: `withTransaction` must roll back and rethrow, not return `null`.

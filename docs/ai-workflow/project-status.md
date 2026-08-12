@@ -76,7 +76,7 @@ Two populations, both supported today:
 > ### ⚠️ `neiist.users.istid` must stay `VARCHAR(50)`
 >
 > ```
-> ext_ + uuid = 36 chars    fits VARCHAR(50): yes    fits VARCHAR(10): NO
+> ext_ + uuid with dashes stripped = 36 chars    fits VARCHAR(50): yes    VARCHAR(10): NO
 > ```
 >
 > **Upstream narrowed it to `VARCHAR(10)`.** They have no external-user feature, so it costs them
@@ -123,18 +123,36 @@ second, separate account), and which Técnico email domains must be forced down 
 | #120 | Duplicate Fenix courses blocked account creation |
 | #123 | External signup collided and failed silently |
 | #125 | This document, rewritten as a full context handoff |
+| #139 | `middleware.ts` → `proxy.ts` (Next 16 convention) |
+| #140 | The Notion migration plan + the Wave 2 plan (docs only) |
+| #142 | **Wave 2: `dbUtils.ts` split into `src/utils/db/*`** |
 
 ### Open PRs
 
-| PR | What | Needs before merge |
-|---|---|---|
-| **#139** | `middleware.ts` → `proxy.ts` (Next 16 convention) | Load `/shop/pos` and `/shop/manage` logged out — expect `/unauthorized` |
-| **#140** | The Notion migration plan + Wave 2 plan (docs only) | — |
-| **#142** | **Wave 2: `dbUtils.ts` split into `src/utils/db/*`** | Fenix login, **Google/external login**, shop checkout, `/activities` |
+None.
 
-**#142 is the one that needs real verification.** Google/external login specifically: it is the
-only path that exercises a 36-character `ext_<uuid>` istid, which is what the `VARCHAR(50)`
-casts protect. A truncation regression surfaces there and nowhere else.
+### #142's truncation risk was verified after merge
+
+Google/external login was the only path that mattered: it is the only one that exercises a long
+`ext_` istid, which is what the `VARCHAR(50)` casts protect, and Postgres **truncates** on a
+`::VARCHAR(10)` cast instead of erroring — so a regression there is silent in both directions.
+
+Four `::VARCHAR(50)` casts present (`userQueries.ts:11,35,50,65`); the `getUser` N+1 fix survived
+(`:89-98`). Against the live database, using the exact query text from `userQueries.ts`:
+
+```
+add_user(ext_… ::VARCHAR(50))  -> stored 40 chars, intact
+get_user(ext_… ::VARCHAR(50))  -> read   40 chars, intact
+get_user(ext_… ::VARCHAR(10))  -> 0 rows            <- the regression the cast prevents
+::VARCHAR(10) truncates 'ext_9f8c1d2e-…' to 'ext_9f8c1d'  — silently, no error
+```
+
+**Correction to a number repeated in several places:** production `ext_` istids are **36**
+characters, not 40 — the generator strips the UUID's dashes
+(`crypto.randomUUID().replace(/-/g, "")`). The probe above deliberately used the 40-character
+dashed form, a stricter test than production, and it still round-tripped.
+
+Not verified: a real browser Google sign-in. That exercises the SQL path, not the OAuth handshake.
 
 ### Bugs proven against the live database, not argued about
 
@@ -255,28 +273,41 @@ Full wave ordering: [`upstream-sync-plan.md`](upstream-sync-plan.md).
    workspace member past and present. Rotate, enable 2FA, purge from the page *and its version
    history*, move to a password manager. Found while analysing the workspace for #126.
 
-### Immediate
+### Immediate — this is where the work is now
 
-1. **Verify and merge #139, #140, #142.** #142 is the one that matters: Fenix login,
-   **Google/external login**, shop checkout, `/activities`.
+1. **#80 — transaction support and a hardened pool. The active item.** Plan proposed in
+   [`.claude/plans/80-transaction-support.md`](../../.claude/plans/80-transaction-support.md),
+   awaiting approval. It needs no schema, auth, SumUp or dependency change, which is exactly why
+   it goes first. Two things found while planning that are not in issue #80's body:
+   - **The "two pools" half of #80 is already fixed.** `src/lib/db/connection.ts` went with the
+     dead layer in #119; there is exactly one `new Pool` in `src/` now. What remains is the HMR
+     leak, the missing pool config, and the missing `pool.on("error")` — without that last one an
+     error on an idle pooled client terminates the Node process.
+   - **The `catch { return null }` house pattern silently defeats a transaction.** A swallowed
+     error leaves the transaction aborted, the callback does not throw, so `COMMIT` runs — and
+     **`COMMIT` on an aborted transaction succeeds, returning the tag `ROLLBACK`, with no error to
+     the client.** Proven against the live database. Any function threaded into a transaction must
+     propagate first; `createDiscountCode` is the one that currently does not.
 2. **#111 — `serverCheckRoles` swallows `DynamicServerError`.** Its blanket `catch` eats the
    signal Next uses to mark a route dynamic; that is why pages needed `force-dynamic`. Re-throw
    anything with a `digest`. 21 call sites, so high leverage. *Auth code — approval.*
 3. **#52 — stand up Vitest.** Every fix so far needed a hand-written throwaway. The decision of
    record is **Vitest**, not Jest, whatever #51/#52 say. **This is now closer to blocking than
-   to nice-to-have** — see #126.
+   to nice-to-have** — see #126. The first real test should target whatever #80 produces:
+   `withTransaction` rolling back on throw. *Dependency change — approval.*
 
-### The big one — needs approval (schema)
+### The rest of order integrity — needs approval (schema)
 
-4. **#78 / #79 / #80 / #100 — order integrity (P0).** One root cause: **no transactions exist.**
+4. **#78 / #79 / #100 — order integrity (P0), on top of #80.** One root cause: **no transactions
+   exist.** All three moved Backlog → Ready: Wave 2 was their blocker and it is merged.
    - #78 an order can be cancelled *after* payment — money taken, stock restocked, customer
      emailed "cancelled"; status can move backwards to mint stock
    - #79 payment finalization is check-then-act across 3 round-trips → double receipts
    - #100 the per-user cap is TOCTOU → double-clicking Checkout yields two items
 
-   **This is now unblocked.** Wave 2 is done (#142), so transactions get written into
-   `src/utils/db/*` once, rather than into a `dbUtils.ts` that was about to be deleted.
-   `#80` is the keystone: it is the one that makes the other three expressible at all.
+   Transactions get written into `src/utils/db/*` once, rather than into a `dbUtils.ts` that was
+   about to be deleted. **#80 is the keystone** — it is the one that makes the other three
+   expressible at all, so it is now item 1 above rather than part of this batch.
 
 ### Upstream sync — waves
 
@@ -329,13 +360,33 @@ It also changes three existing items:
   are missing accents (`"ja terminou"`, `"indisponivel"`, `"Quantidade invalida"`) on pages that
   handle money.
 
-### Board drift — needs a human decision, not silently "fixed"
+### Board state — reconciled 2026-08-12 after Wave 2
 
-- **#121** and **#122** sit in *In review* but their PRs are merged into `main`.
+Moved, because the facts were unambiguous:
+
+| Item | Change | Why |
+|---|---|---|
+| **#80** | Backlog → **Ready**, P1 → **P0** | Its three dependants were already P0; it is the keystone they need |
+| **#78 · #79 · #100** | Backlog → **Ready** | Their blocker (Wave 2) is merged. Still gated on #80 |
+| **#52** | Backlog → **Ready / P1** | #126 escalates it and #80 finally gives it a first test worth writing |
+| **#28** | In review → **Done** | Delivered by PR #142, merged as `aab9d38` |
+
+**Still drifting — needs a human decision, not silently "fixed":**
+
+- **#28's title and body are wrong even though it is now Done.** It says "Split the God Object
+  **Repository**" and its body describes splitting `ShopRepository`. The god object was never the
+  repository layer — that had zero call sites and was deleted in #119. It was `dbUtils.ts`.
+  Retitle, or close as delivered-under-a-wrong-name?
 - **#4 "[Epic 2.1] Repository Pattern Implementation"** is *Done*, but #119 deleted that layer
   entirely. Misleading to anyone reading the board cold.
-- **#28** was titled "Split the God Object **Repository**" — the god object was never the
-  repository layer (zero call sites, deleted in #119); it was `dbUtils.ts`, split in #142.
+- **#121** sits in *In review* with PR #118 merged, but all four of its acceptance criteria are
+  still unchecked — they are verification steps nobody has run. Verify then close, or close now?
+- **#122** sits in *In review* and its application fix merged in PR #120, but two acceptance
+  criteria are genuinely open: a real Fenix login by a multi-registration student, and the
+  decision on `ON CONFLICT DO NOTHING` in `schema.sql`. **Left alone deliberately** — moving it to
+  Done would bury an open schema question.
+- **#51 and #52 still say Jest** in their bodies while `decision-log.md` records Vitest.
+  Commented on #52; not rewriting either body unilaterally.
 
 ---
 
