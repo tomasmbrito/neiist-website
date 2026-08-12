@@ -590,12 +590,19 @@ export default function OrdersTable({ orders, products }: OrdersTableProps) {
                       {order.campus ? displayCampus(normalizeCampus(order.campus)) : "-"}
                     </td>
                     <td data-label="Email">
-                      <a
-                        href={`mailto:${order.customer_email}`}
-                        className={styles.emailCell}
-                        onClick={(e) => e.stopPropagation()}>
-                        {order.customer_email}
-                      </a>
+                      {order.customer_email ? (
+                        <a
+                          href={`mailto:${order.customer_email}`}
+                          className={styles.emailCell}
+                          onClick={(e) => e.stopPropagation()}>
+                          {order.customer_email}
+                        </a>
+                      ) : (
+                        // Absent for callers whose role does not include customer data, and
+                        // for orders taken without an email. Rendering the link regardless
+                        // produced `mailto:undefined`.
+                        "-"
+                      )}
                     </td>
                     <td className={styles.productsCell} data-label="Produtos">
                       {getCompactProductsSummary(order.items).map((line, i) => (
