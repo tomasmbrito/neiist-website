@@ -80,40 +80,62 @@ export async function GET(request: Request) {
       // Whether they're an IST student or external user, log them in to their existing account.
       // This allows IST students to use Google as an alternative login method.
     } else {
-      // Create new external user
-      // Issue #12 requires creating external users with an ext_ prefix if they are new.
-      const timestamp = Date.now().toString(36);
-      userIstid = `ext_${timestamp}`;
+      // Create a new external (non-Técnico) account.
+      //
+      // The `ext_` prefix is what distinguishes external users from Técnico students, whose
+      // istid comes from Fenix. It is deliberately random rather than time-based: the previous
+      // `ext_${Date.now().toString(36)}` gave two people signing up in the same millisecond the
+      // same istid, and the second INSERT died on users_pkey. It was also enumerable, since
+      // consecutive signups produced adjacent identifiers.
+      //
+      // 36 characters, comfortably inside istid VARCHAR(50). Note this is exactly why the
+      // column must stay VARCHAR(50): upstream's VARCHAR(10) cannot hold an external istid.
+      userIstid = `ext_${crypto.randomUUID().replace(/-/g, "")}`;
 
-      await createUser({
+      const created = await createUser({
         istid: userIstid,
         name: name,
         email: email,
         courses: [],
         photo: "",
       });
+
+      // Without this the failure was silent: createUser returns null on error, getUser below
+      // then returned null, no session cookie was set, and the user was redirected to a page
+      // that simply behaved as though they had never logged in.
+      if (!created) {
+        console.error("[google-auth] Failed to create external user for", email);
+        return NextResponse.redirect(new URL("/?error=account_creation_failed", request.url));
+      }
     }
 
+    const user = await getUser(userIstid);
+    // Previously this was `if (user)` with no else: when the lookup failed the handler still
+    // redirected to the post-login destination, but with no session cookie — indistinguishable
+    // from never having logged in, and with nothing logged.
+    if (!user) {
+      console.error("[google-auth] Resolved no user after login for istid", userIstid);
+      return NextResponse.redirect(new URL("/?error=login_failed", request.url));
+    }
+
+    // Only same-origin paths, so the redirect cannot be pointed at another site.
     const isSafe = typeof postLoginRedirect === "string" && postLoginRedirect.startsWith("/");
     const response = NextResponse.redirect(new URL(isSafe ? postLoginRedirect! : "/", request.url));
 
-    const user = await getUser(userIstid);
-    if (user) {
-      const jwtPayload = {
-        istid: user.istid,
-        roles: user.roles,
-        name: user.name,
-        email: user.email,
-      };
-      const jwtToken = signUserJWT(jwtPayload);
+    const jwtPayload = {
+      istid: user.istid,
+      roles: user.roles,
+      name: user.name,
+      email: user.email,
+    };
+    const jwtToken = signUserJWT(jwtPayload);
 
-      response.cookies.set("session", jwtToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        maxAge: 60 * 60 * 24,
-        path: "/",
-      });
-    }
+    response.cookies.set("session", jwtToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 60 * 60 * 24,
+      path: "/",
+    });
 
     response.cookies.delete("google_oauth_state");
     response.cookies.delete("post_login_redirect");
