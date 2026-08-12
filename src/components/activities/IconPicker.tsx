@@ -1,14 +1,12 @@
 "use client";
-import * as FA from "react-icons/fa";
-import * as MD from "react-icons/md";
-import * as IO from "react-icons/io5";
-import * as TB from "react-icons/tb";
-import * as GI from "react-icons/gi";
-import * as HI from "react-icons/hi2";
-import * as BS from "react-icons/bs";
 import { useMemo, useState } from "react";
 import Fuse from "fuse.js";
 import { IconType } from "react-icons";
+import {
+  DEFAULT_EVENT_ICON,
+  ICON_NAMES,
+  ICON_REGISTRY,
+} from "@/components/activities/IconRegistry";
 import styles from "@/styles/components/activities/IconPicker.module.css";
 
 interface IconPickerProps {
@@ -16,18 +14,6 @@ interface IconPickerProps {
   onChange: (_iconName: string) => void;
   onClose: () => void;
 }
-
-const ALL_ICONS = {
-  ...FA,
-  ...MD,
-  ...IO,
-  ...TB,
-  ...GI,
-  ...HI,
-  ...BS,
-};
-
-const ICON_NAMES = Object.keys(ALL_ICONS);
 
 export default function IconPicker({ value, onChange, onClose }: IconPickerProps) {
   const [search, setSearch] = useState("");
@@ -45,7 +31,7 @@ export default function IconPicker({ value, onChange, onClose }: IconPickerProps
   }, [search, fuse]);
 
   const getIcon = (iconName: string): IconType => {
-    return (ALL_ICONS[iconName as keyof typeof ALL_ICONS] as IconType) || FA.FaQuestionCircle;
+    return ICON_REGISTRY[iconName] || DEFAULT_EVENT_ICON;
   };
 
   const handleSelect = (iconName: string) => {

@@ -1,4 +1,5 @@
 "use client";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useRef, useMemo, type CSSProperties } from "react";
 import styles from "@/styles/components/shop/OrderDetailsOverlay.module.css";
@@ -23,9 +24,14 @@ import { FiChevronDown, FiChevronUp, FiEdit2 } from "react-icons/fi";
 import ConfirmDialog from "@/components/layout/ConfirmDialog";
 import { getColorFromOptions, formatVariantSimple } from "@/utils/shop/shopUtils";
 import { FaArrowRightLong } from "react-icons/fa6";
-import NewOrderModal from "./NewOrderModal";
-import PosPaymentOverlay from "@/components/shop/PosPaymentOverlay";
 import { PENDING_PAYMENT_METHODS } from "@/types/shop/payment";
+
+// Both overlays are only reachable for staff, so they are kept out of the bundle
+// every student downloads to look at an order.
+const NewOrderModal = dynamic(() => import("@/components/shop/NewOrderModal"), { ssr: false });
+const PosPaymentOverlay = dynamic(() => import("@/components/shop/PosPaymentOverlay"), {
+  ssr: false,
+});
 
 function getPaymentDisplay(order: Order) {
   if (!order.payment_method) return "";
