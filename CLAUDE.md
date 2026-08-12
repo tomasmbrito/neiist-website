@@ -101,14 +101,19 @@ src/
 │   └── errors/                 domain error classes + apiErrorHandler
 ├── schemas/              Zod request schemas
 ├── utils/
-│   ├── dbUtils.ts        the ONLY data layer, ~1075 lines  <- to be split, see §4
+│   ├── db/               the data layer — see §4
+│   │   ├── dbClient.ts       the pool + db_query
+│   │   ├── errorMapper.ts    DB error -> domain error
+│   │   ├── userQueries.ts    users, memberships, departments, teams, roles
+│   │   ├── eventQueries.ts   activities calendar
+│   │   └── shopQueries.ts    products, variants, discounts, orders, categories
 │   ├── shop/             order finalization, discounts, auto-cancel, status
 │   ├── security/         validation, rate limiting, CSP
 │   └── authUtils.ts, googleCalendar.ts, emailUtils.ts, sumupUtils.ts
 ├── context/              UserContext, ShopContext
 ├── types/                shared TypeScript types
 ├── styles/               CSS modules, mirrors the components/ tree
-└── middleware.ts         route protection
+└── proxy.ts              route protection (was middleware.ts — renamed for Next 16)
 ```
 
 ### The data layer — resolved 2026-08-12
@@ -125,20 +130,31 @@ fixes it contained were ported into `dbUtils.ts` first: the `getUser` N+1 (role 
 fetched once per distinct department, in parallel) and `getOrderByNumber` (it passed the order
 number into `get_order`'s INT id parameter).
 
+`dbUtils.ts` itself was then split in **#142** (Wave 2), adopting upstream's file boundaries.
+
 What this means now:
 
-- **`src/utils/dbUtils.ts` is the data layer.** There is no second one. Change it freely for
-  live behaviour.
-- The decision was settled by evidence from `neiist-dev`, which kept `istid`, built its voting
-  system on `istid` foreign keys, and had already shipped the dbUtils split this fork attempted.
-- **The remaining work is to adopt that split** — `src/utils/db/{dbClient,errorMapper,
-  userQueries,shopQueries,eventQueries}.ts` — rather than reinvent it. Tracked as Wave 2 in
-  [`docs/ai-workflow/upstream-sync-plan.md`](docs/ai-workflow/upstream-sync-plan.md) and #72.
-- External (Google OAuth) users get a synthetic `istid` inside the existing `VARCHAR(10)`
+- **`src/utils/db/*` is the data layer.** `src/utils/dbUtils.ts` **no longer exists.**
+  Do not recreate it, and do not let one of the five files grow back into a god object.
+- Add a query to the module that owns its domain. If it fits none of them, that is a signal to
+  add a sixth module, not to widen an existing one.
+- **`db_query` lives in `dbClient.ts`** and is imported by the other four. Nothing else should
+  touch the `pg` pool directly.
+- We took upstream's **structure** and kept the fork's **contents**. 62 of 64 export names
+  matched; the bodies did not. Upstream's would have regressed two live fixes:
+  - **`::VARCHAR(10)` casts** at four `userQueries.ts` call sites. Postgres *truncates* on that
+    cast rather than erroring, so a 36-character `ext_<uuid>` istid would silently read and write
+    under a 10-character prefix. **Keep `::VARCHAR(50)` everywhere.**
+  - **The `getUser` N+1** — upstream still awaits `get_department_role_order` inside the
+    membership loop, on the path `serverCheckRoles` runs for every guarded page and route.
+- External (Google OAuth) users get a synthetic `istid` inside the existing `VARCHAR(50)`
   column, not a UUID primary key.
+- Still open from Wave 2, deliberately: **#143** (reconcile `errorMapper` with upstream's
+  message table; fix Portuguese strings missing accents) and `authUtils.ts` → `lib/auth.ts`,
+  which carries #111 and is a behaviour change, not a move.
 
-**Adopting the upstream split will not introduce transactions** — their `dbClient.ts` is still
-`pool.query()`. #78/#79/#80/#100 stand on their own.
+**The split did not introduce transactions** — upstream's `dbClient.ts` is `pool.query()` too,
+exactly as predicted. #78/#79/#80/#100 stand on their own and are now **unblocked**.
 
 ### Integrations
 
@@ -230,7 +246,7 @@ Things you should know before proposing work, so you don't "discover" them as ne
 - **No transactions exist anywhere.** `db_query` is `pool.query()`, so there is no way to
   express one. Every multi-statement operation in TypeScript is non-atomic by construction.
   The only atomicity comes from logic that happens to live entirely inside a `plpgsql` function.
-  Adopting the upstream data layer will **not** change this.
+  Adopting the upstream data layer did **not** change this — confirmed in #142.
 - **There is a CI gate now** (`.github/workflows/ci.yml`: type-check, lint, format, build) and
   it passes. It failed on every run from #106 until #109 because `next-env.d.ts` is gitignored
   and absent from a fresh checkout — see #110. `deploy-staging.yml` still fires on every push
@@ -243,12 +259,19 @@ Things you should know before proposing work, so you don't "discover" them as ne
   build directory — blue/green deploys can lose them.
 - **Upstream has features the fork lacks**: a pg_notify/SSE voting system, Google service
   accounts loaded from env instead of credential files on disk, dinner-page work, and security
-  dependency bumps. It has also renamed `src/middleware.ts` to `src/proxy.ts` (Next 16 warns
-  about this on every dev start) and split `dbUtils.ts`.
+  dependency bumps. The two *structural* divergences are now closed — `middleware.ts` →
+  `proxy.ts` (#139) and the `dbUtils.ts` split (#142). `authUtils.ts` → `lib/auth.ts` remains.
   **Read [`docs/ai-workflow/upstream-sync-plan.md`](docs/ai-workflow/upstream-sync-plan.md)
   before adopting any of it** — it has the measured 42-file collision surface and the wave
   ordering. Their version is not automatically the better one: their Notion webhook fails open
-  when `VERIFICATION_TOKEN` is unset, which this fork already fixed in #96.
+  when `VERIFICATION_TOKEN` is unset, which this fork already fixed in #96; their `proxy.ts`
+  verifies JWTs with Node crypto in an Edge-runtime file and omits `/shop/pos` from its route
+  lists; and their `userQueries.ts` would truncate external istids.
+- **NEIIST's operations live in Notion, and moving them here is now a planned epic (#126).**
+  It is an operations database with a cross-team approval workflow, not a wiki. Read
+  [`docs/ai-workflow/notion-to-website-plan.md`](docs/ai-workflow/notion-to-website-plan.md)
+  before touching anything in that area. It is **blocked on order integrity, #52 and #111** —
+  every operation in it is a multi-table write.
 - **`yarn dev` needs port 5432 free.** If another Postgres holds it, the container starts
   without publishing its port and the app silently connects elsewhere. `scripts/dev-db-check.sh`
   now fails loudly; override with `POSTGRES_PORT` and keep `DATABASE_URL` in step (#105).

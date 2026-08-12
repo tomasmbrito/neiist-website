@@ -26,9 +26,18 @@ That splits into four threads, in priority order:
    failing in CI. "It should work" is not evidence. Every PR states what was *not* verified.
 3. **Remove duplication and dead code.** There were two complete data layers; one had never run.
    That is now resolved.
-4. **Converge with upstream, selectively.** 32 commits behind / 60 ahead. Some upstream work is
+4. **Converge with upstream, selectively.** ~32 commits behind / 66 ahead. Some upstream work is
    genuinely better; some would *reintroduce bugs this fork already fixed*. Per-file judgement,
    never a bulk merge.
+5. **Become the system the núcleo actually runs on.** Threads 1–4 make the site trustworthy;
+   this one makes it *used*. NEIIST's real operations live in Notion — events, meetings, tasks,
+   a cross-team approval protocol, recruitment, finance — with no access control at all. Moving
+   them here is the first work with visible payoff to members rather than to the codebase.
+   Tracked as #126; see [`notion-to-website-plan.md`](notion-to-website-plan.md).
+
+> **The through-line:** threads 1–4 are prerequisites for thread 5, not alternatives to it.
+> A workflow engine built on a data layer with no transactions and no per-team permissions
+> reproduces the exact problem it was meant to solve.
 
 ### Fork topology — the hard rule
 
@@ -109,15 +118,23 @@ second, separate account), and which Técnico email domains must be forced down 
 | #114 | The measured upstream sync plan |
 | #115 | `yarn dev` silently used the wrong database on a port conflict |
 | #116 | Page-level authorization on 5 pages + order PII redaction + `/shop/pos` was public |
+| #118 | `/activities` 500'd for everyone when Notion was unconfigured or down |
+| #119 | Deletes the dead repository layer; ports its two real fixes |
+| #120 | Duplicate Fenix courses blocked account creation |
+| #123 | External signup collided and failed silently |
+| #125 | This document, rewritten as a full context handoff |
 
-### Open PRs — all CI-green
+### Open PRs
 
 | PR | What | Needs before merge |
 |---|---|---|
-| **#118** | `/activities` 500'd for everyone when Notion was unconfigured or down | — |
-| **#119** | Deletes the dead repository layer; ports its two real fixes | **Log in and load `/profile`** — the `getUser` change is unreachable without a session |
-| **#120** | Duplicate Fenix courses blocked account creation | One real Fenix login by a multi-registration student |
-| **#123** | External signup collided and failed silently | One real Google sign-in |
+| **#139** | `middleware.ts` → `proxy.ts` (Next 16 convention) | Load `/shop/pos` and `/shop/manage` logged out — expect `/unauthorized` |
+| **#140** | The Notion migration plan + Wave 2 plan (docs only) | — |
+| **#142** | **Wave 2: `dbUtils.ts` split into `src/utils/db/*`** | Fenix login, **Google/external login**, shop checkout, `/activities` |
+
+**#142 is the one that needs real verification.** Google/external login specifically: it is the
+only path that exercises a 36-character `ext_<uuid>` istid, which is what the `VARCHAR(50)`
+casts protect. A truncation regression surfaces there and nowhere else.
 
 ### Bugs proven against the live database, not argued about
 
@@ -146,8 +163,11 @@ CI on main        GREEN     (first green runs in this repository's history)
 - **No tests and no test runner** (#52). Gates prove compilation and formatting. They cannot
   catch wrong totals, missing authorization, race conditions, or React effect bugs.
 - **No transactions anywhere.** `db_query` is `pool.query()`, so nothing can issue `BEGIN`.
-  Every multi-table write is non-atomic by construction. **Adopting the upstream data layer will
-  not fix this** — theirs is still `pool.query()`.
+  Every multi-table write is non-atomic by construction. Adopting the upstream data layer
+  **did not** fix this, exactly as predicted — theirs is `pool.query()` too. Confirmed by #142.
+- **The data layer is now `src/utils/db/*`** (`dbClient`, `errorMapper`, `userQueries`,
+  `eventQueries`, `shopQueries`). `src/utils/dbUtils.ts` **no longer exists** — do not recreate it,
+  and do not add queries to a single god file again.
 - `serverCheckRoles` swallows Next's `DynamicServerError` (#111).
 - `deploy-staging.yml` fires on every push to `main`.
 - `xlsx` is installed from a SheetJS CDN tarball, outside normal lockfile integrity tooling.
@@ -228,14 +248,23 @@ Full wave ordering: [`upstream-sync-plan.md`](upstream-sync-plan.md).
 
 ## 6. Next steps, in order
 
-### Immediate — no approval needed
+### Do first — outside the code, blocked by nothing
 
-1. **Merge the four open PRs** after the verification each one asks for (§3).
+0. **#141 (P0) — rotate the exposed shared account credential.** A Google account password sits
+   in **plaintext** on the Organização de Eventos Home page in Notion, readable by every
+   workspace member past and present. Rotate, enable 2FA, purge from the page *and its version
+   history*, move to a password manager. Found while analysing the workspace for #126.
+
+### Immediate
+
+1. **Verify and merge #139, #140, #142.** #142 is the one that matters: Fenix login,
+   **Google/external login**, shop checkout, `/activities`.
 2. **#111 — `serverCheckRoles` swallows `DynamicServerError`.** Its blanket `catch` eats the
    signal Next uses to mark a route dynamic; that is why pages needed `force-dynamic`. Re-throw
    anything with a `digest`. 21 call sites, so high leverage. *Auth code — approval.*
 3. **#52 — stand up Vitest.** Every fix so far needed a hand-written throwaway. The decision of
-   record is **Vitest**, not Jest, whatever #51/#52 say.
+   record is **Vitest**, not Jest, whatever #51/#52 say. **This is now closer to blocking than
+   to nice-to-have** — see #126.
 
 ### The big one — needs approval (schema)
 
@@ -245,33 +274,68 @@ Full wave ordering: [`upstream-sync-plan.md`](upstream-sync-plan.md).
    - #79 payment finalization is check-then-act across 3 round-trips → double receipts
    - #100 the per-user cap is TOCTOU → double-clicking Checkout yields two items
 
-   Sequence this **after** Wave 2 of the sync, so transactions get written once rather than into
-   a `dbUtils.ts` that is about to be split.
+   **This is now unblocked.** Wave 2 is done (#142), so transactions get written into
+   `src/utils/db/*` once, rather than into a `dbUtils.ts` that was about to be deleted.
+   `#80` is the keystone: it is the one that makes the other three expressible at all.
 
 ### Upstream sync — waves
 
 5. **Wave 1** (103 conflict-free files). Valuable: Google service accounts from env instead of
    credential files on disk; the self-loopback fetch fix; `scripts/*.mts`. **The deploy/PM2
    script fixes touch production → approval.**
-6. **Wave 2 — the data layer.** Unblocked now #82 is decided. Adopt
-   `src/utils/db/{dbClient,errorMapper,userQueries,shopQueries,eventQueries}.ts`, reconcile their
-   `errorMapper` with our `src/lib/errors/*`, retire `dbUtils.ts` across its ~56 importers.
-   **Keep `VARCHAR(50)`.**
-7. **Wave 3** — the 42 collisions, route by route.
+6. ~~**Wave 2 — the data layer.**~~ **Done in #142.** `dbUtils.ts` is gone; the data layer is
+   `src/utils/db/*`, upstream's boundaries with this fork's contents. Two deliberate exclusions
+   remain: **#143** (errorMapper reconciliation + missing accents) and `authUtils.ts` →
+   `lib/auth.ts`, which carries #111.
+7. **Wave 3** — the 42 collisions, route by route. **Cheaper now**: #142 and #139 converted the
+   two structural collisions into import changes.
 8. **Wave 4** — the voting system (#92). Additive. **Schema change → approval.** Take the end
    state, not the first commit: there are two follow-up SSE/`pg_notify` leak fixes.
+   **Reassess its priority** — #126 found a real consumer (see below).
 9. **Wave 5** — #91 dependencies (`nodemailer` 8→9 is major, give it its own PR) and #112 pnpm
    (recommendation: stay on yarn until the sync completes).
+
+### New in this session — the Notion migration (#126)
+
+The NEIIST Notion workspace was analysed directly. **Notion is not a wiki here — it is an
+operations database with a workflow on top**: one master `Databases` database with six linked
+data sources, plus a cross-team request protocol ("Requerimentos") that is the real product.
+
+Full analysis and 11-phase plan: [`notion-to-website-plan.md`](notion-to-website-plan.md).
+Board: epic **#126**, children **#127–#138**, plus **#141**.
+
+**Recommendation of record: do not start Phase 0 until order integrity, #52 and #111 are done.**
+Every operation in that epic is a multi-table write, and Phase 0 extends exactly the auth code
+#111 is about to change. The one exception is **#127** (read-only Notion-backed events view) —
+no new tables, gives the núcleo something visible in days, and validates the Phase 1 model.
+
+It also changes three existing items:
+- **#47** (dashboard) and **#130** (Phase 2 dashboard) are the same page — reconcile.
+- **#50** (job board) and **#138** (Phase 5 CRM) are the same `businesses` table — reconcile.
+- **#92** (voting) gains a real consumer: "Votação Concurso Layout Sweats" is already a manual
+  Notion workflow.
 
 ### Also open
 
 - **#124** — identity decisions: account linking on a verified alternative email; which Técnico
-  domains must use Fenix.
+  domains must use Fenix. **Higher stakes now** — #126 makes members assignees, approvers and
+  authors across ten tables.
 - **#113** — icon catalogue breadth. The bundle benefit from #107 is **still unmeasured**;
   measuring it needed #105, which is now fixed, so it can finally be done.
 - **#104** — theme token sweep; 76 stylesheets have hardcoded colours.
 - **#122** — optional schema hardening: `ON CONFLICT DO NOTHING` on the two `user_courses`
   inserts, so the database defends itself instead of trusting every caller.
+- **#143** — errorMapper: one mapping mechanism instead of two, and fix Portuguese strings that
+  are missing accents (`"ja terminou"`, `"indisponivel"`, `"Quantidade invalida"`) on pages that
+  handle money.
+
+### Board drift — needs a human decision, not silently "fixed"
+
+- **#121** and **#122** sit in *In review* but their PRs are merged into `main`.
+- **#4 "[Epic 2.1] Repository Pattern Implementation"** is *Done*, but #119 deleted that layer
+  entirely. Misleading to anyone reading the board cold.
+- **#28** was titled "Split the God Object **Repository**" — the god object was never the
+  repository layer (zero call sites, deleted in #119); it was `dbUtils.ts`, split in #142.
 
 ---
 

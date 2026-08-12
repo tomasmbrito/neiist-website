@@ -68,7 +68,8 @@ src/
 ├── app/          # Next.js App Router pages and API routes
 ├── components/   # React UI components (organized by feature domain)
 ├── lib/          # Backend logic wrappers
-├── utils/        # Core utilities (dbUtils, authUtils, googleCalendar, etc.)
+├── utils/        # Core utilities
+│   └── db/       # THE data layer: dbClient, errorMapper, {user,event,shop}Queries
 └── types/        # TypeScript type definitions
 config/           # ESLint and Prettier configuration
 docker/           # Docker Compose + PostgreSQL schema (schema.sql, init.sql)
@@ -79,15 +80,21 @@ public/           # Static assets
 
 ## 6. Key patterns
 
-- **Database access**: All queries go through `src/utils/dbUtils.ts` using
-  parameterized SQL via the `pg` pool. No ORM. Mappers like `mapDbUserToUser()`
-  convert DB rows to typed interfaces.
+- **Database access**: All queries go through `src/utils/db/*` using parameterized SQL via the
+  `pg` pool. No ORM. Mappers like `mapDbUserToUser()` convert DB rows to typed interfaces.
+  - `dbClient.ts` owns the pool and `db_query`; nothing else touches `pg` directly.
+    `userQueries` / `eventQueries` / `shopQueries` own their domains; `errorMapper` maps DB
+    errors to domain errors. Add a query to the module that owns its domain.
+  - **`src/utils/dbUtils.ts` no longer exists** (split in #142). Do not recreate it, and do not
+    let one module grow back into a god object.
   - **Identity is `istid`**, decided 2026-08-12 (#82). A parallel `src/lib/db/repositories/*`
     layer targeting a UUID migration was deleted — it had zero call sites and had never run.
-    Do not reintroduce a second data layer; the plan is to adopt the upstream
-    `src/utils/db/*` split. See CLAUDE.md §4.
+    Do not reintroduce a second data layer. See CLAUDE.md §4.
+  - **`neiist.users.istid` is `VARCHAR(50)`** and every cast must say `::VARCHAR(50)`.
+    External users get a synthetic 36-char `ext_<uuid>`; a `::VARCHAR(10)` cast (which upstream
+    uses) **truncates silently rather than erroring**.
   - **No transactions exist.** `db_query` is `pool.query()`, so every multi-statement
-    operation is non-atomic by construction.
+    operation is non-atomic by construction. The #142 split did not change this.
 - **API routes**: Use Next.js App Router route handlers (`route.ts` files).
 - **Authentication**: Fenix OAuth via API callbacks.
 - **Styling**: Component-level CSS modules / global styles.
