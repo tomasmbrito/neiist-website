@@ -75,14 +75,21 @@ yarn lint           # eslint                <- gate
 yarn format:check   # prettier --check      <- gate
 yarn format         # prettier --write
 yarn db:reset       # DESTRUCTIVE: drops the local db volume and re-seeds
+yarn test           # vitest run — needs a live database (#52)
+yarn db:migrate     # apply pending migrations   (see §4a)
+yarn db:migrate:status
 ```
 
 Baseline as of the last full audit: `type:check` clean, `lint` clean.
 If you see errors that your change did not cause, say so rather than silently fixing scope creep.
 
-There is **no test command, because there are no tests.** This is the single largest quality
-gap in the repository. Do not pretend otherwise, and do not write a test file that no runner
-executes.
+**Tests exist as of #52, and there are five of them.** They cover `withTransaction` and they run
+in CI against a Postgres service container. That is a beachhead, not coverage — ~64 query
+functions have none. Do not claim coverage that does not exist, and do not write a test that
+asserts a mock still behaves the way you mocked it.
+
+**A concurrency or transaction fix without a test should not merge.** That class of bug is
+invisible to every other gate, and `yarn test` now exists to catch it.
 
 ---
 
@@ -155,6 +162,38 @@ What this means now:
 
 **The split did not introduce transactions** — upstream's `dbClient.ts` is `pool.query()` too,
 exactly as predicted. #78/#79/#80/#100 stand on their own and are now **unblocked**.
+
+### 4a. Schema changes ship as migrations — always
+
+**Read [`docs/ai-workflow/database-migrations.md`](docs/ai-workflow/database-migrations.md)
+before editing `docker/schema.sql`.**
+
+Until #148 there was **no path at all** from this repository to a database that already had
+data: `schema.sql` is mounted into `/docker-entrypoint-initdb.d/`, which Postgres runs *only on
+an empty data directory*, and neither deploy script had a `psql` step — in this fork or upstream,
+across 53 edits to that file. **`docker/schema.sql` describes what a *new* database gets. It has
+never described production.**
+
+Now: `scripts/migrate.mts` applies `docker/migrations/NNN_name.sql` in order, tracked in
+`neiist.schema_migrations`, and both deploy scripts run it after the build and before the
+restart. Four rules:
+
+1. **Edit `docker/schema.sql` *and* write a migration.** Both, in the same PR. `schema.sql` stays
+   the end state for fresh environments; the migration is how existing databases catch up.
+2. **Every migration must be idempotent** — `CREATE OR REPLACE`, `IF NOT EXISTS`,
+   `ON CONFLICT DO NOTHING`. Production's starting state is unknowable, which is what makes this
+   non-negotiable. The runner cannot enforce it; the reviewer must.
+3. **Backward-compatible with the previous release.** The old instance serves traffic against the
+   migrated schema for the length of the deploy, and blue/green briefly runs both.
+4. **Never edit an applied migration.** The runner refuses by checksum. Fix forward.
+
+Migrations connect as the owner role, not `DATABASE_URL` — the app role has no table privileges
+by design (`schema.sql:11-16`) and cannot run DDL.
+
+⚠️ **Production's actual schema is still unmeasured** (#152) — it is `schema.sql` as of whenever
+that volume was created, plus anything typed into a `psql` session since. A `CREATE OR REPLACE`
+will silently overwrite whatever is really there. That must be measured before the
+order-integrity batch touches `set_order_state` or `new_order`.
 
 ### Integrations
 
@@ -240,9 +279,12 @@ Things you should know before proposing work, so you don't "discover" them as ne
   fetching (#116). **Never rely on middleware alone** — it is an optimisation, not a boundary.
   Note the trap that caught `/shop/manage` (#97) and `/shop/pos` (#117): a privileged path
   nested under a public prefix falls through to the public match unless a rule claims it.
-- **`serverCheckRoles` swallows Next's `DynamicServerError`** — its blanket `catch` eats the
-  signal Next uses to mark a route dynamic. That is why pages needed `force-dynamic`. Tracked
-  in #111; needs approval as auth code.
+- **Next signals control flow by *throwing*, and a blanket `catch` cancels it.** `cookies()`
+  outside a request scope throws `DynamicServerError` to mark a route dynamic; `redirect()` and
+  `notFound()` throw too. All carry a `digest`. `serverCheckRoles` swallowed them, which is why
+  pages needed `force-dynamic`; fixed in #111 by re-throwing anything with a string `digest`.
+  **`src/app/layout.tsx:40-49` still has the identical defect** (#153). Treat any blanket `catch`
+  on a Server Component path as suspect.
 - **Transactions exist as of #80, but almost nothing uses them yet.** `withTransaction(fn)` is in
   `src/utils/db/dbClient.ts`; the callback receives a `Querier` that **must** be threaded into
   every query function that should take part. Two operations are converted (product edit, discount
@@ -258,7 +300,8 @@ Things you should know before proposing work, so you don't "discover" them as ne
 - **There is a CI gate now** (`.github/workflows/ci.yml`: type-check, lint, format, build) and
   it passes. It failed on every run from #106 until #109 because `next-env.d.ts` is gitignored
   and absent from a fresh checkout — see #110. `deploy-staging.yml` still fires on every push
-  to `main`. **There are still no tests and no test runner** (#52).
+  to `main`. **A test runner exists as of #52** — Vitest, plus a separate CI job with a Postgres
+  service container. The `quality` job stays database-free on purpose; keep it that way.
 - **`/activities` renders against Notion.** An empty events table triggers a sync during
   render; it is now guarded (#118), but the page still depends on a third party at request time.
 - **`xlsx`** is installed from a SheetJS CDN tarball URL, not the npm registry — it is outside
