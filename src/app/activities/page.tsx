@@ -1,6 +1,6 @@
 import Calendar from "@/components/activities/Calendar";
 import { getActivitiesEventsFromDb } from "@/utils/dbUtils";
-import { syncNotionEventsToDb } from "@/utils/eventsUtils";
+import { syncNotionEventsToDb, isNotionConfigured } from "@/utils/eventsUtils";
 import { UserRole } from "@/types/user";
 import { serverCheckRoles } from "@/utils/permissionUtils";
 import styles from "@/styles/pages/Activities.module.css";
@@ -17,10 +17,20 @@ async function getEventsAndSubscriptions() {
 
   let events = await getActivitiesEventsFromDb();
 
-  // If no events in DB, sync from Notion
-  if (events.length === 0) {
-    await syncNotionEventsToDb();
-    events = await getActivitiesEventsFromDb();
+  // An empty table triggers a sync from Notion. That is a third-party call inside a page
+  // render, so it must not be able to take the page down: an unconfigured, rate-limited or
+  // unreachable Notion should leave the calendar empty, not return a 500 for the whole route.
+  //
+  // This was not hypothetical — on a database with no events yet, `/activities` returned 500
+  // with Notion's `invalid_request_url`, because DATABASE_ID was unset and the error escaped
+  // the render.
+  if (events.length === 0 && isNotionConfigured()) {
+    try {
+      await syncNotionEventsToDb();
+      events = await getActivitiesEventsFromDb();
+    } catch (error) {
+      console.error("[activities] Notion sync failed; rendering without synced events:", error);
+    }
   }
 
   const signedUpEventIds = istid

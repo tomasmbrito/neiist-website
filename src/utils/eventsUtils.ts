@@ -78,7 +78,26 @@ export function parseNotionPageToEvent(page: NotionPage): NotionEvent {
   };
 }
 
+/**
+ * Whether the Notion integration is configured at all.
+ *
+ * `NOTION_API_KEY` and `DATABASE_ID` are read with `!`, so when they are unset the client sends
+ * `data_source_id: undefined` and Notion answers `400 invalid_request_url` — an error that says
+ * nothing about the actual problem. Callers should check this first and skip the sync rather
+ * than decode a misleading API failure.
+ */
+export function isNotionConfigured(): boolean {
+  return Boolean(NOTION_API_KEY && DATABASE_ID);
+}
+
 export async function fetchAllNotionEvents(): Promise<NotionEvent[]> {
+  if (!isNotionConfigured()) {
+    throw new Error(
+      "Notion is not configured: NOTION_API_KEY and DATABASE_ID must both be set. " +
+        "See docs/installation.md."
+    );
+  }
+
   const pages: NotionPage[] = [];
   let cursor: string | undefined = undefined;
   do {
