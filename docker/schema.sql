@@ -496,10 +496,13 @@ BEGIN
     VALUES (p_istid, 'phone', p_phone);
   END IF;
 
-  -- Insert courses if provided
+  -- Insert courses if provided. Fenix returns one registration per enrolment, so a student who
+  -- re-registered for the same degree arrives with that course name twice; without the conflict
+  -- clause the (user_istid, course_name) primary key aborts account creation entirely (#146).
   IF p_courses IS NOT NULL THEN
     INSERT INTO neiist.user_courses (user_istid, course_name)
-    SELECT p_istid, unnest(p_courses);
+    SELECT p_istid, unnest(p_courses)
+    ON CONFLICT (user_istid, course_name) DO NOTHING;
   END IF;
 
   RETURN QUERY SELECT * FROM neiist.get_user(p_istid);
@@ -849,7 +852,8 @@ BEGIN
     IF jsonb_array_length(p_updates->'courses') > 0 THEN
       INSERT INTO neiist.user_courses (user_istid, course_name)
       SELECT p_istid, value::TEXT
-      FROM jsonb_array_elements_text(p_updates->'courses');
+      FROM jsonb_array_elements_text(p_updates->'courses')
+      ON CONFLICT (user_istid, course_name) DO NOTHING;
     END IF;
   END IF;
 
