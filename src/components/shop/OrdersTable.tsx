@@ -327,26 +327,57 @@ export default function OrdersTable({ orders, products }: OrdersTableProps) {
       .map((id) => Number(id))
       .filter((n) => Number.isFinite(n));
     const concurrency = 5;
-    const failures: number[] = [];
+
+    let changed = 0;
+    let alreadyInState = 0;
+    const failures: Array<{ orderId: number; reason: string }> = [];
+
+    /**
+     * "Marcar como Pago" is a *payment*, not a status edit, and has to go through the payment
+     * endpoint: PATCH rejects `paid` outright (it always has — every bulk mark-as-paid failed
+     * silently, #154), and only /pay runs the after-purchase action and sends the receipt.
+     *
+     * No payment reference is sent. An in-person payment does not have one; the server requires
+     * it only for the SumUp-backed methods and answers 400 otherwise, which is the correct
+     * outcome for a card order that should have been finalized by SumUp instead.
+     */
+    const markOne = async (orderId: number) => {
+      if (status === "paid") {
+        const res = await fetch(`/api/shop/orders/${orderId}/pay`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(body?.error || `Erro ${res.status}`);
+        }
+        const body = (await res.json().catch(() => null)) as { alreadyPaid?: boolean } | null;
+        if (body?.alreadyPaid) alreadyInState += 1;
+        else changed += 1;
+        return;
+      }
+
+      const res = await fetch(`/api/shop/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error || `Erro ${res.status}`);
+      }
+      changed += 1;
+    };
 
     const worker = async (ids: number[]) => {
       await Promise.all(
         ids.map(async (orderId) => {
           try {
-            const res = await fetch(`/api/shop/orders/${orderId}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ status }),
-            });
-            if (!res.ok) {
-              failures.push(orderId);
-              console.error(
-                `Failed to update order ${orderId}`,
-                await res.text().catch(() => null)
-              );
-            }
+            await markOne(orderId);
           } catch (err) {
-            failures.push(orderId);
+            const reason = err instanceof Error ? err.message : "Erro desconhecido";
+            failures.push({ orderId, reason });
             console.error(`Error updating order ${orderId}:`, err);
           }
         })
@@ -360,11 +391,22 @@ export default function OrdersTable({ orders, products }: OrdersTableProps) {
       setSelectedOrders(new Set());
       router.refresh();
       toast.dismiss(toastId);
-      if (failures.length) {
-        toast.warning("Aviso", { closeButton: true });
-        console.warn("Some updates failed:", failures);
+
+      // A mixed selection is the normal case, so the result is a breakdown rather than a verdict.
+      // The old code collapsed every outcome into toast.warning("Aviso"), which told a manager
+      // nothing about which orders moved.
+      const parts: string[] = [];
+      if (changed > 0) parts.push(`${changed} atualizada(s)`);
+      if (alreadyInState > 0) parts.push(`${alreadyInState} já estava(m) nesse estado`);
+      if (failures.length > 0) parts.push(`${failures.length} sem alteração`);
+      const summary = parts.join(" · ");
+
+      if (failures.length === 0) {
+        toast.success(summary || "Operação concluída com sucesso.", { closeButton: true });
       } else {
-        toast.success("Operação concluída com sucesso.", { closeButton: true });
+        const reasons = [...new Set(failures.map((failure) => failure.reason))].slice(0, 2);
+        toast.warning(`${summary}. ${reasons.join(" ")}`, { closeButton: true });
+        console.warn("Some updates failed:", failures);
       }
     } finally {
       setBulkLoading(false);

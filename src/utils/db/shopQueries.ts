@@ -360,6 +360,54 @@ export const updateOrder = async (
   return row ? mapDbOrderToOrder(row) : null;
 };
 
+/**
+ * The result of asking the database to finalize a payment.
+ *
+ * `finalized` is a value the *database* decided while holding a row lock, not a status this
+ * process read a moment ago. It means "this caller performed the write" — not "the order is
+ * paid". A `false` with `previousStatus: "paid"` is a successful replay: the order is paid, but
+ * some other entry point paid it, so this caller must not email or re-run an after-purchase
+ * action. Getting that distinction wrong is the whole of #79.
+ */
+export type FinalizeOrderPaymentResult = {
+  finalized: boolean;
+  previousStatus: string;
+  order: Order;
+};
+
+/**
+ * Atomic, idempotent payment finalization (#79) — `neiist.finalize_paid_order`.
+ *
+ * Replaces a three-round-trip check-then-act across three pooled connections. Five entry points
+ * reach this (SumUp verify, browser return, webhook, card reader, manual), and several firing for
+ * one purchase is normal. The function serialises them on the order row so exactly one wins.
+ *
+ * Errors propagate deliberately — no `catch { return null }`. The caller routes them through
+ * `throwIfOrderDbError`, and swallowing them here would reintroduce the silent-failure pattern
+ * that makes the rest of this file unsafe inside a transaction.
+ */
+export const finalizeOrderPayment = async (
+  orderId: number,
+  paymentReference: string | null,
+  actor: string
+): Promise<FinalizeOrderPaymentResult> => {
+  const {
+    rows: [row],
+  } = await db_query<DbOrder & { finalized: boolean; previous_status: string }>(
+    `SELECT * FROM neiist.finalize_paid_order($1, $2, $3)`,
+    [orderId, paymentReference, actor]
+  );
+
+  return {
+    finalized: row.finalized,
+    previousStatus: row.previous_status,
+    order: {
+      ...mapDbOrderToOrder(row),
+      mbway_number: getMbWayNumberForOrder(row.order_number),
+    },
+  };
+};
+
 export const setOrderState = async (
   orderId: number,
   status: OrderStatus,

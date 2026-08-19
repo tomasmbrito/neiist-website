@@ -196,10 +196,14 @@ export default function PosPaymentOverlay({
         throw new Error(errorData?.error || "Falha ao finalizar encomenda");
       }
 
-      const data = (await res.json().catch(() => null)) as Order | null;
-      if (!data || !("id" in data)) throw new Error("Resposta inválida do servidor");
+      // The route now answers { order, alreadyPaid } rather than a bare order, so a caller can
+      // tell "I marked this paid" from "some other entry point already had" (#79). The POS does
+      // not need the distinction — a replay still means the money is in — but it must read the
+      // nested order.
+      const data = (await res.json().catch(() => null)) as { order?: Order } | null;
+      if (!data?.order || !("id" in data.order)) throw new Error("Resposta inválida do servidor");
 
-      return data;
+      return data.order;
     },
     [order.id]
   );
