@@ -256,12 +256,22 @@ export const newOrder = async (
     items: Array<{ product_id: number; variant_id?: number; quantity: number }>;
     discount_code?: string | null;
   },
-  stockOverride: boolean = false
+  stockOverride: boolean = false,
+  /**
+   * Per-user purchase cap (#100). The route still pre-checks so it can produce a good Portuguese
+   * message naming the product, but that check is a fast path, not the authority — it is
+   * check-then-act across two round trips, so double-clicking Checkout beat it. Passing the
+   * policy down makes `new_order_capped` enforce it under an advisory lock, in the same
+   * transaction as the insert.
+   *
+   * Omit both to create an order with no cap, which is what every non-special category does.
+   */
+  quantityCap?: { maxQuantityPerUser: number; categoryName: string }
 ): Promise<Order | null> => {
   const {
     rows: [row],
   } = await db_query<DbOrder>(
-    `SELECT * FROM neiist.new_order($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+    `SELECT * FROM neiist.new_order_capped($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
     [
       order.user_istid ?? null,
       order.customer_name ?? null,
@@ -282,6 +292,8 @@ export const newOrder = async (
       ),
       order.discount_code ?? null,
       stockOverride,
+      quantityCap?.maxQuantityPerUser ?? null,
+      quantityCap?.categoryName ?? null,
     ]
   );
   return row
@@ -408,19 +420,58 @@ export const finalizeOrderPayment = async (
   };
 };
 
+/**
+ * The result of a guarded status change (#78).
+ *
+ * `changed` means "this call performed the write". `false` is a successful idempotent no-op —
+ * the order was already in that status, which bulk operations over a mixed selection rely on.
+ * It is NOT an error, and it is NOT the same as the `null` below.
+ */
+export type SetOrderStateResult = {
+  changed: boolean;
+  previousStatus: OrderStatus;
+  order: Order;
+};
+
+/**
+ * Guarded order status transition — `neiist.set_order_state` (#78).
+ *
+ * `expectedStatus` is optimistic concurrency and is **required on purpose**. Every caller has
+ * already read the order to make its decision, so it can always say what that decision was based
+ * on; making the parameter optional would let a call site silently keep the old unguarded
+ * behaviour. In a repository with almost no tests, `tsc` refusing to compile is the regression
+ * guard. Pass `null` only where there is genuinely no expectation.
+ *
+ * Returns `null` when the expectation did not match — the order moved since the caller read it,
+ * so nothing was written. For the auto-cancel sweep that is the *normal* outcome (a payment
+ * landed mid-sweep), not a failure.
+ *
+ * Errors propagate: NEI01 (missing) and NEI02 (transition rejected by the matrix) must reach
+ * `throwIfOrderDbError`.
+ */
 export const setOrderState = async (
   orderId: number,
   status: OrderStatus,
-  user_istid?: string
-): Promise<Order | null> => {
+  user_istid: string | undefined,
+  expectedStatus: OrderStatus | null
+): Promise<SetOrderStateResult | null> => {
   const {
     rows: [row],
-  } = await db_query<DbOrder>(`SELECT * FROM neiist.set_order_state($1,$2,$3)`, [
-    orderId,
-    status,
-    user_istid ?? null,
-  ]);
-  return row ? mapDbOrderToOrder(row) : null;
+  } = await db_query<DbOrder & { changed: boolean; previous_status: OrderStatus }>(
+    `SELECT * FROM neiist.set_order_state($1,$2,$3,$4)`,
+    [orderId, status, user_istid ?? null, expectedStatus]
+  );
+
+  if (!row) return null;
+
+  return {
+    changed: row.changed,
+    previousStatus: row.previous_status,
+    order: {
+      ...mapDbOrderToOrder(row),
+      mbway_number: getMbWayNumberForOrder(row.order_number),
+    },
+  };
 };
 
 export const getAllCategories = async (includeSpecial: boolean = false): Promise<Category[]> => {

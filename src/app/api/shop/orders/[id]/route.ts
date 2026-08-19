@@ -14,6 +14,7 @@ import {
   sendEmail,
 } from "@/utils/emailUtils";
 import { handleApiError } from "@/lib/errors/apiErrorHandler";
+import { updateOrderStatusSchema } from "@/schemas/shop";
 
 function isShopManagerOrAbove(roles: UserRole[]) {
   return (
@@ -219,20 +220,38 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   try {
     const body = await request.json();
-    const { status } = body;
     const orderId = Number((await params).id);
-    if (!status) return NextResponse.json({ error: "No status provided" }, { status: 400 });
 
-    if (status === "paid")
-      return NextResponse.json({ error: "Use POST /pay to mark order as paid" }, { status: 400 });
+    // Validated instead of trusted: an unrecognised string used to reach the enum cast and come
+    // back as a 500. `paid` is not in the enum — payments go through POST /pay.
+    const parsed = updateOrderStatusSchema.safeParse(body);
+    if (!parsed.success) {
+      const message =
+        body?.status === "paid"
+          ? "Use POST /pay to mark order as paid"
+          : (parsed.error.issues[0]?.message ?? "Estado de encomenda inválido");
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    const { status } = parsed.data;
 
     const order = await getOrderById(orderId);
     if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
-    await setOrderState(orderId, status, userRoles.user!.istid);
-    const updatedOrder = await getOrderById(orderId);
+    // The status this decision was based on. If the order moved between the read above and the
+    // write below, the decision is stale and must not be applied (#78).
+    const result = await setOrderState(orderId, status, userRoles.user!.istid, order.status);
+    if (!result) {
+      return NextResponse.json(
+        { error: "O estado da encomenda mudou entretanto. Recarrega a página." },
+        { status: 409 }
+      );
+    }
 
-    if (updatedOrder?.customer_email) {
+    const updatedOrder = result.order;
+
+    // Only on a real transition. A no-op over a mixed bulk selection must not email the customer
+    // again about a status they were already told about.
+    if (result.changed && updatedOrder?.customer_email) {
       const statusLabel = getStatusLabel(status);
       const orderKindRules = getOrderKindRules(getOrderKindFromItems(updatedOrder.items).orderKind);
 
@@ -254,6 +273,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     return NextResponse.json(updatedOrder);
   } catch (error) {
+    // NEI02 (transition rejected by the matrix) becomes a 409 rather than a 500. Unlike PUT,
+    // this handler never routed its errors through the mapper.
+    try {
+      throwIfOrderDbError(error);
+    } catch (mapped) {
+      return handleApiError(mapped);
+    }
     console.error("Order update error:", error);
     return handleApiError(error);
   }
@@ -275,19 +301,38 @@ export async function DELETE(
   const order = await getOrderById(orderId);
   if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
-  if (
-    !isOrderOwner(order, user!) &&
-    !roles?.some((role) => [UserRole._ADMIN, UserRole._COORDINATOR].includes(role))
-  ) {
+  const isShopOps = roles?.some((role) => [UserRole._ADMIN, UserRole._COORDINATOR].includes(role));
+
+  if (!isOrderOwner(order, user!) && !isShopOps) {
     return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
   }
 
+  // An owner may only walk away from an order that has not been paid for. Previously a customer
+  // could cancel a delivered order, which fires trg_restock_limited_on_cancel and puts goods
+  // back on sale that they are holding and have not been refunded for. Shop ops keep the wider
+  // power, because a refund is a real workflow they need.
+  if (!isShopOps && order.status !== "pending") {
+    return NextResponse.json(
+      { error: "Só podes cancelar encomendas que ainda não foram pagas." },
+      { status: 409 }
+    );
+  }
+
   try {
-    const updatedOrder = await setOrderState(orderId, "cancelled", user!.istid);
-    if (!updatedOrder)
-      return NextResponse.json({ error: "Failed to cancel order" }, { status: 500 });
-    return NextResponse.json(updatedOrder);
+    const result = await setOrderState(orderId, "cancelled", user!.istid, order.status);
+    if (!result) {
+      return NextResponse.json(
+        { error: "O estado da encomenda mudou entretanto. Recarrega a página." },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json(result.order);
   } catch (error) {
+    try {
+      throwIfOrderDbError(error);
+    } catch (mapped) {
+      return handleApiError(mapped);
+    }
     return handleApiError(error);
   }
 }
