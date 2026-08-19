@@ -136,6 +136,12 @@ second, separate account), and which Técnico email domains must be forced down 
 | **#148** | **Migration runner** + #146 (`ON CONFLICT` on `user_courses`) | green |
 | **#149** | **#111** — Next's control-flow signals escape `serverCheckRoles` | green |
 | **#150** | **#52** — Vitest, 5 tests on `withTransaction`, Postgres service container in CI | green, **Tests job included** |
+| **#151** | This document, the migration finding, `CLAUDE.md` §4a | green |
+| **#161** | **#79 + #154** — atomic payment finalization; bulk mark-as-paid fixed | stacked on #148 |
+| **#162** | **#78 + #100** — transition matrix, auto-cancel race, per-user cap | stacked on #161 |
+
+**Merge order: #148 → #150 → #149 → #151 → #161 → #162.** The first four are independent; the
+last two are stacked and their diffs collapse once their bases land.
 
 They are independent and can merge in any order. #150 and #148 both touch `tsconfig.json`'s
 `include` only in ways that were verified to compose (see #150's body).
@@ -337,7 +343,26 @@ Full wave ordering: [`upstream-sync-plan.md`](upstream-sync-plan.md).
    remove the aborted-`COMMIT` check, disable the tripwire, or turn `ROLLBACK` into `COMMIT`, and
    exactly one test fails each time.
 
-### The rest of order integrity — the plan is written and waiting on you
+### Order integrity is now written — the two operational questions were answered
+
+Tomás answered the two questions that could not come from the code (2026-08-19):
+
+- **The payment flow.** A SumUp online payment finalizes itself; an in-person payment waits for a
+  manager to mark it paid. So **`pending` means *pending payment*** and nothing may skip it. The
+  strict matrix is correct — `pending → ready` and `pending → delivered` are rejected.
+- **`cancelled` can be terminal.** No un-cancel workflow exists, so no `reactivate_order` is
+  needed.
+
+The first answer had a consequence that was not obvious: it makes bulk **"Marcar como Pago"** the
+load-bearing button of the whole in-person flow — and **it had never worked**. It PATCHes
+`{"status":"paid"}`, which the route rejects outright, and every failure surfaced as
+`toast.warning("Aviso")`. Filed as **#154** and fixed in #161, which had to land *before* the
+matrix in #162 closed the only workaround.
+
+**Still blocking deployment, not merging: #152.** #162 rewrites `set_order_state` and `new_order`
+with `CREATE OR REPLACE`, over bodies nobody has verified.
+
+### The original plan, for the remaining detail
 
 **Read [`.claude/plans/order-integrity-batch.md`](../../.claude/plans/order-integrity-batch.md).**
 It was refreshed on 2026-08-12: §0 lists what changed under it (the `dbUtils.ts` split, the

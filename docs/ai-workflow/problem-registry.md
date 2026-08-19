@@ -119,3 +119,57 @@ Each entry records root cause and fix for future reference.
 - **Why it is worth writing down**: "log and return a default" is normally good defensive style.
   In a framework that signals by throwing, it is a bug — and a silent one, because the fallback
   value is plausible. Any blanket `catch` in a Server Component path is now suspect.
+
+---
+
+## Bulk "Marcar como Pago" had never worked (#154, PR #161)
+
+- **Symptom**: selecting orders and pressing "Marcar como Pago" did nothing, reported as
+  `toast.warning("Aviso")` with no explanation.
+- **Root cause**: `OrdersTable.tsx:474` PATCHes `{"status":"paid"}`;
+  `src/app/api/shop/orders/[id]/route.ts:225` rejects `paid` outright, because a payment must go
+  through `POST /pay` (the only path that records the reference, runs the after-purchase action
+  and sends the receipt). Every order in the selection 400'd.
+- **Why it mattered more than it looked**: it is the load-bearing button of the in-person payment
+  flow. A SumUp payment finalizes itself; an in-person one waits for a manager. So managers were
+  marking orders paid one at a time through the single-order overlay.
+- **Second defect in the same flow**: `/pay` required `paymentReference` unconditionally, and
+  `orderFinalization.ts` required one unless `payment_method === "cash"` — which rejected
+  `in-person`, `mbway` and `transfer`, i.e. every manually-confirmed method. The endpoint rejected
+  exactly the case it existed to serve.
+- **Fix**: bulk routes to `POST /pay`; the reference is required only for the SumUp-backed
+  methods, decided in SQL so every caller inherits one rule; the toast reports
+  changed / already-in-state / rejected.
+- **Why it is worth writing down**: it was invisible because the failure path was a generic
+  warning toast. A bulk operation that reports one word for every outcome hides its own bugs —
+  and this one hid for the entire life of the feature.
+- **Regression test?** Yes — `src/utils/db/orderPayment.test.ts` covers the reference rule per
+  payment method. The **UI** path is still unverified; a shop manager should press the button
+  before a stand relies on it.
+
+---
+
+## `Promise.all` is not a concurrency test (found while writing #79's guard)
+
+- **Symptom**: a new test named "gives exactly one winner when two callers finalize concurrently"
+  passed. It also passed against a `finalize_paid_order` deliberately stripped of **both** the
+  row lock and the conditional `UPDATE ... AND status = 'pending'` — i.e. against the original
+  check-then-act defect it was written to catch.
+- **Root cause**: `Promise.all([f(), f()])` issues two pool queries about a millisecond apart.
+  The unguarded window between the status read and the write is microseconds wide, so the two
+  never overlap. The test exercised sequential calls while reading like a race.
+- **Fix**: hold a transaction open on a dedicated `pg.Client`, issue the second call while the
+  first still holds the lock, and assert the second has **not settled** after 300 ms. That version
+  fails against the broken function with `expected true to be false`.
+- **Second finding, same investigation**: the first two mutation attempts could not break the test
+  because atomicity there has **three** overlapping guards — the row lock, the status check, and
+  the conditional `UPDATE`. Removing any one leaves the other two. Good defence in depth, and a
+  trap for naive mutation testing.
+- **Third finding**: the #100 cap race test had the same weakness for a different reason. It used
+  a `limited`-stock fixture, and `new_order` takes `FOR UPDATE` on the product row for exactly
+  that case (`schema.sql:2264-2267`), so the row lock serialised the test and the advisory lock
+  was never exercised. Switching the fixture to `on_demand` — which is what jantar de curso, the
+  only capped kind, actually is — made it a real guard.
+- **Why it is worth writing down**: **a concurrency test that has never failed is not a guard.**
+  Every one added since is checked by deliberately breaking the thing it protects, and the result
+  is recorded in the PR. This is the practice, not a one-off.
