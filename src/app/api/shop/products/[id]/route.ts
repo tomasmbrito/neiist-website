@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { UserRole } from "@/types/user";
 import { mapDeleteProductDbErrorToResponse } from "@/utils/db/errorMapper";
 import {
   updateProduct,
@@ -10,14 +9,14 @@ import {
   deleteProductVariant,
 } from "@/utils/db/shopQueries";
 import { withTransaction } from "@/utils/db/dbClient";
-import { serverCheckRoles } from "@/utils/permissionUtils";
+import { serverCheckPermission } from "@/utils/permissionUtils";
 import { withValidation } from "@/utils/security/validationUtils";
 import { productPayloadSchema } from "@/schemas/shop";
 
 export const PUT = withValidation(
   productPayloadSchema,
   async (request, body, { params }: { params: Promise<{ id: string }> }) => {
-    const permissionCheck = await serverCheckRoles([UserRole._ADMIN]);
+    const permissionCheck = await serverCheckPermission("shop.products.manage");
     if (!permissionCheck.isAuthorized) return permissionCheck.error;
 
     try {
@@ -119,7 +118,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const userRoles = await serverCheckRoles([UserRole._ADMIN]);
+  const userRoles = await serverCheckPermission("shop.products.manage");
   if (!userRoles.isAuthorized) return userRoles.error;
 
   try {
@@ -146,7 +145,7 @@ export async function DELETE(
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const userRoles = await serverCheckRoles([UserRole._ADMIN]);
+  const userRoles = await serverCheckPermission("shop.products.manage");
   if (!userRoles.isAuthorized) return userRoles.error;
 
   try {

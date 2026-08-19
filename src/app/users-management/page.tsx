@@ -2,8 +2,7 @@ import UsersManagement from "@/components/admin/UsersManagement";
 import MembershipsManagement from "@/components/admin/MembershipsManagement";
 import styles from "@/styles/pages/AdminDashboard.module.css";
 import { GoPerson, GoShield } from "react-icons/go";
-import { requireRoles } from "@/utils/permissionUtils";
-import { UserRole } from "@/types/user";
+import { requirePermission } from "@/utils/permissionUtils";
 
 const sections = [
   { id: "users", name: "Utilizadores", icon: <GoShield /> },
@@ -17,7 +16,7 @@ export default async function UsersManagementPage({
 }) {
   // Mirrors the admin rule in middleware. Enforced here too — middleware is an optimisation,
   // not a boundary.
-  await requireRoles([UserRole._ADMIN]);
+  await requirePermission("users.manage");
 
   const searchParams = searchParamsPromise ? await searchParamsPromise : {};
   const sectionParam = searchParams?.section;

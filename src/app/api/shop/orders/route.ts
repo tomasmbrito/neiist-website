@@ -13,7 +13,7 @@ import { OrderSource } from "@/types/shop/orderKind";
 import { getOrderKindRules, getOrderKindFromItems } from "@/utils/shop/orderKindUtils";
 import { OrderItem } from "@/types/shop/order";
 import { Product } from "@/types/shop/product";
-import { serverCheckRoles } from "@/utils/permissionUtils";
+import { serverCheckPermission, serverCheckRoles } from "@/utils/permissionUtils";
 import { sendEmail, getPendingOrderEmailTemplate } from "@/utils/emailUtils";
 import { withValidation } from "@/utils/security/validationUtils";
 import { createOrderPayloadSchema } from "@/schemas/shop";
@@ -31,11 +31,7 @@ function parseOrderSource(value: string): OrderSource {
 }
 
 export async function GET() {
-  const userRoles = await serverCheckRoles([
-    UserRole._SHOP_MANAGER,
-    UserRole._COORDINATOR,
-    UserRole._ADMIN,
-  ]);
+  const userRoles = await serverCheckPermission("shop.orders.create");
 
   if (!userRoles.isAuthorized) return userRoles.error;
 

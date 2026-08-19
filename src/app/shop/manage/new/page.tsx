@@ -1,10 +1,9 @@
 import ProductForm from "@/components/shop/ProductForm";
 import { getAllCategories } from "@/utils/db/shopQueries";
-import { UserRole } from "@/types/user";
-import { requireRoles } from "@/utils/permissionUtils";
+import { requirePermission } from "@/utils/permissionUtils";
 
 export default async function NewProductPage() {
-  await requireRoles([UserRole._ADMIN]);
+  await requirePermission("shop.products.manage");
 
   const categories = await getAllCategories(true);
 

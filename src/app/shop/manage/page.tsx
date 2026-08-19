@@ -1,10 +1,9 @@
 import ShopManagement from "@/components/shop/ShopManagement";
 import { getAllProductsAdmin, getAllCategories } from "@/utils/db/shopQueries";
-import { UserRole } from "@/types/user";
-import { requireRoles } from "@/utils/permissionUtils";
+import { requirePermission } from "@/utils/permissionUtils";
 
 export default async function ShopManagePage() {
-  await requireRoles([UserRole._ADMIN]);
+  await requirePermission("shop.products.manage");
 
   const [products, categories] = await Promise.all([getAllProductsAdmin(), getAllCategories(true)]);
 

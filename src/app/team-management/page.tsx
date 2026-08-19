@@ -4,7 +4,7 @@ import { UserRole } from "@/types/user";
 import { Membership } from "@/types/memberships";
 import { cookies } from "next/headers";
 import { getUserFromJWT } from "@/utils/authUtils";
-import { requireRoles } from "@/utils/permissionUtils";
+import { requirePermission } from "@/utils/permissionUtils";
 
 interface Role {
   department_name: string;
@@ -16,7 +16,7 @@ interface Role {
 export default async function TeamManagementPage() {
   // Mirrors the coordinator rule in middleware. The page fetches the full user directory
   // below and hands it to a client component, so it must authorize on its own.
-  await requireRoles([UserRole._ADMIN, UserRole._COORDINATOR]);
+  await requirePermission("teams.manage");
 
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get("session")?.value;

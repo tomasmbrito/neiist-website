@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addAdminBody, removeAdminBody, getAllAdminBodies } from "@/utils/db/userQueries";
-import { UserRole } from "@/types/user";
-import { serverCheckRoles } from "@/utils/permissionUtils";
+import { serverCheckPermission } from "@/utils/permissionUtils";
 
 export async function GET() {
-  const permissionCheck = await serverCheckRoles([UserRole._ADMIN]);
+  const permissionCheck = await serverCheckPermission("org.units.manage");
   if (!permissionCheck.isAuthorized) {
     return permissionCheck.error;
   }
@@ -21,7 +20,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const permissionCheck = await serverCheckRoles([UserRole._ADMIN]);
+  const permissionCheck = await serverCheckPermission("org.units.manage");
   if (!permissionCheck.isAuthorized) {
     return permissionCheck.error;
   }
@@ -43,7 +42,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const permissionCheck = await serverCheckRoles([UserRole._ADMIN]);
+  const permissionCheck = await serverCheckPermission("org.units.manage");
   if (!permissionCheck.isAuthorized) {
     return permissionCheck.error;
   }

@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { UserRole } from "@/types/user";
 import { getAllCategories, addCategory } from "@/utils/db/shopQueries";
-import { serverCheckRoles } from "@/utils/permissionUtils";
+import { serverCheckPermission } from "@/utils/permissionUtils";
 
 export async function POST(request: NextRequest) {
-  const userRoles = await serverCheckRoles([UserRole._ADMIN]);
+  const userRoles = await serverCheckPermission("shop.categories.manage");
   if (!userRoles.isAuthorized) return userRoles.error;
 
   try {

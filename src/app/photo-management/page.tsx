@@ -1,8 +1,7 @@
 import { getAllMemberships, getAllDepartments } from "@/utils/db/userQueries";
 import { Membership } from "@/types/memberships";
 import PhotoTeamMembers from "@/components/photo-management/PhotoTeamMembers";
-import { requireRoles } from "@/utils/permissionUtils";
-import { UserRole } from "@/types/user";
+import { requirePermission } from "@/utils/permissionUtils";
 import styles from "@/styles/components/photo-management/PhotoTeamMembers.module.css";
 
 // Reads live membership data on every request; prerendering froze it into the build output and
@@ -15,7 +14,7 @@ import styles from "@/styles/components/photo-management/PhotoTeamMembers.module
 export default async function PhotoTeamMembersPage() {
   // Mirrors the coordinator rule in middleware. Enforced here too, because middleware is one
   // routing bug away from being bypassed and does not run for every rendering path.
-  await requireRoles([UserRole._ADMIN, UserRole._COORDINATOR]);
+  await requirePermission("members.photos.manage");
 
   const memberships = await getAllMemberships();
   const departments = await getAllDepartments();
