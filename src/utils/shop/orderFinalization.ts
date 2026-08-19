@@ -1,5 +1,5 @@
 import { signUpToEvent } from "@/utils/db/eventQueries";
-import { getOrderById, updateOrder, setOrderState } from "@/utils/db/shopQueries";
+import { finalizeOrderPayment } from "@/utils/db/shopQueries";
 import { getPaidOrderEmailTemplate, sendEmail } from "@/utils/emailUtils";
 import { Order } from "@/types/shop/order";
 import { getOrderKindRules } from "@/utils/shop/orderKindUtils";
@@ -16,7 +16,7 @@ const AFTER_PURCHASE_ACTIONS = {
 } as const;
 
 export type FinalizePaidOrderResult =
-  | { success: true; alreadyProcessed?: boolean }
+  | { success: true; alreadyProcessed?: boolean; order: Order }
   | { success: false; error: string; statusCode: number };
 
 export async function finalizePaidOrder({
@@ -28,31 +28,21 @@ export async function finalizePaidOrder({
   paymentReference: string;
   paymentCheckedBy: string;
 }): Promise<FinalizePaidOrderResult> {
-  const order = await getOrderById(orderId);
-  if (!order) return { success: false, error: "Order not found", statusCode: 404 };
+  const reference = String(paymentReference ?? "").trim() || null;
 
-  if (["paid", "ready", "delivered"].includes(order.status))
-    return { success: true, alreadyProcessed: true };
+  // One statement, one transaction, one row lock. The database decides whether this caller is
+  // the one that transitioned the order; `finalized` is that decision, not a stale read.
+  // Whether a reference is required is decided there too, by payment method — an in-person
+  // payment has none to give (#154).
+  const { finalized, order: statusUpdate } = await finalizeOrderPayment(
+    orderId,
+    reference,
+    paymentCheckedBy
+  );
 
-  const reference = String(paymentReference ?? "").trim();
-  if (!reference) return { success: false, error: "Missing payment reference", statusCode: 400 };
-
-  const statusUpdate = await setOrderState(orderId, "paid", paymentCheckedBy);
-  if (!statusUpdate)
-    return { success: false, error: "Failed to update order status", statusCode: 500 };
-
-  if (statusUpdate.payment_method !== "cash") {
-    const updateTransactionCode = await updateOrder(
-      orderId,
-      {
-        payment_reference: reference,
-      },
-      false,
-      paymentCheckedBy
-    );
-    if (!updateTransactionCode)
-      return { success: false, error: "Failed to update payment reference", statusCode: 500 };
-  }
+  // A replay: some other entry point already paid this order. Success for the caller, but no
+  // side effects — this is what stops duplicate receipts and duplicate event sign-ups.
+  if (!finalized) return { success: true, alreadyProcessed: true, order: statusUpdate };
 
   const { orderKind } = getOrderKindFromItems(statusUpdate.items);
   const orderRules = getOrderKindRules(orderKind, "other");
@@ -81,10 +71,12 @@ export async function finalizePaidOrder({
         Number(statusUpdate.total_amount),
         statusUpdate.campus,
         statusUpdate.payment_method,
-        statusUpdate.payment_method === "cash" ? undefined : reference
+        // The stored reference, not the argument: for a manual finalization the argument is null
+        // and the row may still carry one recorded earlier.
+        statusUpdate.payment_reference ?? undefined
       ),
     }).catch((err) => console.warn("Confirmation couldn't be sent:", err));
   }
 
-  return { success: true };
+  return { success: true, order: statusUpdate };
 }
