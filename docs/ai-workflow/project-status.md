@@ -127,9 +127,44 @@ second, separate account), and which Técnico email domains must be forced down 
 | #140 | The Notion migration plan + the Wave 2 plan (docs only) |
 | #142 | **Wave 2: `dbUtils.ts` split into `src/utils/db/*`** |
 
+| #145 | **#80: transaction support + a hardened pool.** `withTransaction` in `src/utils/db/dbClient.ts` |
+
 ### Open PRs
 
-None.
+| PR | What | Gates |
+|---|---|---|
+| **#148** | **Migration runner** + #146 (`ON CONFLICT` on `user_courses`) | green |
+| **#149** | **#111** — Next's control-flow signals escape `serverCheckRoles` | green |
+| **#150** | **#52** — Vitest, 5 tests on `withTransaction`, Postgres service container in CI | green, **Tests job included** |
+| **#151** | This document, the migration finding, `CLAUDE.md` §4a | green |
+| **#161** | **#79 + #154** — atomic payment finalization; bulk mark-as-paid fixed | stacked on #148 |
+| **#162** | **#78 + #100** — transition matrix, auto-cancel race, per-user cap | stacked on #161 |
+
+**Merge order: #148 → #150 → #149 → #151 → #161 → #162.** The first four are independent; the
+last two are stacked and their diffs collapse once their bases land.
+
+They are independent and can merge in any order. #150 and #148 both touch `tsconfig.json`'s
+`include` only in ways that were verified to compose (see #150's body).
+
+### The database had no migration path, and never has had one
+
+This was found while answering "how does a schema change reach production?". The answer was
+**it does not, and never did** — verified in this fork *and* in `upstream/main`:
+
+- `docker/schema.sql` is mounted into `/docker-entrypoint-initdb.d/`, which Postgres runs **only
+  when the data directory is empty**.
+- Neither deploy script contained a `psql` step, a migration runner, or any database step.
+- `docker/schema.sql` has been edited in **53 commits**.
+
+So **`docker/schema.sql` describes what a *new* database gets. It has never described
+production.** #146 was undeployable; #78/#79/#100 were not worth writing. PR #148 fixes it —
+see [`database-migrations.md`](database-migrations.md).
+
+**The consequence that is still open: production's actual schema is unmeasured.** It is whatever
+`schema.sql` looked like when that volume was created, plus anything typed into a `psql` session
+since. A `pg_dump --schema-only` comparison needs production credentials, so it is a human task —
+and it should happen **before** the order-integrity batch, which rewrites `set_order_state` and
+`new_order` with `CREATE OR REPLACE` over bodies we are currently assuming.
 
 ### #142's truncation risk was verified after merge
 
@@ -178,8 +213,11 @@ CI on main        GREEN     (first green runs in this repository's history)
 
 **Still true, and important:**
 
-- **No tests and no test runner** (#52). Gates prove compilation and formatting. They cannot
-  catch wrong totals, missing authorization, race conditions, or React effect bugs.
+- **A test runner exists as of #52 (PR #150), with five tests.** That is a beachhead, not
+  coverage: ~64 query functions have none. The gates still prove only compilation and
+  formatting; they cannot catch wrong totals, missing authorization, race conditions, or React
+  effect bugs. **New rule worth keeping: a concurrency fix without a test for it should not
+  merge** — that class of bug is invisible to every other gate.
 - **Transactions exist as of #80** — `withTransaction` in `src/utils/db/dbClient.ts`. Two
   operations use it (product edit, discount campaign); **everything else is still non-atomic**,
   including all of order handling. The mechanism is there, the conversions are not. Adopting the
@@ -289,15 +327,61 @@ Full wave ordering: [`upstream-sync-plan.md`](upstream-sync-plan.md).
    - **Never put email, SumUp, or any network call inside `withTransaction`** — it holds a pooled
      connection for the round-trip and no rollback can undo it. The discount campaign commits all
      codes first, then sends.
-2. **#111 — `serverCheckRoles` swallows `DynamicServerError`.** Its blanket `catch` eats the
-   signal Next uses to mark a route dynamic; that is why pages needed `force-dynamic`. Re-throw
-   anything with a `digest`. 21 call sites, so high leverage. *Auth code — approval.*
-3. **#52 — stand up Vitest.** Every fix so far needed a hand-written throwaway. The decision of
-   record is **Vitest**, not Jest, whatever #51/#52 say. **This is now closer to blocking than
-   to nice-to-have** — see #126. The first real test should target whatever #80 produces:
-   `withTransaction` rolling back on throw. *Dependency change — approval.*
+2. ~~**#111 — `serverCheckRoles` swallows `DynamicServerError`.**~~ **Done, PR #149.** The
+   `catch` now re-throws anything carrying a string `digest`. Three of the four `force-dynamic`
+   exports are gone; `/shop` keeps its, because it is the only one that never touches the
+   session, so its only dynamism is a database read — which Next does not treat as a signal.
+   Proved by building with no database reachable, including a control run with only the
+   re-throw reverted.
+   **Left for a decision: `src/app/layout.tsx:40-49` has the identical defect.** `getInitialUser`
+   swallows the same signal on every route. Fixing it would make the root layout's session read
+   mark the *whole site* dynamic — a rendering decision, not a bug fix. Only `/sitemap.xml` is
+   static today, so the cost is small, but it should be chosen deliberately.
+3. ~~**#52 — stand up Vitest.**~~ **Done, PR #150.** Five tests on `withTransaction`, ported from
+   the #80 throwaway rather than invented, plus a Postgres service container in CI (a *separate*
+   job, so the build keeps proving it needs no database). **Each test was checked by mutation** —
+   remove the aborted-`COMMIT` check, disable the tripwire, or turn `ROLLBACK` into `COMMIT`, and
+   exactly one test fails each time.
 
-### The rest of order integrity — needs approval (schema)
+### Order integrity is now written — the two operational questions were answered
+
+Tomás answered the two questions that could not come from the code (2026-08-19):
+
+- **The payment flow.** A SumUp online payment finalizes itself; an in-person payment waits for a
+  manager to mark it paid. So **`pending` means *pending payment*** and nothing may skip it. The
+  strict matrix is correct — `pending → ready` and `pending → delivered` are rejected.
+- **`cancelled` can be terminal.** No un-cancel workflow exists, so no `reactivate_order` is
+  needed.
+
+The first answer had a consequence that was not obvious: it makes bulk **"Marcar como Pago"** the
+load-bearing button of the whole in-person flow — and **it had never worked**. It PATCHes
+`{"status":"paid"}`, which the route rejects outright, and every failure surfaced as
+`toast.warning("Aviso")`. Filed as **#154** and fixed in #161, which had to land *before* the
+matrix in #162 closed the only workaround.
+
+**Still blocking deployment, not merging: #152.** #162 rewrites `set_order_state` and `new_order`
+with `CREATE OR REPLACE`, over bodies nobody has verified.
+
+### The original plan, for the remaining detail
+
+**Read [`.claude/plans/order-integrity-batch.md`](../../.claude/plans/order-integrity-batch.md).**
+It was refreshed on 2026-08-12: §0 lists what changed under it (the `dbUtils.ts` split, the
+arrival of `withTransaction`, the migration runner, and the test runner), and §9 lists what is
+still blocking.
+
+**Four questions block it, and two of them cannot be answered from the code** — they are about
+how the shop is actually operated, and need a shop manager:
+
+- **R1**: do managers currently bulk-mark `pending` orders as `delivered` without marking them
+  paid? Bulk "Marcar como Pago" is *already broken* today (the PATCH route rejects `"paid"`), so
+  a workaround may well exist — and the transition matrix would break it on the day it ships.
+- **R3**: does anyone un-cancel an order? The fix makes `cancelled` terminal.
+- Should `stock_override` bypass the per-user cap for POS sales? (Recommend: no, keep parity.)
+- Permissive-superset matrix (recommended) or a strict mirror of the TypeScript one?
+
+**And one new blocker that outranks all of them: measure production's schema first.** See §4
+above. The batch rewrites `set_order_state` and `new_order` with `CREATE OR REPLACE` over bodies
+nobody has verified.
 
 4. **#78 / #79 / #100 — order integrity (P0), on top of #80.** One root cause: **no transactions
    exist.** All three moved Backlog → Ready: Wave 2 was their blocker and it is merged.

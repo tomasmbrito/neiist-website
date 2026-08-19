@@ -24,10 +24,20 @@ Universidade de Lisboa.
 3. **Exception to git push**: The AI is permitted to `git push` autonomously ONLY to the user's origin fork as part of the `/run-task` protocol. Direct pushes to the upstream `main` are strictly forbidden.
 4. **Never** deploy or run destructive commands without explicit human approval.
 5. **Always** run `yarn type:check` and `yarn lint` before claiming work is done.
-6. **Always** verify a feature builds before generating tests.
+6. **Always** verify a feature builds before generating tests. A test runner exists as of #52
+   (Vitest, `yarn test`, running against a real Postgres in CI) — five tests covering
+   `withTransaction`. That is a beachhead, not coverage; do not claim more than exists. A
+   concurrency or transaction fix without a test should not merge.
 7. **Always** update docs when API, setup, schema, or workflow changes.
 8. **Human approval is required** for: database schema changes, auth changes,
    payment/SumUp changes, dependency installs, and production deploys. (Merges are allowed autonomously for fork PRs).
+9. **A schema change ships as a migration, always.** Editing `docker/schema.sql` alone changes
+   nothing on any database that already has data — Postgres only runs it on an empty data
+   directory. Write `docker/migrations/NNN_name.sql` **and** edit `schema.sql`, in the same PR.
+   Every migration must be **idempotent** (`CREATE OR REPLACE`, `IF NOT EXISTS`,
+   `ON CONFLICT DO NOTHING`) and backward-compatible with the previous release, because the
+   deploy applies it while the old instance is still serving traffic. Never edit an applied
+   migration — the runner refuses by checksum. See `docs/ai-workflow/database-migrations.md`.
 
 If any step requires a secret or a production infra change →
 **STOP and ask the human.**
@@ -73,7 +83,8 @@ src/
 └── types/        # TypeScript type definitions
 config/           # ESLint and Prettier configuration
 docker/           # Docker Compose + PostgreSQL schema (schema.sql, init.sql)
-scripts/          # Deployment and setup scripts
+│   └── migrations/  # NNN_name.sql, applied in order by scripts/migrate.mts
+scripts/          # Deployment and setup scripts, plus migrate.mts (the migration runner)
 docs/             # Project documentation
 public/           # Static assets
 ```
