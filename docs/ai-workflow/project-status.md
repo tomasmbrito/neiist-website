@@ -131,20 +131,34 @@ second, separate account), and which Técnico email domains must be forced down 
 
 ### Open PRs
 
-| PR | What | Gates |
+| PR | What | State |
 |---|---|---|
-| **#148** | **Migration runner** + #146 (`ON CONFLICT` on `user_courses`) | green |
-| **#149** | **#111** — Next's control-flow signals escape `serverCheckRoles` | green |
-| **#150** | **#52** — Vitest, 5 tests on `withTransaction`, Postgres service container in CI | green, **Tests job included** |
-| **#151** | This document, the migration finding, `CLAUDE.md` §4a | green |
-| **#161** | **#79 + #154** — atomic payment finalization; bulk mark-as-paid fixed | stacked on #148 |
-| **#162** | **#78 + #100** — transition matrix, auto-cancel race, per-user cap | stacked on #161 |
+| **#166** | **#156 + #167** — permission catalogue; user-directory role split fixed | green |
+| **#168** | **#157 + #158** — permission matrix screen; editable department-role access; last-admin lockout guard | green, stacked on #166 |
 
-**Merge order: #148 → #150 → #149 → #151 → #161 → #162.** The first four are independent; the
-last two are stacked and their diffs collapse once their bases land.
+**Merge #166 first.** #168 is stacked on it.
 
-They are independent and can merge in any order. #150 and #148 both touch `tsconfig.json`'s
-`include` only in ways that were verified to compose (see #150's body).
+### Merged since (2026-08-19/20)
+
+#148 migration runner + #146 · #149 #111 · #150 #52 · #151 docs · #161 #79 + #154 ·
+#163 #78 + #100 · #164 #94 + #95 · #165 #83.
+
+**Epics #70 (Critical Security Remediation), #71 (order integrity, bar two stragglers) and #83
+(CI quality gates) are closed.** So is #72 and #88 — both were delivered long ago and had simply
+never been moved.
+
+### Two findings from this stretch worth carrying forward
+
+**The user directory was readable by every member** (#167). `GET /api/admin/users` admitted
+`_MEMBER` but not `_SHOP_MANAGER`; `POST` was the reverse. So the shop manager running the stand
+could create a customer but not list customers, *and* any student with a team membership could
+pull every other student's phone, email, GitHub and LinkedIn in one request. Both halves now
+require `[_ADMIN, _COORDINATOR, _SHOP_MANAGER]`. Found only because #156 put the policy in one
+file where it could be read.
+
+**An admin could lock everyone out of the site** (#158). `remove_valid_department_role` had no
+guard, so removing every `access='admin'` role left zero admins — and managing roles requires
+admin or coordinator, so recovery meant a `psql` session against production. Guarded now, in SQL.
 
 ### The database had no migration path, and never has had one
 
