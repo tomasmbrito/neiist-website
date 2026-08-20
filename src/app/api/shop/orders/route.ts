@@ -205,7 +205,18 @@ export const POST = withValidation(createOrderPayloadSchema, async (request, bod
         items: body.items,
         discount_code: typeof body.discount_code === "string" ? body.discount_code : undefined,
       },
-      stockOverride
+      stockOverride,
+      // The pre-check above is a fast path that produces a good message naming the product; it is
+      // NOT the authority. It reads, sums in JS, compares, and only then creates the order — two
+      // round trips with no lock, so double-clicking Checkout beat it (#100). Passing the policy
+      // down makes the database enforce it under an advisory lock in the same transaction as the
+      // insert, so the loser's order rolls back entirely.
+      orderRules.maxQuantityPerUser && orderUserIstid && products[0]?.category?.trim()
+        ? {
+            maxQuantityPerUser: orderRules.maxQuantityPerUser,
+            categoryName: products[0].category.trim(),
+          }
+        : undefined
     );
     if (!order) return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
 

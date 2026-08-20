@@ -378,7 +378,10 @@ export default function OrdersTable({ orders, products }: OrdersTableProps) {
           } catch (err) {
             const reason = err instanceof Error ? err.message : "Erro desconhecido";
             failures.push({ orderId, reason });
-            console.error(`Error updating order ${orderId}:`, err);
+            // warn, not error: a rejected transition is a normal outcome over a mixed
+            // selection (the matrix refusing pending -> entregue, say), and it is already
+            // reported to the user in the summary toast below.
+            console.warn(`Order ${orderId} not updated:`, err);
           }
         })
       );
