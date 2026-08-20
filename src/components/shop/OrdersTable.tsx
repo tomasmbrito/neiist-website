@@ -38,6 +38,13 @@ function displayCampus(campus: string): string {
 interface OrdersTableProps {
   orders: Order[];
   products: Product[];
+  /**
+   * Whether this user may actually create an order. The "Nova Encomenda" button used to render
+   * for anyone who could reach /orders, including a plain member — who would open the modal,
+   * have it fetch the full user directory, and then get a 403 on submit (#167). Decided on the
+   * server from the same permission the API enforces, so the button and the endpoint agree.
+   */
+  canCreateOrders: boolean;
 }
 
 interface FilterState {
@@ -47,7 +54,7 @@ interface FilterState {
   statuses: string[];
 }
 
-export default function OrdersTable({ orders, products }: OrdersTableProps) {
+export default function OrdersTable({ orders, products, canCreateOrders }: OrdersTableProps) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
@@ -458,9 +465,11 @@ export default function OrdersTable({ orders, products }: OrdersTableProps) {
             <button className={styles.iconBtn} onClick={handleExport} title="Exportar">
               <TbTableExport />
             </button>
-            <button className={styles.newBtn} onClick={() => setShowNewOrderModal(true)}>
-              Nova Encomenda
-            </button>
+            {canCreateOrders && (
+              <button className={styles.newBtn} onClick={() => setShowNewOrderModal(true)}>
+                Nova Encomenda
+              </button>
+            )}
           </div>
         </div>
 

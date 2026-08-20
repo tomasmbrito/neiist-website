@@ -1,12 +1,11 @@
 import SumUpReadersManagement from "@/components/shop/SumUpReadersManagement";
-import { requireRoles } from "@/utils/permissionUtils";
-import { UserRole } from "@/types/user";
+import { requirePermission } from "@/utils/permissionUtils";
 import styles from "@/styles/pages/ShopPos.module.css";
 
 export default async function ShopPosPage() {
   // Matches the roles the SumUp reader API routes already require. This page had no gate of
   // any kind, and middleware did not cover it either — see the shopManagerRoutes note there.
-  await requireRoles([UserRole._ADMIN, UserRole._SHOP_MANAGER]);
+  await requirePermission("shop.pos.use");
 
   return (
     <div className={styles.container}>

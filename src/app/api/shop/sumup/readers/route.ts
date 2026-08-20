@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { serverCheckRoles } from "@/utils/permissionUtils";
+import { serverCheckPermission } from "@/utils/permissionUtils";
 import {
   validateSumUpCredentials,
   getSumUpClient,
@@ -7,7 +7,6 @@ import {
   getErrorStatus,
   formatSumUpError,
 } from "@/utils/sumupUtils";
-import { UserRole } from "@/types/user";
 import type { SumUpReadersListResponse } from "@/types/sumup";
 
 const SUMUP_MERCHANT_CODE = process.env.SUMUP_MERCHANT_CODE;
@@ -32,7 +31,7 @@ function parseSumUpProblem(error: unknown): SumUpProblem | null {
 }
 
 async function authorize() {
-  const auth = await serverCheckRoles([UserRole._SHOP_MANAGER, UserRole._ADMIN]);
+  const auth = await serverCheckPermission("shop.readers.manage");
   if (!auth.isAuthorized) return { error: auth.error };
 
   return { success: true };

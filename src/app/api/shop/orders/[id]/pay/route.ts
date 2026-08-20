@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { finalizePaidOrder } from "@/utils/shop/orderFinalization";
-import { serverCheckRoles } from "@/utils/permissionUtils";
+import { serverCheckPermission } from "@/utils/permissionUtils";
 import { throwIfOrderDbError } from "@/utils/db/errorMapper";
 import { handleApiError } from "@/lib/errors/apiErrorHandler";
-import { UserRole } from "@/types/user";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const userRoles = await serverCheckRoles([
-    UserRole._SHOP_MANAGER,
-    UserRole._COORDINATOR,
-    UserRole._ADMIN,
-  ]);
+  const userRoles = await serverCheckPermission("shop.orders.recordPayment");
   if (!userRoles.isAuthorized) return userRoles.error;
 
   try {

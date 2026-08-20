@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { getUser } from "@/utils/db/userQueries";
 import { UserRole, mapRoleToUserRole, hasRequiredRole } from "@/types/user";
+import { Permission, rolesFor } from "@/lib/auth/permissions";
 import { getUserFromJWT } from "@/utils/authUtils";
 
 /**
@@ -79,4 +80,27 @@ export async function requireRoles(required: UserRole[]) {
   const check = await serverCheckRoles(required);
   if (!check.isAuthorized) redirect("/unauthorized");
   return check;
+}
+
+/**
+ * Authorize an API route by **what it does**, not by who happens to be allowed today.
+ *
+ * Prefer this over `serverCheckRoles` with a literal array. The array form spread the policy
+ * across ~50 files, so nothing could answer "what can a coordinator do?" and the same rule ended
+ * up written two different ways. `src/lib/auth/permissions.ts` is now the single place that
+ * grants a capability to a role.
+ *
+ * Behaviour is identical to passing the permission's role list directly — `rolesFor` returns
+ * exactly that list, and `hasRequiredRole` is the same intersection test as before.
+ */
+export async function serverCheckPermission(permission: Permission) {
+  return serverCheckRoles([...rolesFor(permission)]);
+}
+
+/**
+ * Page-level equivalent of `serverCheckPermission`. Redirects to /unauthorized rather than
+ * returning a response, so it never falls through on the caller's side.
+ */
+export async function requirePermission(permission: Permission) {
+  return requireRoles([...rolesFor(permission)]);
 }

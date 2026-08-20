@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { UserRole } from "@/types/user";
 import {
   createDiscountCode,
   deleteDiscountCode,
@@ -7,7 +6,7 @@ import {
   updateDiscountCode,
 } from "@/utils/db/shopQueries";
 import { withTransaction, type Querier } from "@/utils/db/dbClient";
-import { serverCheckRoles } from "@/utils/permissionUtils";
+import { serverCheckPermission } from "@/utils/permissionUtils";
 import { sendEmail, getDiscountCampaignEmailTemplate } from "@/utils/emailUtils";
 import type {
   DiscountCodeInput,
@@ -55,7 +54,7 @@ async function createCodeForRecipient(
 }
 
 export async function GET() {
-  const userRoles = await serverCheckRoles([UserRole._ADMIN]);
+  const userRoles = await serverCheckPermission("shop.discounts.manage");
   if (!userRoles.isAuthorized) return userRoles.error;
 
   const codes = await getAllDiscountCodes();
@@ -63,7 +62,7 @@ export async function GET() {
 }
 
 export const POST = withValidation(bulkDiscountCodePayloadSchema, async (request, body) => {
-  const userRoles = await serverCheckRoles([UserRole._ADMIN]);
+  const userRoles = await serverCheckPermission("shop.discounts.manage");
   if (!userRoles.isAuthorized) return userRoles.error;
 
   try {
@@ -161,7 +160,7 @@ export const POST = withValidation(bulkDiscountCodePayloadSchema, async (request
 });
 
 export const PUT = withValidation(discountCodeUpdateSchema, async (request, body) => {
-  const userRoles = await serverCheckRoles([UserRole._ADMIN]);
+  const userRoles = await serverCheckPermission("shop.discounts.manage");
   if (!userRoles.isAuthorized) return userRoles.error;
 
   try {
@@ -209,7 +208,7 @@ export const PUT = withValidation(discountCodeUpdateSchema, async (request, body
 });
 
 export async function DELETE(request: NextRequest) {
-  const userRoles = await serverCheckRoles([UserRole._ADMIN]);
+  const userRoles = await serverCheckPermission("shop.discounts.manage");
   if (!userRoles.isAuthorized) return userRoles.error;
 
   try {

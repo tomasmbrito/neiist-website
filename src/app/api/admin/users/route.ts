@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllUsers, createUser } from "@/utils/db/userQueries";
-import { UserRole } from "@/types/user";
-import { serverCheckRoles } from "@/utils/permissionUtils";
+import { serverCheckPermission } from "@/utils/permissionUtils";
 import { handleApiError } from "@/lib/errors/apiErrorHandler";
 import { ValidationError } from "@/lib/errors";
 
 export async function GET() {
-  const userRoles = await serverCheckRoles([
-    UserRole._MEMBER,
-    UserRole._COORDINATOR,
-    UserRole._ADMIN,
-  ]);
+  const userRoles = await serverCheckPermission("users.directory.read");
   if (!userRoles.isAuthorized) {
     return userRoles.error;
   }
@@ -23,11 +18,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const userRoles = await serverCheckRoles([
-    UserRole._COORDINATOR,
-    UserRole._SHOP_MANAGER,
-    UserRole._ADMIN,
-  ]);
+  const userRoles = await serverCheckPermission("users.directory.write");
   if (!userRoles.isAuthorized) {
     return userRoles.error;
   }

@@ -4,11 +4,10 @@ import {
   removeValidDepartmentRole,
   getDepartmentRoles,
 } from "@/utils/db/userQueries";
-import { UserRole } from "@/types/user";
-import { serverCheckRoles } from "@/utils/permissionUtils";
+import { serverCheckPermission } from "@/utils/permissionUtils";
 
 export async function GET(request: NextRequest) {
-  const userRoles = await serverCheckRoles([UserRole._ADMIN, UserRole._COORDINATOR]);
+  const userRoles = await serverCheckPermission("members.roles.manage");
   if (!userRoles.isAuthorized) {
     return userRoles.error;
   }
@@ -25,7 +24,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const userRoles = await serverCheckRoles([UserRole._ADMIN, UserRole._COORDINATOR]);
+  const userRoles = await serverCheckPermission("members.roles.manage");
   if (!userRoles.isAuthorized) {
     return userRoles.error;
   }
@@ -49,7 +48,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const userRoles = await serverCheckRoles([UserRole._ADMIN, UserRole._COORDINATOR]);
+  const userRoles = await serverCheckPermission("members.roles.manage");
   if (!userRoles.isAuthorized) {
     return userRoles.error;
   }

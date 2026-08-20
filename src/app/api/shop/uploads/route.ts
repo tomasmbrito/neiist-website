@@ -3,8 +3,7 @@ import path from "path";
 import fs from "fs/promises";
 import crypto from "crypto";
 import sharp from "sharp";
-import { UserRole } from "@/types/user";
-import { serverCheckRoles } from "@/utils/permissionUtils";
+import { serverCheckPermission } from "@/utils/permissionUtils";
 
 // Bounds chosen to stop disk-exhaustion abuse without rejecting real uploads: product photos
 // straight from a phone are routinely 5-8 MB, and ProductForm posts a whole image group at once.
@@ -43,7 +42,7 @@ function detectImageKind(buffer: Buffer): ImageKind | null {
 }
 
 export async function POST(req: NextRequest) {
-  const permissionCheck = await serverCheckRoles([UserRole._ADMIN]);
+  const permissionCheck = await serverCheckPermission("shop.uploads.write");
   if (!permissionCheck.isAuthorized) return permissionCheck.error;
 
   // Reject oversized requests before formData() buffers the whole body into memory.

@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { UserRole } from "@/types/user";
 import { updateActivityProperties, getEventSubscribers } from "@/utils/db/eventQueries";
-import { serverCheckRoles } from "@/utils/permissionUtils";
+import { serverCheckPermission } from "@/utils/permissionUtils";
 
 export async function POST(request: NextRequest) {
-  const userRoles = await serverCheckRoles([UserRole._ADMIN]);
+  const userRoles = await serverCheckPermission("activities.manage");
   if (!userRoles.isAuthorized) return userRoles.error;
 
   try {
@@ -36,7 +35,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const userRoles = await serverCheckRoles([UserRole._ADMIN]);
+  const userRoles = await serverCheckPermission("activities.manage");
   if (!userRoles.isAuthorized) return userRoles.error;
 
   try {

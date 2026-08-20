@@ -4,8 +4,7 @@ import AdminBodiesManagement from "@/components/admin/AdminBodiesManagement";
 import RolesManagement from "@/components/admin/RolesManagement";
 import AboutUsManager from "@/components/admin/AboutUsManager";
 import styles from "@/styles/pages/AdminDashboard.module.css";
-import { requireRoles } from "@/utils/permissionUtils";
-import { UserRole } from "@/types/user";
+import { requirePermission } from "@/utils/permissionUtils";
 
 const tabs = [
   { id: "teams", name: "Equipas", icon: <GoPeople />, departmentType: "team" },
@@ -30,7 +29,7 @@ export default async function DepartmentsManagementPage({
 }) {
   // Mirrors the admin rule in middleware. Enforced here too — middleware is an optimisation,
   // not a boundary.
-  await requireRoles([UserRole._ADMIN]);
+  await requirePermission("org.units.manage");
 
   const params = await searchParams;
   const tabParam = params?.tab;

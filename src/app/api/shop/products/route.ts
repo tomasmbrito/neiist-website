@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import { UserRole } from "@/types/user";
 import { addProduct, addProductVariant, getProduct } from "@/utils/db/shopQueries";
-import { serverCheckRoles } from "@/utils/permissionUtils";
+import { serverCheckPermission } from "@/utils/permissionUtils";
 import { withValidation } from "@/utils/security/validationUtils";
 import { productPayloadSchema } from "@/schemas/shop";
 
 export const POST = withValidation(productPayloadSchema, async (request, body) => {
-  const permissionCheck = await serverCheckRoles([UserRole._ADMIN]);
+  const permissionCheck = await serverCheckPermission("shop.products.manage");
   if (!permissionCheck.isAuthorized) return permissionCheck.error;
 
   try {

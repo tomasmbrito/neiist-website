@@ -5,7 +5,7 @@ import { UserRole } from "@/types/user";
 import { getOrderKindRules, getOrderKindFromItems } from "@/utils/shop/orderKindUtils";
 import { getStatusLabel } from "@/utils/shop/orderStatusUtils";
 import { PAYMENT_METHODS } from "@/types/shop/payment";
-import { serverCheckRoles } from "@/utils/permissionUtils";
+import { serverCheckPermission, serverCheckRoles } from "@/utils/permissionUtils";
 import type { User } from "@/types/user";
 import { Order } from "@/types/shop/order";
 import {
@@ -211,11 +211,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const userRoles = await serverCheckRoles([
-    UserRole._SHOP_MANAGER,
-    UserRole._COORDINATOR,
-    UserRole._ADMIN,
-  ]);
+  const userRoles = await serverCheckPermission("shop.orders.setStatus");
   if (!userRoles.isAuthorized) return userRoles.error;
 
   try {

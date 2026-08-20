@@ -3,14 +3,10 @@ import { User, UserRole } from "@/types/user";
 import { getUser, updateUser, updateUserPhoto } from "@/utils/db/userQueries";
 import fs from "fs/promises";
 import path from "path";
-import { serverCheckRoles } from "@/utils/permissionUtils";
+import { serverCheckPermission } from "@/utils/permissionUtils";
 
 export async function PUT(request: Request, { params }: { params: { userId: string } }) {
-  const userRoles = await serverCheckRoles([
-    UserRole._ADMIN,
-    UserRole._COORDINATOR,
-    UserRole._MEMBER,
-  ]);
+  const userRoles = await serverCheckPermission("users.profile.update");
   if (!userRoles.isAuthorized) {
     return userRoles.error;
   }

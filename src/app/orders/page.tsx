@@ -1,9 +1,10 @@
 import OrdersTable from "@/components/shop/OrdersTable";
 import OrderDetailOverlay from "@/components/shop/OrderDetailsOverlay";
 import { getAllOrders, getAllProducts } from "@/utils/db/shopQueries";
-import { requireRoles } from "@/utils/permissionUtils";
+import { requirePermission } from "@/utils/permissionUtils";
 import { redactCustomerData } from "@/utils/shop/orderPrivacy";
 import { UserRole } from "@/types/user";
+import { can } from "@/lib/auth/permissions";
 
 interface PageProps {
   searchParams: Promise<{ orderId?: string }>;
@@ -16,17 +17,11 @@ export default async function OrdersManagementPage({ searchParams }: PageProps) 
   // and passed an empty role list, so it only proved the caller was logged in — it computed UI
   // flags rather than guarding anything. Middleware is not a substitute: it is an optimisation,
   // not a boundary.
-  const { roles = [UserRole._GUEST] } = await requireRoles([
-    UserRole._ADMIN,
-    UserRole._COORDINATOR,
-    UserRole._SHOP_MANAGER,
-    UserRole._MEMBER,
-  ]);
+  const { roles = [UserRole._GUEST] } = await requirePermission("shop.orders.viewAll");
 
-  const canManage =
-    roles.includes(UserRole._COORDINATOR) ||
-    roles.includes(UserRole._ADMIN) ||
-    roles.includes(UserRole._SHOP_MANAGER);
+  // The same question the API asks before letting a status change through, so the button and
+  // the endpoint cannot drift apart.
+  const canManage = can(roles, "shop.orders.setStatus");
 
   const canEditOrder = roles.includes(UserRole._ADMIN) || roles.includes(UserRole._COORDINATOR);
 
@@ -38,7 +33,11 @@ export default async function OrdersManagementPage({ searchParams }: PageProps) 
 
   return (
     <>
-      <OrdersTable orders={orders} products={products} />
+      <OrdersTable
+        orders={orders}
+        products={products}
+        canCreateOrders={can(roles, "shop.orders.create")}
+      />
       {orderId && (
         <OrderDetailOverlay
           orderId={Number(orderId)}

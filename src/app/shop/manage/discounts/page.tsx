@@ -1,11 +1,10 @@
 import DiscountCodeManagement from "@/components/shop/DiscountCodeManagement";
 import { getAllDiscountCodes, getAllProductsAdmin } from "@/utils/db/shopQueries";
 import { getAllUsers } from "@/utils/db/userQueries";
-import { UserRole } from "@/types/user";
-import { requireRoles } from "@/utils/permissionUtils";
+import { requirePermission } from "@/utils/permissionUtils";
 
 export default async function DiscountCodesPage() {
-  await requireRoles([UserRole._ADMIN]);
+  await requirePermission("shop.discounts.manage");
 
   const [products, discountCodes, users] = await Promise.all([
     getAllProductsAdmin(),

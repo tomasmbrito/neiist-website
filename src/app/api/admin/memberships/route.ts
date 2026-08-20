@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addTeamMember, removeTeamMember, getAllMemberships } from "@/utils/db/userQueries";
 import { UserRole } from "@/types/user";
-import { serverCheckRoles } from "@/utils/permissionUtils";
+import { serverCheckPermission } from "@/utils/permissionUtils";
 import type { Membership } from "@/types/memberships";
 import { handleApiError } from "@/lib/errors/apiErrorHandler";
 import { ValidationError } from "@/lib/errors";
 
 async function checkMembershipPermission(departmentName: string) {
-  const roles = await serverCheckRoles([UserRole._ADMIN, UserRole._COORDINATOR]);
+  const roles = await serverCheckPermission("members.manage");
   if (!roles.isAuthorized) return roles;
 
   const isAdmin = roles.roles?.includes(UserRole._ADMIN);
