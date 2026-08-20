@@ -117,6 +117,17 @@ export async function GET() {
     response.cookies.set("session", jwtToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
+      // Lax, not Strict, and not omitted.
+      //
+      // Omitted meant Chrome/Edge applied Lax-by-default but Firefox did not, so on Firefox every
+      // cookie-authenticated state-changing route was reachable cross-site (#94). The OAuth state
+      // cookies and logout already set sameSite; this was an oversight, not a decision.
+      //
+      // Strict was considered and rejected: it is not sent on a top-level cross-site navigation,
+      // so arriving from an external link (or the OAuth provider's redirect back) would render
+      // logged-out until the user navigated internally. Lax blocks the CSRF vector — cross-site
+      // POST/PUT/DELETE — while keeping that navigation working.
+      sameSite: "lax",
       maxAge: 60 * 60 * 24,
       path: "/",
     });
