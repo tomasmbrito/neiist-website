@@ -119,3 +119,18 @@ export const createOrderPayloadSchema = z.object({
 export const sumUpCheckoutPayloadSchema = z.object({
   orderId: z.coerce.number().min(1, "Invalid orderId"),
 });
+
+/**
+ * Body of `PATCH /api/shop/orders/[id]`.
+ *
+ * The handler used to read `body.status` as an unvalidated string and pass it straight into the
+ * `neiist.shop_order_status_enum` cast, so `{"status":"banana"}` surfaced as a 500 from a failed
+ * cast rather than a 400. `paid` is excluded deliberately: a payment goes through
+ * `POST /api/shop/orders/[id]/pay`, which is the only path that records the reference, runs the
+ * after-purchase action and sends the receipt.
+ */
+export const updateOrderStatusSchema = z.object({
+  status: z.enum(["pending", "ready", "delivered", "cancelled"], {
+    message: "Estado de encomenda inválido",
+  }),
+});

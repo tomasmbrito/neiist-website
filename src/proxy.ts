@@ -5,6 +5,7 @@ import { rateLimit } from "@/utils/security/rateLimitUtils";
 import { CSP } from "@/utils/security/cspUtils";
 import { getRateLimitRule } from "@/lib/rateLimitRules";
 import { BOT_USER_AGENTS } from "@/lib/botAgents";
+import { isCrossSiteRequest } from "@/utils/security/csrf";
 
 const publicRoutes = [
   "/home",
@@ -130,6 +131,20 @@ export async function proxy(req: NextRequest) {
   }
 
   if (path.startsWith("/api/")) {
+    // Defence in depth for #94, applied here rather than in 43 route handlers so a new route
+    // cannot forget it. sameSite: "lax" on the session cookie is the first layer; this is the
+    // one that does not depend on the browser's cookie policy.
+    //
+    // Server-to-server callers (the SumUp and Notion webhooks) send neither Origin nor
+    // Sec-Fetch-Site and are deliberately allowed through — they authenticate by their own
+    // means, and a CSRF attack requires a browser, which always sends one of the two.
+    if (isCrossSiteRequest(req)) {
+      return new NextResponse(JSON.stringify({ error: "Cross-site request rejected" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     const rule = getRateLimitRule(path);
     if (rule) {
       const sessionToken = req.cookies.get("session")?.value;

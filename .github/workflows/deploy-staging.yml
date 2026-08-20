@@ -1,12 +1,25 @@
 name: Deploy Staging
 
+# Runs AFTER CI, not alongside it. Both used to fire on `push: main`, so they raced: a commit
+# that failed type-check, lint, format or the tests still reached staging, because the deploy job
+# never looked at CI's result. That was the last open criterion of #83.
+#
+# workflow_run only fires for workflows defined on the default branch, which CI is.
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   deploy:
+    # Skips the deploy when CI failed or was cancelled. Without this the job would still run —
+    # workflow_run fires on completion, not on success.
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     environment:
       name: staging
@@ -15,6 +28,10 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          # The exact commit CI validated. A workflow_run checkout otherwise defaults to the tip
+          # of the default branch, which may already have moved on.
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
