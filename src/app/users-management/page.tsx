@@ -1,12 +1,14 @@
 import UsersManagement from "@/components/admin/UsersManagement";
+import PermissionMatrix from "@/components/admin/PermissionMatrix";
 import MembershipsManagement from "@/components/admin/MembershipsManagement";
 import styles from "@/styles/pages/AdminDashboard.module.css";
-import { GoPerson, GoShield } from "react-icons/go";
+import { GoPerson, GoShield, GoKey } from "react-icons/go";
 import { requirePermission } from "@/utils/permissionUtils";
 
 const sections = [
   { id: "users", name: "Utilizadores", icon: <GoShield /> },
   { id: "memberships", name: "Membros", icon: <GoPerson /> },
+  { id: "permissions", name: "Permissões", icon: <GoKey /> },
 ];
 
 export default async function UsersManagementPage({
@@ -32,6 +34,9 @@ export default async function UsersManagementPage({
       break;
     case "memberships":
       content = <MembershipsManagement />;
+      break;
+    case "permissions":
+      content = <PermissionMatrix />;
       break;
     default:
       content = <UsersManagement />;

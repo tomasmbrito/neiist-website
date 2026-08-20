@@ -1,0 +1,93 @@
+.container {
+  padding: 1.5rem;
+  width: 100%;
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
+.intro {
+  color: var(--text-secondary);
+  margin-bottom: 1.5rem;
+  max-width: 60ch;
+  line-height: 1.5;
+}
+
+/* The matrix is wide; it scrolls itself rather than the page. */
+.tableWrapper {
+  overflow-x: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.permissionHeader,
+.roleHeader {
+  text-align: left;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+
+.roleHeader {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.groupRow {
+  background: var(--bg-secondary);
+}
+
+.groupCell {
+  text-align: left;
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.permissionCell {
+  text-align: left;
+  font-weight: 500;
+  padding: 0.65rem 1rem;
+  color: var(--text-primary);
+  border-top: 1px solid var(--border-color);
+}
+
+.permissionKey {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  margin-top: 0.15rem;
+}
+
+.yes,
+.no {
+  text-align: center;
+  padding: 0.65rem 1rem;
+  border-top: 1px solid var(--border-color);
+  font-size: 1.1rem;
+}
+
+.yes {
+  color: var(--success-color, #16a34a);
+}
+
+.no {
+  color: var(--text-secondary);
+  opacity: 0.5;
+}

@@ -20,6 +20,31 @@ const ORDER_SQLSTATE = {
   REFERENCE_REQUIRED: "NEI05",
 } as const;
 
+/** Department-role management (#158). */
+const ROLE_SQLSTATE = {
+  NOT_FOUND: "NEI06",
+  LAST_ADMIN: "NEI07",
+} as const;
+
+/**
+ * Maps the department-role guards to domain errors.
+ *
+ * NEI07 in particular carries a message a human needs to read — "you would be left with no
+ * administrators" — so it must not collapse into a generic 500. `apiErrorHandler` echoes
+ * unmapped messages with a 500, so an unmapped code would also leak the raw RAISE text.
+ */
+export function throwIfRoleDbError(error: unknown): void {
+  const dbError = error as { message?: string; code?: string };
+  switch (dbError?.code) {
+    case ROLE_SQLSTATE.NOT_FOUND:
+      throw new NotFoundError(dbError.message ?? "Cargo não encontrado");
+    case ROLE_SQLSTATE.LAST_ADMIN:
+      throw new ConflictError(
+        dbError.message ?? "Não é possível remover o último cargo com acesso de administrador."
+      );
+  }
+}
+
 /**
  * Postgres SQLSTATE `23505`, unique_violation.
  *
