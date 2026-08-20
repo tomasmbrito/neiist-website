@@ -149,7 +149,10 @@ export default async function AboutPage({
     ...allDepartmentsWithMembers.filter((dep) => !ADMIN_PRIORITY.includes(dep.name)),
   ];
 
-  const uniqueIstids = [...new Set(filteredMemberships.map((m) => m.userName))];
+  // Counted by istid, not by name. The variable was already called uniqueIstids but mapped
+  // userName, so two students who happen to share a name counted as one person in the figure
+  // this page advertises publicly (#8, found while auditing how members are presented).
+  const uniqueIstids = [...new Set(filteredMemberships.map((m) => m.userNumber))];
 
   return (
     <section className={styles.page}>

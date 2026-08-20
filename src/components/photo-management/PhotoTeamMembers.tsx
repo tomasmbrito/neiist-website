@@ -5,19 +5,8 @@ import Image from "next/image";
 import { useUser } from "@/context/UserContext";
 import styles from "@/styles/components/photo-management/PhotoTeamMembers.module.css";
 import { toast } from "sonner";
-
-interface Membership {
-  id: string;
-  userNumber: string;
-  userName: string;
-  departmentName: string;
-  roleName: string;
-  startDate: string;
-  endDate?: string;
-  isActive: boolean;
-  userEmail: string;
-  userPhoto: string;
-}
+// Was a local duplicate of this interface, field for field. A shadow copy is how the two drift.
+import { Membership, groupMembershipsByMember } from "@/types/memberships";
 
 interface Department {
   name: string;
@@ -138,25 +127,32 @@ export default function PhotoTeamMembers({
             <div key={dept}>
               <h3 className={styles.departmentName}>{dept}</h3>
               <div className={styles.membersList}>
-                {memberships.map((membership) => (
-                  <div key={membership.id} className={styles.memberCard}>
+                {/*
+                  Grouped by person (#8): someone holding two roles in the same department used
+                  to get two identical photo cards here, which is especially confusing on a
+                  screen whose whole purpose is "click the photo to change it".
+                */}
+                {groupMembershipsByMember(memberships).map((member) => (
+                  <div key={member.userNumber} className={styles.memberCard}>
                     <div className={styles.changePhoto}>
                       <Image
                         className={styles.memberPhoto}
-                        src={membership.userPhoto}
-                        alt={membership.userName}
+                        src={member.userPhoto}
+                        alt={member.userName}
                         width={180}
                         height={180}
                         style={{ cursor: "pointer" }}
-                        onClick={() => handlePhotoClick(membership.userNumber)}
+                        onClick={() => handlePhotoClick(member.userNumber)}
                         title="Clique para alterar a foto"
                       />
                     </div>
                     <div className={styles.memberInfo}>
                       <div className={styles.memberName}>
-                        {membership.userName} ({membership.userNumber})
+                        {member.userName} ({member.userNumber})
                       </div>
-                      <div className={styles.memberRoles}>{membership.roleName}</div>
+                      <div className={styles.memberRoles}>
+                        {member.positions.map((position) => position.roleName).join(" · ")}
+                      </div>
                     </div>
                   </div>
                 ))}

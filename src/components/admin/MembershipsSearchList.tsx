@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef } from "react";
 import Image from "next/image";
 import { User } from "@/types/user";
-import { Membership } from "@/types/memberships";
+import { Membership, groupMembershipsByMember } from "@/types/memberships";
 import { useUser } from "@/context/UserContext";
 import ConfirmDialog from "@/components/layout/ConfirmDialog";
 import styles from "@/styles/components/admin/MembershipsSearchList.module.css";
@@ -89,6 +89,19 @@ export default function MembershipsSearchList({
       })
       .sort((a, b) => a.userName.localeCompare(b.userName));
   }, [memberships, search, showInactive]);
+
+  /**
+   * One entry per person, not per position (#8).
+   *
+   * The filter above deliberately still runs over individual membership rows — searching
+   * "Dev-Team" should find someone through the position that matches — and grouping happens
+   * afterwards, so a match on any position surfaces that member once, with all of their
+   * positions shown together.
+   */
+  const filteredMembers = useMemo(
+    () => groupMembershipsByMember(filteredMemberships),
+    [filteredMemberships]
+  );
 
   const handleDepartmentChange = async (departmentName: string) => {
     setNewMembership({ ...newMembership, departmentName, roleName: "" });
@@ -313,25 +326,25 @@ export default function MembershipsSearchList({
             Mostrar Inativos
           </button>
         </div>
-        {filteredMemberships.length === 0 ? (
+        {filteredMembers.length === 0 ? (
           <div className={styles.emptyMessage}>Nenhum membro encontrado.</div>
         ) : (
           <div className={styles.membersList}>
-            {filteredMemberships.map((membership) => (
-              <div key={membership.id} className={styles.memberCard}>
-                <div className={membership.isActive ? styles.changePhoto : undefined}>
+            {filteredMembers.map((member) => (
+              <div key={member.userNumber} className={styles.memberCard}>
+                <div className={member.isActive ? styles.changePhoto : undefined}>
                   <Image
                     className={styles.memberPhoto}
-                    src={membership.userPhoto}
-                    alt={membership.userName}
+                    src={member.userPhoto}
+                    alt={member.userName}
                     width={160}
                     height={160}
-                    style={{ cursor: membership.isActive ? "pointer" : "not-allowed" }}
+                    style={{ cursor: member.isActive ? "pointer" : "not-allowed" }}
                     onClick={() => {
-                      if (membership.isActive) handlePhotoClick(membership.userNumber);
+                      if (member.isActive) handlePhotoClick(member.userNumber);
                     }}
                     title={
-                      membership.isActive
+                      member.isActive
                         ? "Clique para alterar a foto"
                         : "Só pode alterar fotos de membros ativos"
                     }
@@ -339,42 +352,51 @@ export default function MembershipsSearchList({
                 </div>
                 <div className={styles.memberInfo}>
                   <div className={styles.memberName}>
-                    {membership.userName} ({membership.userNumber})
+                    {member.userName} ({member.userNumber})
                   </div>
                   <div>
-                    <strong>Departamento:</strong> {membership.departmentName}
+                    <strong>Email:</strong> {member.userEmail}
                   </div>
-                  <div>
-                    <strong>Cargo:</strong> {membership.roleName}
-                  </div>
-                  <div>
-                    <strong>Email:</strong> {membership.userEmail}
-                  </div>
-                  <div>
-                    <strong>Desde:</strong>{" "}
-                    {new Date(membership.startDate).toLocaleDateString("pt-PT")}
-                    {membership.endDate && (
-                      <>
-                        {" "}
-                        <strong>Até:</strong>{" "}
-                        {new Date(membership.endDate).toLocaleDateString("pt-PT")}
-                      </>
-                    )}
-                  </div>
+
+                  {/*
+                    Every position this person holds, in one card. Each row carries its own
+                    Remover, because removing is per position — the previous layout repeated the
+                    whole person once per position to achieve that.
+                  */}
+                  <ul className={styles.positionList}>
+                    {member.positions.map((position) => (
+                      <li key={position.id} className={styles.position}>
+                        <div className={styles.positionText}>
+                          <span className={styles.positionRole}>{position.roleName}</span>
+                          <span className={styles.positionDept}>{position.departmentName}</span>
+                          <span className={styles.positionDates}>
+                            Desde {new Date(position.startDate).toLocaleDateString("pt-PT")}
+                            {position.endDate
+                              ? ` · até ${new Date(position.endDate).toLocaleDateString("pt-PT")}`
+                              : ""}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() =>
+                            handleRemoveClick(
+                              position.userNumber,
+                              position.departmentName,
+                              position.roleName
+                            )
+                          }
+                          className={styles.deleteBtn}
+                          title={`Remover ${position.roleName} em ${position.departmentName}`}>
+                          Remover
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
                 <div className={styles.memberActions}>
-                  <span className={styles.badge}>{membership.isActive ? "Ativo" : "Inativo"}</span>
-                  <button
-                    onClick={() =>
-                      handleRemoveClick(
-                        membership.userNumber,
-                        membership.departmentName,
-                        membership.roleName
-                      )
-                    }
-                    className={styles.deleteBtn}>
-                    Remover
-                  </button>
+                  <span className={styles.badge}>{member.isActive ? "Ativo" : "Inativo"}</span>
+                  {member.positions.length > 1 && (
+                    <span className={styles.positionCount}>{member.positions.length} cargos</span>
+                  )}
                 </div>
               </div>
             ))}

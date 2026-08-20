@@ -222,3 +222,11 @@
     margin-left: 0;
   }
 }
+
+/* A member holding several roles in one team gets a Remover per role (#8). */
+.memberRemoveActions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  align-items: stretch;
+}

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { User } from "@/types/user";
-import { Membership } from "@/types/memberships";
+import { Membership, groupMembershipsByMember } from "@/types/memberships";
 import Image from "next/image";
 import ConfirmDialog from "@/components/layout/ConfirmDialog";
 import styles from "@/styles/components/team-management/CoordinatorTeamManagementSearch.module.css";
@@ -224,8 +224,13 @@ export default function CoordinatorTeamManagementSearch({
           <div className={styles.emptyMessage}>Nenhum membro encontrado.</div>
         ) : (
           <div className={styles.membersList}>
-            {memberships.map((member) => (
-              <div key={member.id} className={styles.memberCard}>
+            {/*
+              One row per person (#8), not per position: a coordinator's own team list showed the
+              same member once per role they held in it. Each role keeps its own Remover, since
+              removal is per position.
+            */}
+            {groupMembershipsByMember(memberships).map((member) => (
+              <div key={member.userNumber} className={styles.memberCard}>
                 <Image
                   className={styles.memberPhoto}
                   src={member.userPhoto}
@@ -234,18 +239,33 @@ export default function CoordinatorTeamManagementSearch({
                   height={48}
                 />
                 <div className={styles.memberName}>{member.userName}</div>
-                <div className={styles.memberRole}>{member.roleName}</div>
+                <div className={styles.memberRole}>
+                  {member.positions.map((position) => position.roleName).join(" · ")}
+                </div>
                 <div className={styles.memberEmail}>{member.userEmail}</div>
                 <div className={styles.memberSince}>
-                  Desde: {new Date(member.startDate).toLocaleDateString("pt-PT")}
+                  Desde:{" "}
+                  {new Date(
+                    member.positions.reduce(
+                      (earliest, position) =>
+                        position.startDate < earliest ? position.startDate : earliest,
+                      member.positions[0].startDate
+                    )
+                  ).toLocaleDateString("pt-PT")}
                 </div>
                 <span className={styles.badge}>Ativo</span>
-                <button
-                  className={styles.deleteBtn}
-                  onClick={() => handleRemoveMember(member.userNumber, member.roleName)}
-                  disabled={loading}>
-                  Remover
-                </button>
+                <div className={styles.memberRemoveActions}>
+                  {member.positions.map((position) => (
+                    <button
+                      key={position.id}
+                      className={styles.deleteBtn}
+                      onClick={() => handleRemoveMember(position.userNumber, position.roleName)}
+                      disabled={loading}
+                      title={`Remover ${position.roleName}`}>
+                      {member.positions.length > 1 ? `Remover ${position.roleName}` : "Remover"}
+                    </button>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
