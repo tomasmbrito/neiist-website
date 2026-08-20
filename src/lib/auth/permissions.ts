@@ -40,12 +40,18 @@ export const PERMISSION_ROLES = {
   /** The full user list as read by the admin area. */
   "users.manage": [UserRole._ADMIN],
   /**
-   * Reading the directory. Deliberately different from `users.directory.write` below — the two
-   * halves of `/api/admin/users` were guarded by *different* role sets, and this preserves that
-   * rather than quietly unifying them. See the note in the PR.
+   * The user directory, read and written by the shop's customer picker and its
+   * create-walk-in-customer modal.
+   *
+   * The two halves of `/api/admin/users` used to carry *different* role sets — read admitted
+   * _MEMBER but not _SHOP_MANAGER, write the reverse — which was two live defects (#167):
+   * the shop manager running the stand could create a customer but not list customers, and any
+   * member could pull every student's phone, email, GitHub and LinkedIn in one request.
+   *
+   * Now the same set both ways, which is what one expects of a single resource.
    */
-  "users.directory.read": [UserRole._MEMBER, UserRole._COORDINATOR, UserRole._ADMIN],
-  "users.directory.write": [UserRole._COORDINATOR, UserRole._SHOP_MANAGER, UserRole._ADMIN],
+  "users.directory.read": [UserRole._ADMIN, UserRole._COORDINATOR, UserRole._SHOP_MANAGER],
+  "users.directory.write": [UserRole._ADMIN, UserRole._COORDINATOR, UserRole._SHOP_MANAGER],
   /** Editing a user record through the admin path. */
   "users.profile.update": [UserRole._ADMIN, UserRole._COORDINATOR, UserRole._MEMBER],
 

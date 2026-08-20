@@ -18,19 +18,28 @@ import {
  */
 
 /**
- * The role array each call site passed **before** #156, transcribed from the diff.
- * If a permission's membership is deliberately changed later, this expectation changes with it
- * in the same commit — which is the point: the policy becomes something you can review.
+ * The reviewed policy: who is expected to hold each permission.
+ *
+ * It started as a verbatim transcription of the role array each call site passed **before**
+ * #156, so the refactor could be proven to change nothing. It is no longer purely that — #167
+ * deliberately changed the two `users.directory.*` entries, and that line is edited here in the
+ * same commit rather than the assertion being loosened.
+ *
+ * That is the whole point of this file: a policy change has to be written down twice, on
+ * purpose, and shows up in the diff where a reviewer can see it.
  */
-const BEFORE: Record<Permission, UserRole[]> = {
+const EXPECTED_POLICY: Record<Permission, UserRole[]> = {
   "org.units.manage": [UserRole._ADMIN],
   "members.manage": [UserRole._ADMIN, UserRole._COORDINATOR],
   "members.roles.manage": [UserRole._ADMIN, UserRole._COORDINATOR],
   "members.photos.manage": [UserRole._ADMIN, UserRole._COORDINATOR],
   "teams.manage": [UserRole._ADMIN, UserRole._COORDINATOR],
   "users.manage": [UserRole._ADMIN],
-  "users.directory.read": [UserRole._MEMBER, UserRole._COORDINATOR, UserRole._ADMIN],
-  "users.directory.write": [UserRole._COORDINATOR, UserRole._SHOP_MANAGER, UserRole._ADMIN],
+  // CHANGED ON PURPOSE in #167, which is why this line is edited rather than the assertion
+  // loosened. Read admitted _MEMBER but not _SHOP_MANAGER and write was the reverse; both were
+  // defects. See the block comment in permissions.ts.
+  "users.directory.read": [UserRole._ADMIN, UserRole._COORDINATOR, UserRole._SHOP_MANAGER],
+  "users.directory.write": [UserRole._ADMIN, UserRole._COORDINATOR, UserRole._SHOP_MANAGER],
   "users.profile.update": [UserRole._ADMIN, UserRole._COORDINATOR, UserRole._MEMBER],
   "activities.manage": [UserRole._ADMIN],
   "shop.products.manage": [UserRole._ADMIN],
@@ -52,24 +61,24 @@ const BEFORE: Record<Permission, UserRole[]> = {
 
 const ALL_ROLES = Object.values(UserRole);
 
-describe("the permission table reproduces the pre-refactor policy", () => {
+describe("the permission table matches the reviewed policy", () => {
   it.each(Object.keys(PERMISSION_ROLES) as Permission[])(
-    "%s grants the same roles it did before",
+    "%s grants exactly the reviewed set of roles",
     (permission) => {
-      expect([...rolesFor(permission)].sort()).toEqual([...BEFORE[permission]].sort());
+      expect([...rolesFor(permission)].sort()).toEqual([...EXPECTED_POLICY[permission]].sort());
     }
   );
 
   /**
-   * The real equivalence check: for every permission and every role, `can()` must agree with the
-   * `hasRequiredRole` call the route used to make. This is what guarantees the refactor is a
-   * no-op, rather than the transcription above merely matching itself.
+   * The real check: for every permission and every role, `can()` must agree with the
+   * `hasRequiredRole` call a route would make with the reviewed role list. This is what caught
+   * the refactor being a no-op, rather than the table above merely matching itself.
    */
   it.each(Object.keys(PERMISSION_ROLES) as Permission[])(
     "%s: can() agrees with hasRequiredRole for every role",
     (permission) => {
       for (const role of ALL_ROLES) {
-        expect(can([role], permission)).toBe(hasRequiredRole([role], BEFORE[permission]));
+        expect(can([role], permission)).toBe(hasRequiredRole([role], EXPECTED_POLICY[permission]));
       }
     }
   );

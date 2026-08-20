@@ -33,7 +33,11 @@ export default async function OrdersManagementPage({ searchParams }: PageProps) 
 
   return (
     <>
-      <OrdersTable orders={orders} products={products} />
+      <OrdersTable
+        orders={orders}
+        products={products}
+        canCreateOrders={can(roles, "shop.orders.create")}
+      />
       {orderId && (
         <OrderDetailOverlay
           orderId={Number(orderId)}
