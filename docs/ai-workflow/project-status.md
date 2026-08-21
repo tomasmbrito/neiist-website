@@ -513,6 +513,56 @@ needing a human: **#146** (schema), **#111** (auth), **#52** (dependency).
 
 ---
 
+## 6a. The board, and what is deliberately not on it
+
+**Reconciled 2026-08-21.** The board had 39 backlog items, of which 18 were the original product
+roadmap — created on one day in July and never started. They obscured what was actually in
+flight, which is what a board is for.
+
+Those **15 items were detached from the board and left OPEN as issues**. Nothing was closed and
+nothing was lost; they remain searchable in the repository and are listed here so they can be
+put back deliberately:
+
+```
+#19 #20 #21   Search, filtering and pagination
+#22 #23       Performance and state modernization
+#25 #26       Edge cases and business logic gaps
+#34 #35 #36   Maintainability: inline styles, i18n
+#46 #47 #48   Digital ticketing and user dashboard
+#49 #50       Corporate partnerships and job board
+```
+
+Two epics from that batch stayed on the board because they still have live children: **#16**
+(via #124) and **#38** (via #41). **#7** was closed as delivered — external users work through
+Google OAuth with a synthetic `ext_` istid, and `orders_identity_mode_chk` exists.
+
+**The rule going forward:** the board holds work that is in flight or genuinely next. The
+product roadmap lives in the issue tracker, and an item joins the board when someone intends to
+start it. A backlog that contains everything anyone has ever wanted is not a backlog.
+
+---
+
+## 6b. #124 — identity, recommended rather than left open
+
+Both decisions matter more now that #126 makes members assignees and approvers across ten
+tables. Neither is expensive to state; both are expensive to get wrong afterwards.
+
+**1. Account linking on a verified alternative email.** *Recommendation: link only on an address
+already verified through the existing `email_token` flow, and never automatically.* Present it
+as "this address belongs to an existing account — sign in with Fenix to link it". Auto-linking
+on an unverified address is account takeover: anyone who can set that address on a Google
+account inherits the Técnico account.
+
+**2. Which Técnico domains must use Fenix.** *Recommendation: reject the whole
+`*.tecnico.ulisboa.pt` suffix on the Google path*, not just the exact `@tecnico.ulisboa.pt`. A
+subdomain address is still a Técnico identity, and letting one through creates a second parallel
+account for a student who already has one — exactly the duplicate-person problem #8 was about,
+but at the identity layer where it is much harder to undo.
+
+Neither is implemented; both need a yes.
+
+---
+
 ## 7. Working agreements
 
 - Branch + PR on the fork. **Tomás merges.** Never push or PR to `neiist-dev`.
