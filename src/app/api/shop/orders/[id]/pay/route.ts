@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { finalizePaidOrder } from "@/utils/shop/orderFinalization";
 import { serverCheckPermission } from "@/utils/permissionUtils";
-import { throwIfOrderDbError } from "@/utils/db/errorMapper";
+import { throwIfShopDbError } from "@/utils/db/errorMapper";
 import { handleApiError } from "@/lib/errors/apiErrorHandler";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // NEI01/NEI04/NEI05 become 404/409/400 here. Without this every failure was a blanket 500,
     // and an unmapped SQLSTATE would have leaked the raw RAISE text to the client.
     try {
-      throwIfOrderDbError(error);
+      throwIfShopDbError(error);
     } catch (mapped) {
       return handleApiError(mapped);
     }

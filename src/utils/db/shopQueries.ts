@@ -395,7 +395,7 @@ export type FinalizeOrderPaymentResult = {
  * one purchase is normal. The function serialises them on the order row so exactly one wins.
  *
  * Errors propagate deliberately — no `catch { return null }`. The caller routes them through
- * `throwIfOrderDbError`, and swallowing them here would reintroduce the silent-failure pattern
+ * `throwIfShopDbError`, and swallowing them here would reintroduce the silent-failure pattern
  * that makes the rest of this file unsafe inside a transaction.
  */
 export const finalizeOrderPayment = async (
@@ -447,7 +447,7 @@ export type SetOrderStateResult = {
  * landed mid-sweep), not a failure.
  *
  * Errors propagate: NEI01 (missing) and NEI02 (transition rejected by the matrix) must reach
- * `throwIfOrderDbError`.
+ * `throwIfShopDbError`.
  */
 export const setOrderState = async (
   orderId: number,

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { throwIfOrderDbError } from "@/utils/db/errorMapper";
+import { throwIfShopDbError } from "@/utils/db/errorMapper";
 import {
   getAllOrders,
   newOrder,
@@ -258,7 +258,7 @@ export const POST = withValidation(
       return NextResponse.json(order);
     } catch (error) {
       try {
-        throwIfOrderDbError(error);
+        throwIfShopDbError(error);
       } catch (e) {
         return handleApiError(e);
       }

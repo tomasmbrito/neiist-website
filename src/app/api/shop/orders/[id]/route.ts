@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { throwIfOrderDbError } from "@/utils/db/errorMapper";
+import { throwIfShopDbError } from "@/utils/db/errorMapper";
 import { updateOrder, setOrderState, getOrderById } from "@/utils/db/shopQueries";
 import { UserRole } from "@/types/user";
 import { getOrderKindRules, getOrderKindFromItems } from "@/utils/shop/orderKindUtils";
@@ -202,7 +202,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json(updatedOrder);
   } catch (error) {
     try {
-      throwIfOrderDbError(error);
+      throwIfShopDbError(error);
     } catch (e) {
       return handleApiError(e);
     }
@@ -272,7 +272,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // NEI02 (transition rejected by the matrix) becomes a 409 rather than a 500. Unlike PUT,
     // this handler never routed its errors through the mapper.
     try {
-      throwIfOrderDbError(error);
+      throwIfShopDbError(error);
     } catch (mapped) {
       return handleApiError(mapped);
     }
@@ -325,7 +325,7 @@ export async function DELETE(
     return NextResponse.json(result.order);
   } catch (error) {
     try {
-      throwIfOrderDbError(error);
+      throwIfShopDbError(error);
     } catch (mapped) {
       return handleApiError(mapped);
     }
