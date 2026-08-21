@@ -3,6 +3,7 @@ import tsPlugin from "@typescript-eslint/eslint-plugin";
 import nextPlugin from "@next/eslint-plugin-next";
 import validateFilename from "eslint-plugin-validate-filename";
 import reactHooks from "eslint-plugin-react-hooks";
+import eslintConfigPrettier from "eslint-config-prettier";
 
 /**
  * Normalize Next.js config rule names from "@next/next/..." to "next/..."
@@ -83,24 +84,19 @@ export default [
         },
       ],
 
-      "max-len": [
-        "error",
-        {
-          code: 100,
-          tabWidth: 2,
-          ignoreUrls: true,
-          ignoreStrings: true,
-          ignoreTemplateLiterals: true,
-          ignoreRegExpLiterals: true,
-          ignoreComments: true,
-          ignoreTrailingComments: true,
-          ignorePattern: "^\\s*// eslint-disable-next-line|^\\s*[A-Za-zÀ-ÿ\\s.,!?()\\-–—]+\\s*$",
-        },
-      ],
+      // max-len removed (#41): prettier's printWidth: 100 expresses the same limit and can
+      // actually wrap the line, where the lint rule could only refuse it — which is why this one
+      // had accumulated seven ignore options. eslintConfigPrettier below now turns off every
+      // formatting rule that would fight the formatter, rather than each being tuned by hand.
 
       "no-console": ["error", { allow: ["error", "warn"] }],
       "no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
       "no-irregular-whitespace": "error",
     },
   },
+
+  // Last, so it wins: turns off the ESLint rules that overlap with prettier. It was already a
+  // devDependency and simply never wired in, which is how max-len ended up duplicating
+  // printWidth and drifting from it.
+  eslintConfigPrettier,
 ];
