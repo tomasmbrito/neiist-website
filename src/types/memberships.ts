@@ -57,3 +57,53 @@ export function mapDbMembershipToMembership(
     userPhoto,
   };
 }
+
+/**
+ * One person, with every position they hold — as opposed to `Membership`, which is one *row*
+ * per position.
+ *
+ * `neiist.get_all_memberships()` returns a row per membership, so a member of two teams (or one
+ * team in two roles) came back two or three times. Every list that rendered that array directly
+ * showed them once per position: the same photo, name and email repeated, differing only in
+ * Departamento/Cargo. Tracked as #8 since July.
+ *
+ * Grouping belongs here rather than in each component, because five different screens consume
+ * the same flattened array and each was free to get it wrong separately.
+ */
+export interface MemberWithPositions {
+  userNumber: string;
+  userName: string;
+  userEmail: string;
+  userPhoto: string;
+  /** Every position this person holds, in the order the query returned them. */
+  positions: Membership[];
+  /** True when at least one position is current. */
+  isActive: boolean;
+}
+
+/**
+ * Collapse membership rows into one entry per person, preserving order of first appearance so
+ * an alphabetical query stays alphabetical.
+ */
+export function groupMembershipsByMember(memberships: Membership[]): MemberWithPositions[] {
+  const byMember = new Map<string, MemberWithPositions>();
+
+  for (const membership of memberships) {
+    const existing = byMember.get(membership.userNumber);
+    if (existing) {
+      existing.positions.push(membership);
+      existing.isActive = existing.isActive || membership.isActive;
+      continue;
+    }
+    byMember.set(membership.userNumber, {
+      userNumber: membership.userNumber,
+      userName: membership.userName,
+      userEmail: membership.userEmail,
+      userPhoto: membership.userPhoto,
+      positions: [membership],
+      isActive: membership.isActive,
+    });
+  }
+
+  return [...byMember.values()];
+}
