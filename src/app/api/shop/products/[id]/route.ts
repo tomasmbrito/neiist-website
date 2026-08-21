@@ -15,10 +15,8 @@ import { productPayloadSchema } from "@/schemas/shop";
 
 export const PUT = withValidation(
   productPayloadSchema,
+  { permission: "shop.products.manage" },
   async (request, body, { params }: { params: Promise<{ id: string }> }) => {
-    const permissionCheck = await serverCheckPermission("shop.products.manage");
-    if (!permissionCheck.isAuthorized) return permissionCheck.error;
-
     try {
       const { id } = await params;
       const productId = Number(id);
