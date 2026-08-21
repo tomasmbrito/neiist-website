@@ -13,7 +13,7 @@ import { OrderSource } from "@/types/shop/orderKind";
 import { getOrderKindRules, getOrderKindFromItems } from "@/utils/shop/orderKindUtils";
 import { OrderItem } from "@/types/shop/order";
 import { Product } from "@/types/shop/product";
-import { serverCheckPermission, serverCheckRoles } from "@/utils/permissionUtils";
+import { serverCheckPermission } from "@/utils/permissionUtils";
 import { sendEmail, getPendingOrderEmailTemplate } from "@/utils/emailUtils";
 import { withValidation } from "@/utils/security/validationUtils";
 import { createOrderPayloadSchema } from "@/schemas/shop";
@@ -43,219 +43,227 @@ export async function GET() {
   }
 }
 
-export const POST = withValidation(createOrderPayloadSchema, async (request, body) => {
-  const userRoles = await serverCheckRoles([]);
-  if (!userRoles.isAuthorized) return userRoles.error;
+export const POST = withValidation(
+  createOrderPayloadSchema,
+  // Any authenticated user: this is a customer placing their own order. The handler's own
+  // serverCheckRoles([]) is what it has always enforced — shop.orders.create guards the
+  // *manager* path (GET above, and the POS), not checkout.
+  { authenticated: true },
+  async (request, body, _context, userRoles) => {
+    try {
+      const validPaymentMethods = new Set(Object.keys(PAYMENT_METHODS));
+      const orderSource = parseOrderSource(body.order_source ?? "");
+      const guestCheckout = body.guest_checkout === true;
+      const canUseGuestCheckout =
+        userRoles.roles?.some((role) => [UserRole._ADMIN].includes(role)) && orderSource === "pos";
 
-  try {
-    const validPaymentMethods = new Set(Object.keys(PAYMENT_METHODS));
-    const orderSource = parseOrderSource(body.order_source ?? "");
-    const guestCheckout = body.guest_checkout === true;
-    const canUseGuestCheckout =
-      userRoles.roles?.some((role) => [UserRole._ADMIN].includes(role)) && orderSource === "pos";
-
-    if (guestCheckout && !canUseGuestCheckout) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
-    }
-
-    const hasExplicitPaymentMethod =
-      typeof body.payment_method === "string" && validPaymentMethods.has(body.payment_method);
-    const explicitlyRequestedMethod = hasExplicitPaymentMethod
-      ? (body.payment_method as PaymentMethod)
-      : undefined;
-
-    const orderItems = new Set<number>(body.items.map((item) => item.product_id));
-    const products = await Promise.all([...orderItems].map((id) => getProduct(id)));
-    if (products.some((product) => product == null))
-      return NextResponse.json({ error: "Produto invalido no pedido" }, { status: 400 });
-
-    const { orderKind, isMixedInvalid } = getOrderKindFromItems(products as Product[]);
-    const orderRules = getOrderKindRules(orderKind, orderSource);
-    const userAssignmentRequired = orderRules.requiresUserAssignment;
-
-    // Only a POS operator may place an order in someone else's name. Trusting body.user_istid
-    // let any user attribute orders to another student, which bypassed the per-user purchase
-    // cap entirely (it is keyed on this istid), drained limited stock, and burned the victim's
-    // single-use discount codes.
-    const isPosOperator =
-      orderSource === "pos" &&
-      (userRoles.roles?.some((role) => [UserRole._ADMIN, UserRole._SHOP_MANAGER].includes(role)) ??
-        false);
-    const sessionIstid = userRoles.user?.istid;
-
-    if (!guestCheckout && userAssignmentRequired && !isPosOperator) {
-      if (body.user_istid && body.user_istid !== sessionIstid) {
+      if (guestCheckout && !canUseGuestCheckout) {
         return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
       }
-    }
 
-    const orderUserIstid = guestCheckout
-      ? undefined
-      : userAssignmentRequired
-        ? isPosOperator
-          ? body.user_istid
-          : sessionIstid
+      const hasExplicitPaymentMethod =
+        typeof body.payment_method === "string" && validPaymentMethods.has(body.payment_method);
+      const explicitlyRequestedMethod = hasExplicitPaymentMethod
+        ? (body.payment_method as PaymentMethod)
         : undefined;
 
-    if (isMixedInvalid) {
-      return NextResponse.json(
-        { error: "Este pedido nao pode misturar categorias especiais com outras categorias" },
-        { status: 400 }
-      );
-    }
+      const orderItems = new Set<number>(body.items.map((item) => item.product_id));
+      const products = await Promise.all([...orderItems].map((id) => getProduct(id)));
+      if (products.some((product) => product == null))
+        return NextResponse.json({ error: "Produto invalido no pedido" }, { status: 400 });
 
-    if (!orderRules.allowedSources.includes(orderSource)) {
-      return NextResponse.json(
-        { error: "Não é permitida a encomenda de produtos desta categoria" },
-        { status: 400 }
-      );
-    }
+      const { orderKind, isMixedInvalid } = getOrderKindFromItems(products as Product[]);
+      const orderRules = getOrderKindRules(orderKind, orderSource);
+      const userAssignmentRequired = orderRules.requiresUserAssignment;
 
-    if (orderRules.maxQuantityPerUser && orderUserIstid) {
-      const categoryName = products[0]?.category?.trim();
-      if (categoryName) {
-        const existingByProduct = await getUserOrderedProductsInCategory(
-          orderUserIstid,
-          categoryName
+      // Only a POS operator may place an order in someone else's name. Trusting body.user_istid
+      // let any user attribute orders to another student, which bypassed the per-user purchase
+      // cap entirely (it is keyed on this istid), drained limited stock, and burned the victim's
+      // single-use discount codes.
+      const isPosOperator =
+        orderSource === "pos" &&
+        (userRoles.roles?.some((role) =>
+          [UserRole._ADMIN, UserRole._SHOP_MANAGER].includes(role)
+        ) ??
+          false);
+      const sessionIstid = userRoles.user?.istid;
+
+      if (!guestCheckout && userAssignmentRequired && !isPosOperator) {
+        if (body.user_istid && body.user_istid !== sessionIstid) {
+          return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+        }
+      }
+
+      const orderUserIstid = guestCheckout
+        ? undefined
+        : userAssignmentRequired
+          ? isPosOperator
+            ? body.user_istid
+            : sessionIstid
+          : undefined;
+
+      if (isMixedInvalid) {
+        return NextResponse.json(
+          { error: "Este pedido nao pode misturar categorias especiais com outras categorias" },
+          { status: 400 }
         );
+      }
 
-        const requestedQuantitiesByProduct: Record<number, number> = {};
-        for (const item of body.items as OrderItem[]) {
-          const productId = Number(item.product_id);
-          requestedQuantitiesByProduct[productId] =
-            (requestedQuantitiesByProduct[productId] ?? 0) + Number(item.quantity ?? 0);
-        }
+      if (!orderRules.allowedSources.includes(orderSource)) {
+        return NextResponse.json(
+          { error: "Não é permitida a encomenda de produtos desta categoria" },
+          { status: 400 }
+        );
+      }
 
-        for (const [productIdString, requestedQty] of Object.entries(
-          requestedQuantitiesByProduct
-        )) {
-          const productId = Number(productIdString);
-          const existing = existingByProduct[productId] ?? 0;
-          if (existing + requestedQty > orderRules.maxQuantityPerUser) {
-            const product = await getProduct(productId);
-            const productLabel = product?.name ?? `product ${productId}`;
-            return NextResponse.json(
-              {
-                error: `O limite para o produto "${productLabel}" para este utilizador foi atingido`,
-              },
-              { status: 400 }
-            );
+      if (orderRules.maxQuantityPerUser && orderUserIstid) {
+        const categoryName = products[0]?.category?.trim();
+        if (categoryName) {
+          const existingByProduct = await getUserOrderedProductsInCategory(
+            orderUserIstid,
+            categoryName
+          );
+
+          const requestedQuantitiesByProduct: Record<number, number> = {};
+          for (const item of body.items as OrderItem[]) {
+            const productId = Number(item.product_id);
+            requestedQuantitiesByProduct[productId] =
+              (requestedQuantitiesByProduct[productId] ?? 0) + Number(item.quantity ?? 0);
+          }
+
+          for (const [productIdString, requestedQty] of Object.entries(
+            requestedQuantitiesByProduct
+          )) {
+            const productId = Number(productIdString);
+            const existing = existingByProduct[productId] ?? 0;
+            if (existing + requestedQty > orderRules.maxQuantityPerUser) {
+              const product = await getProduct(productId);
+              const productLabel = product?.name ?? `product ${productId}`;
+              return NextResponse.json(
+                {
+                  error: `O limite para o produto "${productLabel}" para este utilizador foi atingido`,
+                },
+                { status: 400 }
+              );
+            }
           }
         }
       }
-    }
 
-    const allowedPaymentMethods = orderRules.paymentMethods;
-    const paymentMethod: PaymentMethod =
-      explicitlyRequestedMethod ??
-      (allowedPaymentMethods.length > 0 ? allowedPaymentMethods[0] : "in-person");
+      const allowedPaymentMethods = orderRules.paymentMethods;
+      const paymentMethod: PaymentMethod =
+        explicitlyRequestedMethod ??
+        (allowedPaymentMethods.length > 0 ? allowedPaymentMethods[0] : "in-person");
 
-    if (allowedPaymentMethods.length > 0 && !allowedPaymentMethods.includes(paymentMethod)) {
-      return NextResponse.json(
-        { error: "Metodo de pagamento invalido para a categoria selecionada" },
-        { status: 400 }
+      if (allowedPaymentMethods.length > 0 && !allowedPaymentMethods.includes(paymentMethod)) {
+        return NextResponse.json(
+          { error: "Metodo de pagamento invalido para a categoria selecionada" },
+          { status: 400 }
+        );
+      }
+
+      // Checks the resolved istid, not the request body. For a normal checkout the istid now
+      // comes from the session, so validating body.user_istid here would reject a client that
+      // (correctly) no longer needs to send it.
+      if (userAssignmentRequired && !orderUserIstid && !guestCheckout) {
+        return NextResponse.json(
+          { error: "Utilizador obrigatorio para este tipo de pedido" },
+          { status: 400 }
+        );
+      }
+
+      const customerName = String(body.customer_name ?? "").trim();
+      const customerEmail =
+        typeof body.customer_email === "string" ? body.customer_email.trim() : "";
+      const customerPhone =
+        typeof body.customer_phone === "string" ? body.customer_phone.trim() : "";
+
+      if (guestCheckout && userAssignmentRequired) {
+        if (!customerName) {
+          return NextResponse.json({ error: "Nome do cliente obrigatorio" }, { status: 400 });
+        }
+        if (!customerEmail) {
+          return NextResponse.json({ error: "Email do cliente obrigatorio" }, { status: 400 });
+        }
+        if (!customerPhone) {
+          return NextResponse.json({ error: "Telemóvel do cliente obrigatorio" }, { status: 400 });
+        }
+      }
+
+      const stockOverride =
+        (userRoles.roles?.includes(UserRole._ADMIN) ?? false) && body.stock_override === true;
+
+      const order = await newOrder(
+        {
+          user_istid: orderUserIstid,
+          customer_name: customerName || (guestCheckout ? "Cliente POS" : ""),
+          customer_email: customerEmail || undefined,
+          customer_phone: customerPhone || undefined,
+          customer_nif: body.customer_nif ?? undefined,
+          campus: body.campus ?? undefined,
+          notes: body.notes ?? undefined,
+          payment_method: paymentMethod,
+          payment_reference: body.payment_reference ?? undefined,
+          created_by: userRoles.user!.istid,
+          items: body.items,
+          discount_code: typeof body.discount_code === "string" ? body.discount_code : undefined,
+        },
+        stockOverride,
+        // The pre-check above is a fast path that produces a good message naming the product; it is
+        // NOT the authority. It reads, sums in JS, compares, and only then creates the order — two
+        // round trips with no lock, so double-clicking Checkout beat it (#100). Passing the policy
+        // down makes the database enforce it under an advisory lock in the same transaction as the
+        // insert, so the loser's order rolls back entirely.
+        orderRules.maxQuantityPerUser && orderUserIstid && products[0]?.category?.trim()
+          ? {
+              maxQuantityPerUser: orderRules.maxQuantityPerUser,
+              categoryName: products[0].category.trim(),
+            }
+          : undefined
       );
-    }
+      if (!order) return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
 
-    // Checks the resolved istid, not the request body. For a normal checkout the istid now
-    // comes from the session, so validating body.user_istid here would reject a client that
-    // (correctly) no longer needs to send it.
-    if (userAssignmentRequired && !orderUserIstid && !guestCheckout) {
-      return NextResponse.json(
-        { error: "Utilizador obrigatorio para este tipo de pedido" },
-        { status: 400 }
-      );
-    }
-
-    const customerName = String(body.customer_name ?? "").trim();
-    const customerEmail = typeof body.customer_email === "string" ? body.customer_email.trim() : "";
-    const customerPhone = typeof body.customer_phone === "string" ? body.customer_phone.trim() : "";
-
-    if (guestCheckout && userAssignmentRequired) {
-      if (!customerName) {
-        return NextResponse.json({ error: "Nome do cliente obrigatorio" }, { status: 400 });
+      if (orderUserIstid && body.customer_phone) {
+        const user = await getUser(orderUserIstid);
+        if (user && user.phone !== body.customer_phone)
+          await updateUser(orderUserIstid, { phone: body.customer_phone });
       }
-      if (!customerEmail) {
-        return NextResponse.json({ error: "Email do cliente obrigatorio" }, { status: 400 });
+
+      if (
+        hasExplicitPaymentMethod &&
+        order.customer_email &&
+        orderRules.customerEmailsEnabled &&
+        PENDING_PAYMENT_METHODS.has(paymentMethod)
+      ) {
+        try {
+          await sendEmail({
+            to: order.customer_email,
+            subject: `Encomenda ${order.order_number} - Pendente`,
+            html: getPendingOrderEmailTemplate(
+              orderKind,
+              order.order_number,
+              order.customer_name,
+              order.items,
+              order.total_amount,
+              order.campus ?? undefined,
+              order.payment_method ?? undefined,
+              order.pickup_deadline ?? null
+            ),
+          });
+        } catch (emailErr) {
+          console.warn("Failed to send order confirmation email:", emailErr);
+        }
       }
-      if (!customerPhone) {
-        return NextResponse.json({ error: "Telemóvel do cliente obrigatorio" }, { status: 400 });
-      }
-    }
 
-    const stockOverride =
-      (userRoles.roles?.includes(UserRole._ADMIN) ?? false) && body.stock_override === true;
-
-    const order = await newOrder(
-      {
-        user_istid: orderUserIstid,
-        customer_name: customerName || (guestCheckout ? "Cliente POS" : ""),
-        customer_email: customerEmail || undefined,
-        customer_phone: customerPhone || undefined,
-        customer_nif: body.customer_nif ?? undefined,
-        campus: body.campus ?? undefined,
-        notes: body.notes ?? undefined,
-        payment_method: paymentMethod,
-        payment_reference: body.payment_reference ?? undefined,
-        created_by: userRoles.user!.istid,
-        items: body.items,
-        discount_code: typeof body.discount_code === "string" ? body.discount_code : undefined,
-      },
-      stockOverride,
-      // The pre-check above is a fast path that produces a good message naming the product; it is
-      // NOT the authority. It reads, sums in JS, compares, and only then creates the order — two
-      // round trips with no lock, so double-clicking Checkout beat it (#100). Passing the policy
-      // down makes the database enforce it under an advisory lock in the same transaction as the
-      // insert, so the loser's order rolls back entirely.
-      orderRules.maxQuantityPerUser && orderUserIstid && products[0]?.category?.trim()
-        ? {
-            maxQuantityPerUser: orderRules.maxQuantityPerUser,
-            categoryName: products[0].category.trim(),
-          }
-        : undefined
-    );
-    if (!order) return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
-
-    if (orderUserIstid && body.customer_phone) {
-      const user = await getUser(orderUserIstid);
-      if (user && user.phone !== body.customer_phone)
-        await updateUser(orderUserIstid, { phone: body.customer_phone });
-    }
-
-    if (
-      hasExplicitPaymentMethod &&
-      order.customer_email &&
-      orderRules.customerEmailsEnabled &&
-      PENDING_PAYMENT_METHODS.has(paymentMethod)
-    ) {
+      return NextResponse.json(order);
+    } catch (error) {
       try {
-        await sendEmail({
-          to: order.customer_email,
-          subject: `Encomenda ${order.order_number} - Pendente`,
-          html: getPendingOrderEmailTemplate(
-            orderKind,
-            order.order_number,
-            order.customer_name,
-            order.items,
-            order.total_amount,
-            order.campus ?? undefined,
-            order.payment_method ?? undefined,
-            order.pickup_deadline ?? null
-          ),
-        });
-      } catch (emailErr) {
-        console.warn("Failed to send order confirmation email:", emailErr);
+        throwIfOrderDbError(error);
+      } catch (e) {
+        return handleApiError(e);
       }
+      console.error("orders POST error:", error);
+      return handleApiError(error);
     }
-
-    return NextResponse.json(order);
-  } catch (error) {
-    try {
-      throwIfOrderDbError(error);
-    } catch (e) {
-      return handleApiError(e);
-    }
-    console.error("orders POST error:", error);
-    return handleApiError(error);
   }
-});
+);
