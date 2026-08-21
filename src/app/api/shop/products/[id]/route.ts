@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { mapDeleteProductDbErrorToResponse } from "@/utils/db/errorMapper";
+import { throwIfShopDbError } from "@/utils/db/errorMapper";
+import { handleApiError } from "@/lib/errors/apiErrorHandler";
 import {
   updateProduct,
   updateProductVariant,
@@ -94,7 +95,7 @@ export const PUT = withValidation(
       const updatedProduct = await getProduct(productId);
       if (!updatedProduct) {
         return NextResponse.json(
-          { error: "Product not found or failed to update" },
+          { error: "Produto não encontrado ou não foi possível atualizar" },
           { status: 404 }
         );
       }
@@ -104,10 +105,13 @@ export const PUT = withValidation(
         product: updatedProduct,
       });
     } catch (error) {
-      const mapped = mapDeleteProductDbErrorToResponse(error);
-      if (mapped) return NextResponse.json({ error: mapped.error }, { status: mapped.status });
+      try {
+        throwIfShopDbError(error);
+      } catch (mapped) {
+        return handleApiError(mapped);
+      }
       console.error("Error updating product:", error);
-      return NextResponse.json({ error: "Failed to update product" }, { status: 500 });
+      return NextResponse.json({ error: "Não foi possível atualizar o produto" }, { status: 500 });
     }
   }
 );
@@ -131,14 +135,17 @@ export async function DELETE(
 
     const archivedProduct = await updateProduct(productId, { active: false });
     if (!archivedProduct) {
-      return NextResponse.json({ error: "Product not found" }, { status: 404 });
+      return NextResponse.json({ error: "Produto não encontrado" }, { status: 404 });
     }
     return NextResponse.json({ message: "Product archived successfully" });
   } catch (error) {
-    const mapped = mapDeleteProductDbErrorToResponse(error);
-    if (mapped) return NextResponse.json({ error: mapped.error }, { status: mapped.status });
+    try {
+      throwIfShopDbError(error);
+    } catch (mapped) {
+      return handleApiError(mapped);
+    }
     console.error("Error deleting product:", error);
-    return NextResponse.json({ error: "Failed to delete product" }, { status: 500 });
+    return NextResponse.json({ error: "Não foi possível eliminar o produto" }, { status: 500 });
   }
 }
 
@@ -157,12 +164,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const updated = await updateProduct(productId, { active: body.active });
     if (!updated) {
-      return NextResponse.json({ error: "Product not found" }, { status: 404 });
+      return NextResponse.json({ error: "Produto não encontrado" }, { status: 404 });
     }
     return NextResponse.json({ message: "Product updated", product: updated });
   } catch (error) {
     console.error("Error patching product:", error);
-    return NextResponse.json({ error: "Failed to update product" }, { status: 500 });
+    return NextResponse.json({ error: "Não foi possível atualizar o produto" }, { status: 500 });
   }
 }
 
@@ -174,7 +181,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const product = await getProduct(productId);
 
     if (!product) {
-      return NextResponse.json({ error: "Product not found" }, { status: 404 });
+      return NextResponse.json({ error: "Produto não encontrado" }, { status: 404 });
     }
 
     return NextResponse.json(product);

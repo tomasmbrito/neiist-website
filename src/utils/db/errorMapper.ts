@@ -56,7 +56,18 @@ export function isUniqueViolation(error: unknown): boolean {
   return (error as { code?: string } | null | undefined)?.code === "23505";
 }
 
-export function throwIfOrderDbError(error: unknown): void {
+/**
+ * Maps a shop database error to a domain error, which `apiErrorHandler` turns into a response.
+ *
+ * Renamed from `throwIfOrderDbError`: it has always covered products, variants and discount
+ * codes as well as orders, and the order-centric name invited callers to hand-roll their own
+ * mapping for the rest — which is exactly what `mapDeleteProductDbErrorToResponse` was.
+ *
+ * This is now the only mapping mechanism. It throws; it does not return a `{ error, status }`
+ * shape for a route to unpack, because a route hand-rolling status codes is what `CLAUDE.md` §5
+ * forbids and what let "product not found" reach a client as raw English `RAISE` text.
+ */
+export function throwIfShopDbError(error: unknown): void {
   const dbError = error as { message?: string; code?: string };
   const message = dbError?.message ?? "";
 
@@ -76,7 +87,7 @@ export function throwIfOrderDbError(error: unknown): void {
   }
 
   if (message.includes("Order deadline has passed for product")) {
-    throw new ValidationError("O prazo de encomenda do produto ja terminou");
+    throw new ValidationError("O prazo de encomenda do produto já terminou");
   }
 
   if (message.includes("Insufficient variant stock")) {
@@ -88,11 +99,11 @@ export function throwIfOrderDbError(error: unknown): void {
   }
 
   if (message.includes("Product") && message.includes("not found or inactive")) {
-    throw new ValidationError("Produto indisponivel");
+    throw new ValidationError("Produto indisponível");
   }
 
   if (message.includes("Variant") && message.includes("not found or inactive")) {
-    throw new ValidationError("Variante indisponivel");
+    throw new ValidationError("Variante indisponível");
   }
 
   if (message.includes("Discount code is required")) {
@@ -120,27 +131,21 @@ export function throwIfOrderDbError(error: unknown): void {
   }
 
   if (message.includes("Invalid quantity for product_id")) {
-    throw new ValidationError("Quantidade invalida");
+    throw new ValidationError("Quantidade inválida");
   }
 
-  if (dbError?.code === "P0001") {
-    throw new ValidationError(message || "Pedido invalido");
-  }
-}
-
-export function mapDeleteProductDbErrorToResponse(
-  error: unknown
-): { error: string; status: number } | null {
-  const dbError = error as { message?: string; code?: string };
-  const message = dbError?.message ?? "";
-
+  // Plain "not found", as distinct from "not found or inactive" above. Upstream's table covers
+  // both; this one only covered the latter, so deleting a product that does not exist fell
+  // through to the P0001 branch and surfaced the raw English RAISE text.
   if (message.includes("Product") && message.includes("not found")) {
-    return { error: "Produto não encontrado", status: 404 };
+    throw new NotFoundError("Produto não encontrado");
   }
 
   if (message.includes("Variant") && message.includes("not found")) {
-    return { error: "Variante não encontrada", status: 404 };
+    throw new NotFoundError("Variante não encontrada");
   }
 
-  return null;
+  if (dbError?.code === "P0001") {
+    throw new ValidationError(message || "Pedido inválido");
+  }
 }
