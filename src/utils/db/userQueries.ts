@@ -390,10 +390,18 @@ export const getAllAdminBodies = async (): Promise<Array<{ name: string; active:
 };
 
 // Valid department roles management
+/**
+ * The access levels `neiist.user_access_enum` actually has.
+ *
+ * `shop_manager` used to be missing from this union, so the admin UI could not create a role
+ * granting it even though the enum, `UserRole` and every shop guard support it.
+ */
+export type DepartmentRoleAccess = "admin" | "coordinator" | "shop_manager" | "member";
+
 export const addValidDepartmentRole = async (
   departmentName: string,
   roleName: string,
-  access: "admin" | "coordinator" | "member" = "member"
+  access: DepartmentRoleAccess = "member"
 ): Promise<boolean> => {
   try {
     await db_query("SELECT neiist.add_valid_department_role($1, $2, $3)", [
@@ -408,20 +416,47 @@ export const addValidDepartmentRole = async (
   }
 };
 
+/**
+ * Errors propagate on purpose — this is one of the few functions here that does not swallow.
+ *
+ * `neiist.remove_valid_department_role` refuses to remove the last admin-level role (NEI07,
+ * #158). Returning `false` on that would turn a precise, actionable Portuguese message into a
+ * generic 500, which is exactly the failure the guard exists to make visible.
+ */
 export const removeValidDepartmentRole = async (
   departmentName: string,
   roleName: string
 ): Promise<boolean> => {
-  try {
-    await db_query("SELECT neiist.remove_valid_department_role($1, $2)", [
-      departmentName,
-      roleName,
-    ]);
-    return true;
-  } catch (error) {
-    console.error("Error removing valid department role:", error);
-    return false;
-  }
+  await db_query("SELECT neiist.remove_valid_department_role($1, $2)", [departmentName, roleName]);
+  return true;
+};
+
+/** Change which access level a department role grants (#158). Errors propagate — see above. */
+export const updateValidDepartmentRole = async (
+  departmentName: string,
+  roleName: string,
+  access: DepartmentRoleAccess
+): Promise<boolean> => {
+  await db_query("SELECT neiist.update_valid_department_role($1, $2, $3)", [
+    departmentName,
+    roleName,
+    access,
+  ]);
+  return true;
+};
+
+/** How many people currently hold this role, so the UI can show the blast radius of a change. */
+export const countDepartmentRoleMembers = async (
+  departmentName: string,
+  roleName: string
+): Promise<number> => {
+  const {
+    rows: [row],
+  } = await db_query<{ count: number }>(
+    "SELECT neiist.count_department_role_members($1, $2) AS count",
+    [departmentName, roleName]
+  );
+  return Number(row?.count ?? 0);
 };
 
 export const getAllValidDepartmentRoles = async (): Promise<

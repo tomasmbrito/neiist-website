@@ -118,3 +118,55 @@ export function can(userRoles: readonly UserRole[] | undefined, permission: Perm
 export function rolesFor(permission: Permission): readonly UserRole[] {
   return PERMISSION_ROLES[permission];
 }
+
+/**
+ * Portuguese labels for the permission matrix screen (#157).
+ *
+ * The matrix is for the núcleo, not for developers, so a coordinator can read what their access
+ * level actually allows without asking someone to grep. Typed as a total record, so adding a
+ * permission without labelling it fails `yarn type:check` rather than rendering a bare key.
+ */
+export const PERMISSION_LABELS: Record<Permission, string> = {
+  "org.units.manage": "Gerir órgãos sociais, departamentos e equipas",
+  "members.manage": "Gerir membros e as suas participações",
+  "members.roles.manage": "Gerir cargos e o nível de acesso que concedem",
+  "members.photos.manage": "Gerir fotografias dos membros",
+  "teams.manage": "Gerir equipas",
+  "users.manage": "Administrar utilizadores",
+  "users.directory.read": "Consultar o diretório de utilizadores",
+  "users.directory.write": "Criar utilizadores no diretório",
+  "users.profile.update": "Editar o perfil de um utilizador",
+  "activities.manage": "Gerir atividades e o calendário",
+  "shop.products.manage": "Gerir produtos da loja",
+  "shop.categories.manage": "Gerir categorias da loja",
+  "shop.discounts.manage": "Gerir códigos de desconto",
+  "shop.uploads.write": "Carregar imagens de produtos",
+  "shop.orders.viewAll": "Ver todas as encomendas",
+  "shop.orders.create": "Criar encomendas",
+  "shop.orders.setStatus": "Alterar o estado de encomendas",
+  "shop.orders.recordPayment": "Registar pagamentos",
+  "shop.pos.use": "Usar o ponto de venda",
+  "shop.readers.manage": "Gerir leitores de cartões SumUp",
+};
+
+/** Portuguese labels for the access levels themselves. */
+export const ROLE_LABELS: Record<UserRole, string> = {
+  [UserRole._ADMIN]: "Administrador",
+  [UserRole._COORDINATOR]: "Coordenador",
+  [UserRole._SHOP_MANAGER]: "Gestor de Loja",
+  [UserRole._MEMBER]: "Membro",
+  [UserRole._GUEST]: "Convidado",
+};
+
+/**
+ * Permissions grouped by their domain prefix, in a stable order, for rendering.
+ * Derived from the table so a new permission appears with no further edit.
+ */
+export function permissionsByDomain(): Array<{ domain: string; permissions: Permission[] }> {
+  const groups = new Map<string, Permission[]>();
+  for (const permission of Object.keys(PERMISSION_ROLES) as Permission[]) {
+    const domain = permission.split(".")[0];
+    groups.set(domain, [...(groups.get(domain) ?? []), permission]);
+  }
+  return [...groups.entries()].map(([domain, permissions]) => ({ domain, permissions }));
+}
