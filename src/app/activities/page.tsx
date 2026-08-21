@@ -3,6 +3,9 @@ import { getActivitiesEventsFromDb } from "@/utils/db/eventQueries";
 import { syncNotionEventsToDb, isNotionConfigured } from "@/utils/eventsUtils";
 import { UserRole } from "@/types/user";
 import { serverCheckRoles } from "@/utils/permissionUtils";
+import { can } from "@/lib/auth/permissions";
+import { getInternalNotionEvents } from "@/utils/notion/internalEvents";
+import InternalEvents from "@/components/activities/InternalEvents";
 import styles from "@/styles/pages/Activities.module.css";
 
 async function getEventsAndSubscriptions() {
@@ -37,7 +40,7 @@ async function getEventsAndSubscriptions() {
     ? events.filter((event) => event.subscribers?.includes(istid)).map((event) => event.id)
     : [];
 
-  return { events, signedUpEventIds, istid, isAdmin };
+  return { events, signedUpEventIds, istid, isAdmin, roles: perm.roles ?? [] };
 }
 
 export default async function ActivitiesPage({
@@ -46,8 +49,15 @@ export default async function ActivitiesPage({
   searchParams?: Promise<{ eventId?: string }>;
 }) {
   const params = searchParams ? await searchParams : {};
-  const { events, signedUpEventIds } = await getEventsAndSubscriptions();
+  const { events, signedUpEventIds, roles } = await getEventsAndSubscriptions();
   const urlSelectdEventID = params.eventId || undefined;
+
+  // Authorized BEFORE fetching, not filtered after. An internal meeting must never enter the
+  // response payload for a caller who may not see it — filtering in the component would put it
+  // there and rely on the client not to render it (#127).
+  const internalEvents = can(roles, "activities.viewInternal")
+    ? await getInternalNotionEvents()
+    : [];
 
   return (
     <div className={styles.container}>
@@ -62,6 +72,7 @@ export default async function ActivitiesPage({
         signedUpEventIds={signedUpEventIds}
         initialSelectedEventId={urlSelectdEventID}
       />
+      {internalEvents.length > 0 && <InternalEvents events={internalEvents} />}
     </div>
   );
 }

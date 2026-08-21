@@ -61,6 +61,12 @@ function buildICalDatesFromNotion(event: NotionEvent) {
 
 export function parseNotionPageToEvent(page: NotionPage): NotionEvent {
   const props = page.properties;
+  if (props.Public?.checkbox === undefined) {
+    console.warn(
+      `[notion] event ${page.id} has no "Public" property; treating it as internal. ` +
+        "If this is every event, the property has probably been renamed in Notion."
+    );
+  }
   return {
     id: page.id,
     title: props.Name?.title?.[0]?.plain_text || "Untitled Event",
@@ -74,7 +80,15 @@ export function parseNotionPageToEvent(page: NotionPage): NotionEvent {
       props.Attendees?.people?.map((p: NotionPerson) => p.person?.email ?? "").filter(Boolean) ??
       [],
     lastEditedTime: page.last_edited_time,
-    public: props.Public?.checkbox ?? true,
+    // Fail CLOSED. A Notion checkbox is present on every page once the property exists, so this
+    // default is only reached when the `Public` property itself is missing — i.e. if someone
+    // renames or deletes it in Notion. The previous `?? true` meant that at that moment every
+    // event in the workspace silently became public, internal meetings included (#127).
+    //
+    // Treating an absent property as "not public" turns that into a visible, recoverable
+    // outcome — the public calendar empties and the warning below says why — instead of a
+    // silent disclosure.
+    public: props.Public?.checkbox ?? false,
   };
 }
 

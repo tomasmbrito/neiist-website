@@ -57,6 +57,19 @@ export const PERMISSION_ROLES = {
 
   // ---- Activities ----------------------------------------------------------------------------
   "activities.manage": [UserRole._ADMIN],
+  /**
+   * See internal (non-public) events and meetings (#127).
+   *
+   * _GUEST is absent on purpose: this is the boundary that keeps an internal meeting out of an
+   * anonymous response. External Google-account users resolve to _GUEST, so they are excluded
+   * too, which is correct — they are not members of the núcleo.
+   */
+  "activities.viewInternal": [
+    UserRole._ADMIN,
+    UserRole._COORDINATOR,
+    UserRole._SHOP_MANAGER,
+    UserRole._MEMBER,
+  ],
 
   // ---- Shop: catalogue -----------------------------------------------------------------------
   "shop.products.manage": [UserRole._ADMIN],
@@ -137,6 +150,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   "users.directory.write": "Criar utilizadores no diretório",
   "users.profile.update": "Editar o perfil de um utilizador",
   "activities.manage": "Gerir atividades e o calendário",
+  "activities.viewInternal": "Ver eventos e reuniões internos",
   "shop.products.manage": "Gerir produtos da loja",
   "shop.categories.manage": "Gerir categorias da loja",
   "shop.discounts.manage": "Gerir códigos de desconto",

@@ -42,6 +42,14 @@ const EXPECTED_POLICY: Record<Permission, UserRole[]> = {
   "users.directory.write": [UserRole._ADMIN, UserRole._COORDINATOR, UserRole._SHOP_MANAGER],
   "users.profile.update": [UserRole._ADMIN, UserRole._COORDINATOR, UserRole._MEMBER],
   "activities.manage": [UserRole._ADMIN],
+  // Added in #127. _GUEST absent: this is what keeps internal meetings out of an anonymous
+  // response, so it is written down here on purpose rather than inherited.
+  "activities.viewInternal": [
+    UserRole._ADMIN,
+    UserRole._COORDINATOR,
+    UserRole._SHOP_MANAGER,
+    UserRole._MEMBER,
+  ],
   "shop.products.manage": [UserRole._ADMIN],
   "shop.categories.manage": [UserRole._ADMIN],
   "shop.discounts.manage": [UserRole._ADMIN],
