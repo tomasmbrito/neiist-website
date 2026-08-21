@@ -2197,7 +2197,10 @@ BEGIN
     END IF;
 
     IF NOT p_stock_override THEN
-      IF v_stock_type = 'on_demand' AND v_order_deadline IS NOT NULL AND NOW() > v_order_deadline THEN
+      -- Every stock type, not just on_demand (#174). Stock is replenishable; the deadline is a
+        -- separate promise about when the production order is placed, and it is shown to
+        -- students per product. p_stock_override still bypasses it, for POS sales.
+        IF v_order_deadline IS NOT NULL AND NOW() > v_order_deadline THEN
         RAISE EXCEPTION 'Order deadline has passed for product % (%)', v_pid, v_pname;
       END IF;
     END IF;
@@ -2692,7 +2695,10 @@ BEGIN
       END IF;
 
       IF NOT p_stock_override THEN
-        IF v_stock_type = 'on_demand' AND v_order_deadline IS NOT NULL AND NOW() > v_order_deadline THEN
+        -- Every stock type, not just on_demand (#174). Stock is replenishable; the deadline is a
+        -- separate promise about when the production order is placed, and it is shown to
+        -- students per product. p_stock_override still bypasses it, for POS sales.
+        IF v_order_deadline IS NOT NULL AND NOW() > v_order_deadline THEN
           RAISE EXCEPTION 'Order deadline has passed for product % (%)', v_pid, v_pname;
         END IF;
       END IF;
