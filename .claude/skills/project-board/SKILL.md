@@ -35,9 +35,13 @@ the command with `unset GITHUB_TOKEN &&`.
 
 ## Recipes
 
+> **Use `--limit 300`, not 100.** The board passed 100 items in August 2026, and `item-list`
+> silently truncates rather than warning — the newest issues are exactly the ones that vanish,
+> so `item-edit` then reports "NOT ON BOARD" for an item that is on it.
+
 ### Read the whole board
 ```bash
-gh project item-list 1 --owner tomasmbrito --limit 100 --format json \
+gh project item-list 1 --owner tomasmbrito --limit 300 --format json \
   | jq -r '.items[] | "\(.status // "-")\t#\(.content.number // "-")\t\(.title)"'
 ```
 
@@ -54,7 +58,7 @@ them into `--body` is how the existing issues #48–#52 ended up with literal `\
 ### Set Status / Priority / Size
 `item-edit` needs the **item ID** (`PVTI_…`), not the issue number:
 ```bash
-ITEM=$(gh project item-list 1 --owner tomasmbrito --limit 100 --format json \
+ITEM=$(gh project item-list 1 --owner tomasmbrito --limit 300 --format json \
   | jq -r '.items[] | select(.content.number==42) | .id')
 
 gh project item-edit --project-id PVT_kwHOBzxffs4BeUnd --id "$ITEM" \

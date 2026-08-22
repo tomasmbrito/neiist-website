@@ -256,8 +256,10 @@ enforcement hooks in `.claude/hooks/`.
 
 ## 7. Project memory
 
-**Start here for current state: [`docs/ai-workflow/project-status.md`](docs/ai-workflow/project-status.md)**
-— what has shipped, what is open, which decisions are waiting on a human, and what to do next.
+**Start here for current state: [`docs/ai-workflow/HANDOFF.md`](docs/ai-workflow/HANDOFF.md)**
+— the project, the workspace access requirements, what has shipped, what is open, which decisions
+are waiting on a human, and what to do next. `project-status.md` is the older, longer companion
+and is kept for the history it records.
 
 Record things that future sessions cannot re-derive from the code:
 
@@ -285,6 +287,13 @@ Things you should know before proposing work, so you don't "discover" them as ne
   pages needed `force-dynamic`; fixed in #111 by re-throwing anything with a string `digest`.
   **`src/app/layout.tsx:40-49` still has the identical defect** (#153). Treat any blanket `catch`
   on a Server Component path as suspect.
+- **The members-only workspace is live as of #183** (`/workspace`, PR #188). Membership is
+  `isNeiistMember(scopes)` — **`scopes.length > 0`, not "is logged in"** — and per-team access is
+  `canForTeam`, a *deliberately separate* type from the global `can()` so a team question cannot
+  be answered globally. Board access is **data** in `valid_department_roles`, editable, never a
+  hardcoded role list (#185). Two Direção roles are `member` **on purpose**: Diretor da SINFO
+  (secção autónoma) and Tesoureiro. Do not "fix" them. But **#189 is open**: the Dev-Team
+  Coordenador is seeded organisation-wide `admin`, which defeats the team scoping.
 - **Transactions exist as of #80, but almost nothing uses them yet.** `withTransaction(fn)` is in
   `src/utils/db/dbClient.ts`; the callback receives a `Querier` that **must** be threaded into
   every query function that should take part. Two operations are converted (product edit, discount
