@@ -140,8 +140,8 @@ DB-backed suites need Postgres; pure-logic suites do not.
 
 ## 4. State right now
 
-**Branch `feat/neiist-workspace` → PR #188, open.** Stacked on **PR #186** (#180/#181) — merge
-#186 first.
+**#186 and #188 are merged.** `/workspace` is live on `main`. **PR #190** (the roles edit control)
+is open and independent.
 
 Open and ready:
 
@@ -150,7 +150,7 @@ Open and ready:
 | **#189** | **Dev-Team Coordenador is seeded organisation-wide `admin`** | **needs your decision** — see below |
 | #184 | Temporary, delegable team access grants | requirement 6; not started |
 | #187 | Profile photo: silent discard for members | found in passing |
-| #158 | Roles UI — *editing* an access level | API and guard exist; **UI half missing** |
+| #158 | Roles UI — *editing* an access level | **built, PR #190** — the mechanism #189 needs |
 | #152 | Measure production schema drift | do before migrations touch order functions |
 | #141 | Rotate exposed shared credential | P0-ish, needs a human |
 
@@ -176,10 +176,11 @@ fresh database reintroduces it.
 
 ## 5. Suggested next steps, in order
 
-1. **Merge #186, then #188.** #188 is stacked and will not apply first.
-2. **Decide #189** and apply it through the roles UI/API (which also proves that path works).
-3. **Build the UI half of #158.** Until it exists, "the President can set permissions across the
-   board" needs a developer — which is the whole point of the #185 decision, unrealised.
+1. ~~Merge #186, then #188.~~ **Done.**
+2. **Decide #189** and apply it through the roles screen — which #190 now makes possible, and
+   which also proves that path works end to end.
+3. ~~Build the UI half of #158.~~ **Done — PR #190.** Access levels are now editable in place,
+   with the impact count shown before the change and the last-admin refusal surfaced verbatim.
 4. **#184**, temporary delegable Dev-Team access. Requirement 6, and the last access-model piece.
 5. Then workspace **content** — #129 (events/meetings) is the natural first vertical slice, since
    #127 already reads Notion events read-only.

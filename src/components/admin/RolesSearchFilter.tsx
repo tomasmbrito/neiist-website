@@ -5,13 +5,33 @@ import ConfirmDialog from "@/components/layout/ConfirmDialog";
 import Fuse from "fuse.js";
 import styles from "@/styles/components/admin/RolesSearchFilter.module.css";
 import { toast } from "sonner";
+import { ROLE_LABELS } from "@/lib/auth/permissions";
+import { UserRole } from "@/types/user";
 
 interface Role {
   role_name: string;
   access: string;
   active: boolean;
   department?: string;
+  /** How many people currently hold this role. Returned by GET so a change can state its impact. */
+  memberCount?: number;
 }
+
+/**
+ * The access levels a role may grant, in increasing order of power.
+ *
+ * Derived from `ROLE_LABELS` rather than hardcoded here, so the catalogue in
+ * `src/lib/auth/permissions.ts` stays the one place that names an access level. Previously this
+ * screen carried its own Portuguese strings and called `guest` "Normal" while the rest of the
+ * site called it "Convidado".
+ */
+const ACCESS_OPTIONS: UserRole[] = [
+  UserRole._GUEST,
+  UserRole._MEMBER,
+  UserRole._SHOP_MANAGER,
+  UserRole._COORDINATOR,
+  UserRole._ADMIN,
+];
 
 interface Department {
   name: string;
@@ -35,10 +55,21 @@ export default function RolesSearchFilter({
   const [addDepartment, setAddDepartment] = useState<string>("");
   const [newRole, setNewRole] = useState({ roleName: "", access: "member" });
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [pendingRemove, setPendingRemove] = useState<{
-    roleName: string;
-    departmentName?: string;
-  } | null>(null);
+  // One dialog, two actions. Both are consequential — removing a role ends every current
+  // membership of it, and changing its access changes what its holders can do immediately — so
+  // neither should happen on a single unconfirmed click.
+  const [pendingAction, setPendingAction] = useState<
+    | { kind: "remove"; roleName: string; departmentName?: string }
+    | {
+        kind: "access";
+        roleName: string;
+        departmentName?: string;
+        access: string;
+        previousAccess: string;
+        memberCount: number;
+      }
+    | null
+  >(null);
 
   const fetchRoles = useCallback(async (department: string) => {
     if (!department) return;
@@ -118,42 +149,92 @@ export default function RolesSearchFilter({
   };
 
   const handleRemoveClick = (roleName: string, departmentName?: string) => {
-    setPendingRemove({ roleName, departmentName });
+    setPendingAction({ kind: "remove", roleName, departmentName });
     setConfirmOpen(true);
   };
 
-  const confirmRemove = async () => {
-    setConfirmOpen(false);
-    if (!pendingRemove) return;
-    const dept = selectedDepartment === "" ? pendingRemove.departmentName : selectedDepartment;
-    if (!dept) return;
-    try {
-      const response = await fetch("/api/admin/roles", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ departmentName: dept, roleName: pendingRemove.roleName }),
-      });
-      if (response.ok) {
-        if (selectedDepartment === "") {
-          await fetchAllRoles();
-        } else {
-          await fetchRoles(dept);
-        }
-        toast.success("Operação concluída com sucesso.", { closeButton: true });
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Erro ao remover cargo", { closeButton: true });
-      }
-    } catch {
-      toast.error("Erro ao remover cargo", { closeButton: true });
-    } finally {
-      setPendingRemove(null);
+  const handleAccessChange = (role: Role, access: string) => {
+    if (access === role.access) return;
+    setPendingAction({
+      kind: "access",
+      roleName: role.role_name,
+      departmentName: role.department,
+      access,
+      previousAccess: role.access,
+      memberCount: role.memberCount ?? 0,
+    });
+    setConfirmOpen(true);
+  };
+
+  const refreshRoles = async (dept: string) => {
+    if (selectedDepartment === "") {
+      await fetchAllRoles();
+    } else {
+      await fetchRoles(dept);
     }
   };
 
-  const cancelRemove = () => {
+  const confirmPending = async () => {
     setConfirmOpen(false);
-    setPendingRemove(null);
+    if (!pendingAction) return;
+    const dept = selectedDepartment === "" ? pendingAction.departmentName : selectedDepartment;
+    if (!dept) return;
+
+    const isRemove = pendingAction.kind === "remove";
+    const failureMessage = isRemove ? "Erro ao remover cargo" : "Erro ao alterar o nível de acesso";
+
+    try {
+      const response = await fetch("/api/admin/roles", {
+        method: isRemove ? "DELETE" : "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          isRemove
+            ? { departmentName: dept, roleName: pendingAction.roleName }
+            : {
+                departmentName: dept,
+                roleName: pendingAction.roleName,
+                access: pendingAction.access,
+              }
+        ),
+      });
+      if (response.ok) {
+        await refreshRoles(dept);
+        toast.success("Operação concluída com sucesso.", { closeButton: true });
+      } else {
+        // The API refuses to remove the last admin-granting role (NEI07) with a Portuguese
+        // message explaining why. Surface it verbatim — a generic failure would leave the person
+        // who just locked themselves out with no idea what happened.
+        const error = await response.json();
+        toast.error(error.error || failureMessage, { closeButton: true });
+      }
+    } catch {
+      toast.error(failureMessage, { closeButton: true });
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const cancelPending = () => {
+    setConfirmOpen(false);
+    setPendingAction(null);
+  };
+
+  const confirmMessage = (): string => {
+    if (!pendingAction) return "";
+    const dept = selectedDepartment === "" ? pendingAction.departmentName : selectedDepartment;
+    if (pendingAction.kind === "remove") {
+      return `Tem a certeza que quer remover o cargo "${pendingAction.roleName}" do departamento "${dept}"?`;
+    }
+    const from =
+      ROLE_LABELS[pendingAction.previousAccess as UserRole] ?? pendingAction.previousAccess;
+    const to = ROLE_LABELS[pendingAction.access as UserRole] ?? pendingAction.access;
+    const impact =
+      pendingAction.memberCount === 0
+        ? "Nenhum membro tem este cargo neste momento."
+        : pendingAction.memberCount === 1
+          ? "1 membro tem este cargo e será afetado imediatamente."
+          : `${pendingAction.memberCount} membros têm este cargo e serão afetados imediatamente.`;
+    return `Alterar o nível de acesso do cargo "${pendingAction.roleName}" (${dept}) de ${from} para ${to}? ${impact}`;
   };
 
   const fuse = useMemo(
@@ -193,13 +274,9 @@ export default function RolesSearchFilter({
     <>
       <ConfirmDialog
         open={confirmOpen}
-        message={
-          pendingRemove
-            ? `Tem a certeza que quer remover o cargo "${pendingRemove.roleName}" do departamento "${selectedDepartment === "" ? pendingRemove.departmentName : selectedDepartment}"?`
-            : ""
-        }
-        onConfirm={confirmRemove}
-        onCancel={cancelRemove}
+        message={confirmMessage()}
+        onConfirm={confirmPending}
+        onCancel={cancelPending}
       />
       <section className={styles.section}>
         <div className={styles.sectionTitle}>Cargos Existentes</div>
@@ -254,13 +331,32 @@ export default function RolesSearchFilter({
                       <span className={styles.departmentName}>({role.department})</span>
                     )}
                   </div>
-                  <span
-                    className={`${styles.badge}${role.access === "admin" ? " " + styles.admin : ""}`}>
-                    {role.access}
-                  </span>
+                  {role.active ? (
+                    <select
+                      value={role.access}
+                      onChange={(inputEvent) => handleAccessChange(role, inputEvent.target.value)}
+                      className={`${styles.accessSelect}${role.access === "admin" ? " " + styles.admin : ""}`}
+                      aria-label={`Nível de acesso do cargo ${role.role_name}`}>
+                      {ACCESS_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {ROLE_LABELS[option]}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span
+                      className={`${styles.badge}${role.access === "admin" ? " " + styles.admin : ""}`}>
+                      {ROLE_LABELS[role.access as UserRole] ?? role.access}
+                    </span>
+                  )}
                   <span className={`${styles.badge}${!role.active ? " " + styles.inactive : ""}`}>
                     {role.active ? "Ativo" : "Inativo"}
                   </span>
+                  {role.active && role.memberCount !== undefined && (
+                    <span className={styles.memberCount}>
+                      {role.memberCount === 1 ? "1 membro" : `${role.memberCount} membros`}
+                    </span>
+                  )}
                 </div>
                 {role.active && (
                   <button
@@ -310,11 +406,11 @@ export default function RolesSearchFilter({
               onChange={(inputEvent) => setNewRole({ ...newRole, access: inputEvent.target.value })}
               className={styles.select}
               disabled={loading}>
-              <option value="guest">Normal</option>
-              <option value="member">Membro</option>
-              <option value="shop_manager">Gestor de Loja</option>
-              <option value="coordinator">Coordenador</option>
-              <option value="admin">Administrador</option>
+              {ACCESS_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {ROLE_LABELS[option]}
+                </option>
+              ))}
             </select>
             <button
               type="submit"
