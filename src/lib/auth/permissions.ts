@@ -184,3 +184,122 @@ export function permissionsByDomain(): Array<{ domain: string; permissions: Perm
   }
   return [...groups.entries()].map(([domain, permissions]) => ({ domain, permissions }));
 }
+
+/**
+ * Permissions that are meaningful *within a team* rather than globally (#180).
+ *
+ * Separate from `Permission` on purpose: a team-scoped question must not be answerable by the
+ * global `can()`, which would silently ignore the team and grant on "coordinator somewhere".
+ * Keeping the two types distinct makes that mistake fail to compile rather than fail quietly.
+ */
+export const TEAM_PERMISSION_ROLES = {
+  /** Add or remove people in a specific team. */
+  "team.members.manage": [UserRole._ADMIN, UserRole._COORDINATOR],
+} as const satisfies Record<string, readonly UserRole[]>;
+
+export type TeamPermission = keyof typeof TEAM_PERMISSION_ROLES;
+
+/** A team the caller belongs to, and the access level they hold there. */
+export type TeamAccess = { departmentName: string; access: UserRole };
+
+/**
+ * Organisation-wide access levels: holding one grants a team permission in EVERY team.
+ *
+ * `_ADMIN` only. `_COORDINATOR` is deliberately excluded — being a coordinator of one team is
+ * exactly the claim that must not carry into another, which is the whole of #180.
+ */
+const ORGANISATION_WIDE: readonly UserRole[] = [UserRole._ADMIN];
+
+/**
+ * May this caller exercise `permission` **in this specific team**?
+ *
+ * Answers what three hand-rolled checks were approximating. The rule is:
+ *
+ *   - an organisation-wide role (admin) qualifies anywhere;
+ *   - otherwise the caller must hold a qualifying access level **in that team**, taken from
+ *     their membership there rather than from the flattened union across all teams.
+ *
+ * This can never be wider than the global `can()` for the same underlying roles: both operands
+ * are drawn from roles the caller actually holds, and the team branch is strictly narrower
+ * because it filters by department first.
+ */
+export function canForTeam(
+  globalRoles: readonly UserRole[] | undefined,
+  teamScopes: readonly TeamAccess[] | undefined,
+  permission: TeamPermission,
+  departmentName: string
+): boolean {
+  const granted = TEAM_PERMISSION_ROLES[permission] as readonly UserRole[];
+
+  if ((globalRoles ?? []).some((role) => ORGANISATION_WIDE.includes(role))) return true;
+
+  // EXACT comparison, deliberately.
+  //
+  // An earlier version trimmed and lower-cased both sides "defensively". That was a widening:
+  // `neiist.departments.name` is a case-sensitive VARCHAR(30) primary key, so "Fotografia" and
+  // "fotografia" can both exist — verified by inserting both. A coordinator of one would then
+  // have been authorized for the other, while the route wrote to the RAW name it was given.
+  // Authorizing on a normalised value and acting on the un-normalised one is exactly how a check
+  // and its effect come apart, which is the same class of confusion as #180.
+  //
+  // Wrong casing or stray whitespace now fails closed here, and would have failed the foreign
+  // key on the write anyway.
+  if (departmentName === "") return false;
+
+  return (teamScopes ?? []).some(
+    (scope) => scope.departmentName === departmentName && granted.includes(scope.access)
+  );
+}
+
+/**
+ * How much authority an access level carries, for comparing one against another (#180 follow-up).
+ *
+ * Roles are otherwise a flat set — `hasRequiredRole` is an intersection test and this does not
+ * change that. This ordering exists for exactly one question: "is the role being handed out
+ * stronger than the one doing the handing?"
+ *
+ * `shop_manager` sits level with `member` on purpose: it is a different capability, not a higher
+ * rank, and treating it as senior would let a shop manager assign membership roles.
+ */
+const ACCESS_RANK: Record<UserRole, number> = {
+  [UserRole._GUEST]: 0,
+  [UserRole._MEMBER]: 1,
+  [UserRole._SHOP_MANAGER]: 1,
+  [UserRole._COORDINATOR]: 2,
+  [UserRole._ADMIN]: 3,
+};
+
+export function accessRank(role: UserRole): number {
+  return ACCESS_RANK[role] ?? 0;
+}
+
+/**
+ * May this caller hand out a role carrying `targetAccess` in `departmentName`?
+ *
+ * Closes a live privilege escalation. `neiist.add_team_member` checks only that the user exists
+ * and that the (department, role) pair is valid, so a coordinator of a department containing an
+ * admin-level role could assign it — to themselves. Verified against the seeded data: Direção
+ * holds both `Diretora de Atividades (Alameda)` (coordinator) and `Presidente` (admin), so a
+ * Diretora de Atividades POSTed herself `Presidente` and came back a global administrator.
+ *
+ * The rule: you may never grant authority you do not hold. Organisation-wide access grants
+ * anything; otherwise the caller's rank *in that department* must be at least the target's.
+ */
+export function mayAssignAccess(
+  globalRoles: readonly UserRole[] | undefined,
+  teamScopes: readonly TeamAccess[] | undefined,
+  departmentName: string,
+  targetAccess: UserRole
+): boolean {
+  if ((globalRoles ?? []).some((role) => ORGANISATION_WIDE.includes(role))) return true;
+
+  const callerRank = (teamScopes ?? [])
+    .filter((scope) => scope.departmentName === departmentName)
+    .reduce((highest, scope) => Math.max(highest, accessRank(scope.access)), 0);
+
+  // Two conditions, not one. "At least coordinator" is what makes this safe to call on its own:
+  // rank comparison alone would let a member assign a member-level role, which is unreachable
+  // today only because the caller must already have passed `team.members.manage`. A security
+  // helper should not depend on its caller having checked something first.
+  return callerRank >= accessRank(UserRole._COORDINATOR) && callerRank >= accessRank(targetAccess);
+}
