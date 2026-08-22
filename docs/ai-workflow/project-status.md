@@ -1,7 +1,10 @@
 # Project status — 2026-08-12
 
-**Read this after `CLAUDE.md`. It is the handoff document: enough context to pick the work up
-cold, without re-deriving anything.**
+> **Start with [`HANDOFF.md`](HANDOFF.md) instead (written 2026-08-22).** It supersedes this file
+> for *current* state, the workspace access requirements, and what to do next. This file is kept
+> for the history it records — how the fork got here, and why — which HANDOFF.md does not repeat.
+
+**Read this after `CLAUDE.md`.** Background and history: how the refactoring got to where it is.
 
 ---
 
