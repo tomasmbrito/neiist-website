@@ -4,6 +4,15 @@ import { getUser, updateUser, updateUserPhoto } from "@/utils/db/userQueries";
 import fs from "fs/promises";
 import path from "path";
 import { serverCheckPermission } from "@/utils/permissionUtils";
+import { canForTeam } from "@/lib/auth/permissions";
+import { getUserTeamScopes } from "@/utils/db/userQueries";
+
+/**
+ * The team whose coordinators may edit other members' profiles — they maintain member photos.
+ * Named rather than matched as a substring, so "Fotografia de Eventos" would not qualify by
+ * accident.
+ */
+const PHOTO_TEAM = "Fotografia";
 
 export async function PUT(request: Request, { params }: { params: { userId: string } }) {
   const userRoles = await serverCheckPermission("users.profile.update");
@@ -20,15 +29,19 @@ export async function PUT(request: Request, { params }: { params: { userId: stri
       return NextResponse.json({ error: "Current user not found" }, { status: 404 });
     }
 
-    const currentUserRoles = userRoles.roles || [UserRole._GUEST];
-    const isAdmin = currentUserRoles.includes(UserRole._ADMIN);
-    const isPhotoCoord =
-      currentUserRoles.includes(UserRole._COORDINATOR) &&
-      currentUser.teams?.some((team) => team.toLowerCase().includes("fotografia"));
-
     const isSelfUpdate = currentUser.istid === targetUserId;
+    const isAdmin = (userRoles.roles ?? []).includes(UserRole._ADMIN);
 
-    if (!isSelfUpdate && !(isAdmin || isPhotoCoord)) {
+    // Editing someone else's profile is a Fotografia-team power — they maintain member photos —
+    // so it is a team-scoped question. It used to be `roles.includes(_COORDINATOR) &&
+    // teams.some(t => t.toLowerCase().includes("fotografia"))`: a coordinator of ANY team who
+    // merely belonged to Fotografia passed, and the substring match would also accept a team
+    // that just contained the word (#180). canForTeam resolves the access level held in
+    // Fotografia itself, and still returns true for an admin.
+    const scopes = await getUserTeamScopes(currentUser.istid);
+    const mayManagePhotos = canForTeam(userRoles.roles, scopes, "team.members.manage", PHOTO_TEAM);
+
+    if (!isSelfUpdate && !mayManagePhotos) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
@@ -126,7 +139,15 @@ export async function PUT(request: Request, { params }: { params: { userId: stri
       }
     }
 
-    if (updateData.photo !== undefined && (isAdmin || isPhotoCoord)) {
+    // `mayManagePhotos` alone, matching the previous `(isAdmin || isPhotoCoord)` EXACTLY.
+    //
+    // An earlier draft added `isSelfUpdate ||` here. That was a widening smuggled into a
+    // security fix: a plain member's own photo used to be silently discarded at this line, and
+    // allowing it would have turned an unvalidated, uncapped base64 write to disk into something
+    // every logged-in member could reach. Whether self-service photos SHOULD work is a real
+    // question, but it is a feature with its own hardening requirements, not a side effect of
+    // #180. Filed separately.
+    if (updateData.photo !== undefined && mayManagePhotos) {
       if (updateData.photo && updateData.photo !== existingUser.photo) {
         try {
           const buffer = Buffer.from(updateData.photo, "base64");

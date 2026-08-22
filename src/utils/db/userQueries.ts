@@ -1,5 +1,5 @@
 import { Membership, DbMembership, mapDbMembershipToMembership } from "@/types/memberships";
-import { User, mapRoleToUserRole, mapDbUserToUser } from "@/types/user";
+import { User, UserRole, mapRoleToUserRole, mapDbUserToUser } from "@/types/user";
 import { db_query } from "@/utils/db/dbClient";
 
 export const createUser = async (user: Partial<User>): Promise<User | null> => {
@@ -556,6 +556,57 @@ export const setDepartmentRoleOrder = async (
     console.error("Error setting department role order:", error);
     return false;
   }
+};
+
+/** One team the user belongs to, and the access level they hold *there* (#180). */
+export type TeamScope = {
+  departmentName: string;
+  departmentType: string;
+  access: UserRole;
+};
+
+/**
+ * Which access level this user holds in each team, right now.
+ *
+ * `getUser().roles` flattens access across every department, so it cannot answer "is this person
+ * a coordinator OF Fotografia" — only "is this person a coordinator somewhere". Three call sites
+ * needed the former and approximated it; two got it wrong, which is #180.
+ *
+ * Returns current memberships only, matching `get_user`'s liveness rule.
+ */
+export const getUserTeamScopes = async (istid: string): Promise<TeamScope[]> => {
+  const { rows } = await db_query<{
+    department_name: string;
+    department_type: string;
+    access: string;
+  }>("SELECT * FROM neiist.get_user_team_scopes($1::VARCHAR(50))", [istid]);
+
+  return rows.map((row) => ({
+    departmentName: row.department_name,
+    departmentType: row.department_type,
+    access: mapRoleToUserRole(row.access),
+  }));
+};
+
+/**
+ * The access level a given role grants inside a given department, or `null` if the pair is not a
+ * valid active role there.
+ *
+ * Used to compare what is being handed out against what the assigner holds — see
+ * `mayAssignAccess`. Returning `null` for an unknown pair means the caller fails closed rather
+ * than defaulting to something permissive.
+ */
+export const getDepartmentRoleAccess = async (
+  departmentName: string,
+  roleName: string
+): Promise<UserRole | null> => {
+  const {
+    rows: [row],
+  } = await db_query<{ access: string | null }>(
+    "SELECT neiist.get_department_role_access($1, $2)::TEXT AS access",
+    [departmentName, roleName]
+  );
+  return row?.access ? mapRoleToUserRole(row.access) : null;
 };
 
 /**

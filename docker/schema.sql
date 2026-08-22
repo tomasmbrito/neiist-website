@@ -126,7 +126,9 @@ CREATE TABLE neiist.membership (
   to_date DATE DEFAULT NULL,
   FOREIGN KEY (department_name, role_name)
     REFERENCES neiist.valid_department_roles(department_name, role_name),
-  CONSTRAINT valid_member_dates CHECK (to_date IS NULL OR to_date > from_date),
+  -- >= rather than >, so a membership added and removed the same day is a valid record of a
+  -- correction (#181). The invariant that matters — an end never precedes a start — is kept.
+  CONSTRAINT valid_member_dates CHECK (to_date IS NULL OR to_date >= from_date),
   PRIMARY KEY (user_istid, department_name, role_name)
 );
 
@@ -3399,6 +3401,57 @@ ALTER TABLE neiist.order_items DROP CONSTRAINT IF EXISTS order_items_order_id_fk
 ALTER TABLE neiist.order_items
   ADD CONSTRAINT order_items_order_id_fkey
   FOREIGN KEY (order_id) REFERENCES neiist.orders(id) ON DELETE RESTRICT;
+
+-- Per-team access resolution (#180); see migration 008.
+CREATE OR REPLACE FUNCTION neiist.get_user_team_scopes(u_istid VARCHAR(50))
+RETURNS TABLE (
+  department_name VARCHAR(30),
+  department_type VARCHAR(20),
+  access          neiist.user_access_enum
+) AS $$
+  -- Current memberships only: to_date IS NULL, or still in the future. This is the same
+  -- liveness rule get_user applies, and idx_membership_active indexes exactly it.
+  --
+  -- DISTINCT because a person can hold several roles in one department that map to the same
+  -- access level; the caller wants the set of levels they have there, not a row per role.
+  SELECT DISTINCT
+    m.department_name,
+    d.department_type,
+    v.access
+  FROM neiist.membership m
+  JOIN neiist.departments d ON d.name = m.department_name
+  JOIN neiist.valid_department_roles v
+    ON v.department_name = m.department_name
+   AND v.role_name = m.role_name
+  WHERE m.user_istid = u_istid
+    AND (m.to_date IS NULL OR m.to_date > CURRENT_DATE)
+    AND d.active
+    AND v.active;
+$$ LANGUAGE sql STABLE SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION neiist.get_user_team_scopes(VARCHAR(50)) TO neiist_app_user;
+
+-- Access level a role grants inside a department, for comparing what is being handed out against
+-- what the assigner holds (see mayAssignAccess).
+--
+-- SECURITY DEFINER because neiist_app_user has no table privileges by design
+-- (schema.sql:11-16) — a direct SELECT on valid_department_roles fails with aclcheck_error.
+-- Learned the same way as count_department_role_members in 004.
+CREATE OR REPLACE FUNCTION neiist.get_department_role_access(
+  u_department_name VARCHAR(30),
+  u_role_name VARCHAR(40)
+) RETURNS neiist.user_access_enum
+LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT v.access
+  FROM neiist.valid_department_roles v
+  WHERE v.department_name = u_department_name
+    AND v.role_name = u_role_name
+    AND v.active
+  LIMIT 1;
+$$;
+
+GRANT EXECUTE ON FUNCTION
+  neiist.get_department_role_access(VARCHAR(30), VARCHAR(40)) TO neiist_app_user;
 
 -- Account lookup for the Google login path (#124); see migration 007.
 CREATE OR REPLACE FUNCTION neiist.find_user_by_any_email(u_email TEXT)

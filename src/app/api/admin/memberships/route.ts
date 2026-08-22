@@ -1,35 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
-import { addTeamMember, removeTeamMember, getAllMemberships } from "@/utils/db/userQueries";
-import { UserRole } from "@/types/user";
+import {
+  addTeamMember,
+  removeTeamMember,
+  getAllMemberships,
+  getUserTeamScopes,
+  getDepartmentRoleAccess,
+} from "@/utils/db/userQueries";
+import { canForTeam, mayAssignAccess } from "@/lib/auth/permissions";
 import { serverCheckPermission } from "@/utils/permissionUtils";
 import type { Membership } from "@/types/memberships";
 import { handleApiError } from "@/lib/errors/apiErrorHandler";
 import { ValidationError } from "@/lib/errors";
 
+/**
+ * Authorize a membership change **for one team** (#180).
+ *
+ * The previous version asked "is this caller a coordinator *somewhere*, and a member of this
+ * team?" — because `roles` is the union of access levels across every team the caller belongs
+ * to. A plain Membro of Fotografia who coordinated Divulgação therefore passed for Fotografia,
+ * and could add or remove its members. Reproduced against a running app: HTTP 200 and a row.
+ *
+ * `canForTeam` resolves the access level held in *that* department instead of approximating it.
+ *
+ * `departmentName === ""` means "not about one team" — the listing path — and requires the
+ * global permission alone, which is what it always did.
+ */
 async function checkMembershipPermission(departmentName: string) {
   const roles = await serverCheckPermission("members.manage");
   if (!roles.isAuthorized) return roles;
 
-  const isAdmin = roles.roles?.includes(UserRole._ADMIN);
-  const isCoordinator = roles.roles?.includes(UserRole._COORDINATOR);
-  if (isAdmin) return roles;
-
-  if (isCoordinator) {
-    const userTeams = roles.user?.teams || [];
-    if (userTeams.includes(departmentName) || departmentName === "") {
-      return roles;
-    }
-  }
-
-  return {
+  const denied = {
     isAuthorized: false,
     error: NextResponse.json(
-      {
-        error: "Insufficient permissions - Admin or team coordinator required",
-      },
+      { error: "Insufficient permissions - Admin or team coordinator required" },
       { status: 403 }
     ),
   } as const;
+
+  if (departmentName === "") return roles;
+
+  const scopes = roles.user ? await getUserTeamScopes(roles.user.istid) : [];
+  return canForTeam(roles.roles, scopes, "team.members.manage", departmentName) ? roles : denied;
 }
 
 export async function GET() {
@@ -56,6 +67,29 @@ export async function POST(request: NextRequest) {
     const permissionCheck = await checkMembershipPermission(departmentName);
     if (!permissionCheck.isAuthorized) {
       return permissionCheck.error;
+    }
+
+    // You may never hand out authority you do not hold.
+    //
+    // add_team_member checks only that the user exists and that the (department, role) pair is
+    // valid, so without this a coordinator of a department that also contains an admin-level
+    // role could assign it — to themselves. Verified against the seeded data: Direção holds both
+    // "Diretora de Atividades (Alameda)" (coordinator) and "Presidente" (admin), and a Diretora
+    // de Atividades POSTed herself Presidente and became a global administrator.
+    // Re-read rather than threaded through checkMembershipPermission's return union: POST is not
+    // the hot path, and keeping the guard's contract a plain boolean is worth one extra query.
+    const callerScopes = permissionCheck.user
+      ? await getUserTeamScopes(permissionCheck.user.istid)
+      : [];
+    const targetAccess = await getDepartmentRoleAccess(departmentName, roleName);
+    if (!targetAccess) {
+      return NextResponse.json({ error: "Cargo inválido para este departamento" }, { status: 400 });
+    }
+    if (!mayAssignAccess(permissionCheck.roles, callerScopes, departmentName, targetAccess)) {
+      return NextResponse.json(
+        { error: "Não podes atribuir um cargo com mais permissões do que as tuas." },
+        { status: 403 }
+      );
     }
 
     const success = await addTeamMember(istid, departmentName, roleName);
