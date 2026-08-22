@@ -16,6 +16,15 @@ const publicRoutes = [
   "/dinner",
 ];
 const guestRoutes = ["/profile", "/my-orders", "/shop/cart", "/shop/checkout", "/voting"];
+// The members-only workspace (#183). Listed here so an unauthenticated request is redirected to
+// login rather than falling through — the same trap that left "/shop/manage" (#97) and
+// "/shop/pos" (#117) publicly reachable, since a path claimed by no rule matches the public set.
+//
+// Middleware can only get this far: it sees global roles from the JWT, not team memberships, so
+// it CANNOT decide whether this caller belongs to any team, let alone to the team in the URL.
+// The real boundary is `requireNeiistMember` in the workspace layout and `requireTeamWorkspace`
+// on each team page. This entry is an optimisation, exactly as documented for the rest of the site.
+const workspaceRoutes = ["/workspace"];
 const memberRoutes = ["/orders"];
 const coordRoutes = ["/team-management", "/photo-management"];
 // SumUp card-reader management. It was in no list at all, so it fell through to the public
@@ -30,6 +39,7 @@ const adminRoutes = [
 ];
 const protectedRoutes = [
   guestRoutes,
+  workspaceRoutes,
   memberRoutes,
   coordRoutes,
   shopManagerRoutes,
@@ -88,6 +98,13 @@ function canAccess(path: string, roles: UserRole[]) {
     [adminRoutes, [UserRole._ADMIN]],
     [shopManagerRoutes, [UserRole._ADMIN, UserRole._SHOP_MANAGER]],
     [coordRoutes, [UserRole._ADMIN, UserRole._COORDINATOR]],
+    // Every access level except _GUEST. A logged-in non-member holds exactly [_GUEST], because
+    // roles are derived from memberships — so this rejects them one hop earlier and cheaper than
+    // the layout does. It is not sufficient on its own: it cannot tell Visuais from Dev-Team.
+    [
+      workspaceRoutes,
+      [UserRole._ADMIN, UserRole._COORDINATOR, UserRole._SHOP_MANAGER, UserRole._MEMBER],
+    ],
     [
       memberRoutes,
       [UserRole._ADMIN, UserRole._COORDINATOR, UserRole._SHOP_MANAGER, UserRole._MEMBER],

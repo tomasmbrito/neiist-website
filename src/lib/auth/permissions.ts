@@ -195,6 +195,20 @@ export function permissionsByDomain(): Array<{ domain: string; permissions: Perm
 export const TEAM_PERMISSION_ROLES = {
   /** Add or remove people in a specific team. */
   "team.members.manage": [UserRole._ADMIN, UserRole._COORDINATOR],
+  /**
+   * Open a team's workspace at all. Every access level qualifies **except `_GUEST`**, because
+   * belonging to the team is the whole requirement — a plain member of Visuais reads the Visuais
+   * workspace. `_SHOP_MANAGER` is included: it is an access level held *within* a team, not a
+   * lesser kind of membership.
+   */
+  "team.workspace.view": [
+    UserRole._ADMIN,
+    UserRole._COORDINATOR,
+    UserRole._MEMBER,
+    UserRole._SHOP_MANAGER,
+  ],
+  /** Edit a team's workspace content. Its coordinators, not its members. */
+  "team.content.edit": [UserRole._ADMIN, UserRole._COORDINATOR],
 } as const satisfies Record<string, readonly UserRole[]>;
 
 export type TeamPermission = keyof typeof TEAM_PERMISSION_ROLES;
@@ -302,4 +316,51 @@ export function mayAssignAccess(
   // today only because the caller must already have passed `team.members.manage`. A security
   // helper should not depend on its caller having checked something first.
   return callerRank >= accessRank(UserRole._COORDINATOR) && callerRank >= accessRank(targetAccess);
+}
+
+/**
+ * Is this person a NEIIST member at all?
+ *
+ * **This is not "are they logged in", and that distinction is the entire security boundary of the
+ * workspace (#183).** Three populations reach a logged-in state on this site:
+ *
+ *   - Técnico students who authenticate through Fenix but belong to no team — customers of the
+ *     shop and attendees of activities, not members of the núcleo;
+ *   - external Google accounts (synthetic `ext_` istid), who cannot hold a membership at all;
+ *   - actual members, who hold at least one current membership.
+ *
+ * Only the third may see the workspace. Membership is derived from live scopes rather than stored
+ * as a flag, so it follows automatically when someone joins or leaves a team — there is no second
+ * source of truth that can be forgotten.
+ */
+export function isNeiistMember(teamScopes: readonly TeamAccess[] | undefined): boolean {
+  return (teamScopes ?? []).length > 0;
+}
+
+/**
+ * The teams whose workspace this caller may open, sorted for a stable menu.
+ *
+ * Organisation-wide access (`_ADMIN` — the Presidente, Vice-Presidente and Vogal today) sees every
+ * team, which is what "board members should have full access" means. Everyone else sees exactly
+ * the teams they belong to, and the union is automatic for someone in several.
+ *
+ * `allTeamNames` is passed in rather than read here so this stays a pure function over the
+ * caller's claims, testable without a database.
+ */
+export function visibleWorkspaceTeams(
+  globalRoles: readonly UserRole[] | undefined,
+  teamScopes: readonly TeamAccess[] | undefined,
+  allTeamNames: readonly string[]
+): string[] {
+  if ((globalRoles ?? []).some((role) => ORGANISATION_WIDE.includes(role))) {
+    return [...allTeamNames].sort((a, b) => a.localeCompare(b, "pt"));
+  }
+
+  const mine = (teamScopes ?? [])
+    .filter((scope) =>
+      canForTeam(globalRoles, teamScopes, "team.workspace.view", scope.departmentName)
+    )
+    .map((scope) => scope.departmentName);
+
+  return [...new Set(mine)].sort((a, b) => a.localeCompare(b, "pt"));
 }

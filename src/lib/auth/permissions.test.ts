@@ -6,6 +6,9 @@ import {
   Permission,
   can,
   rolesFor,
+  isNeiistMember,
+  visibleWorkspaceTeams,
+  TeamAccess,
 } from "@/lib/auth/permissions";
 
 /**
@@ -143,5 +146,80 @@ describe("ROLE_PERMISSIONS", () => {
     for (const role of ALL_ROLES) {
       expect(ROLE_PERMISSIONS[role]).toBeDefined();
     }
+  });
+});
+
+/**
+ * #183 — the members-only workspace boundary.
+ *
+ * These tests exist because the requirement is stated as a *security* property: "the other people
+ * who login to the website but are not NEIIST members should not be able to see these pages".
+ * That makes the interesting cases the negative ones, so most of what follows asserts refusal.
+ */
+describe("isNeiistMember", () => {
+  const scope = (departmentName: string, access: UserRole): TeamAccess => ({
+    departmentName,
+    access,
+  });
+
+  it("refuses a logged-in Técnico student who belongs to no team", () => {
+    // The shop customer. Authenticated, real istid, zero memberships — and the single most
+    // likely person to try the URL, since they already have a working session.
+    expect(isNeiistMember([])).toBe(false);
+  });
+
+  it("refuses an external Google account", () => {
+    // ext_ istids cannot hold a membership at all, so they arrive here with undefined scopes.
+    expect(isNeiistMember(undefined)).toBe(false);
+  });
+
+  it("admits a member holding a single plain membership", () => {
+    expect(isNeiistMember([scope("Visuais", UserRole._MEMBER)])).toBe(true);
+  });
+});
+
+describe("visibleWorkspaceTeams", () => {
+  const ALL = ["Dev-Team", "Divulgação", "Visuais"];
+  const scope = (departmentName: string, access: UserRole): TeamAccess => ({
+    departmentName,
+    access,
+  });
+
+  it("shows a member only their own team", () => {
+    // The core requirement: "a member of the team Visuais should only have access to the pages
+    // related to the Visuais team".
+    const scopes = [scope("Visuais", UserRole._MEMBER)];
+    expect(visibleWorkspaceTeams([UserRole._MEMBER], scopes, ALL)).toEqual(["Visuais"]);
+  });
+
+  it("unions the teams of someone who belongs to several", () => {
+    const scopes = [scope("Visuais", UserRole._MEMBER), scope("Dev-Team", UserRole._COORDINATOR)];
+    expect(visibleWorkspaceTeams([UserRole._COORDINATOR], scopes, ALL)).toEqual([
+      "Dev-Team",
+      "Visuais",
+    ]);
+  });
+
+  it("does NOT let a coordinator of one team see another", () => {
+    // #180 restated at the page level. Being a coordinator is a global role, so a naive check
+    // against `can()` would pass here and expose every team to any team's coordinator.
+    const scopes = [scope("Dev-Team", UserRole._COORDINATOR)];
+    expect(visibleWorkspaceTeams([UserRole._COORDINATOR], scopes, ALL)).toEqual(["Dev-Team"]);
+  });
+
+  it("shows the board every team", () => {
+    // "the board members should have full access to all the pages". _ADMIN is organisation-wide.
+    const scopes = [scope("Direção", UserRole._ADMIN)];
+    expect(visibleWorkspaceTeams([UserRole._ADMIN], scopes, ALL)).toEqual(ALL);
+  });
+
+  it("shows a non-member nothing even if the team list is non-empty", () => {
+    expect(visibleWorkspaceTeams([UserRole._GUEST], [], ALL)).toEqual([]);
+  });
+
+  it("deduplicates a team where someone holds two roles", () => {
+    // Two positions in one team is common (#8) and must not produce two sidebar entries.
+    const scopes = [scope("Dev-Team", UserRole._COORDINATOR), scope("Dev-Team", UserRole._MEMBER)];
+    expect(visibleWorkspaceTeams([UserRole._COORDINATOR], scopes, ALL)).toEqual(["Dev-Team"]);
   });
 });
