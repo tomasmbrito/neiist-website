@@ -6,6 +6,13 @@ import path from "path";
 import { serverCheckPermission } from "@/utils/permissionUtils";
 import { canForTeam } from "@/lib/auth/permissions";
 import { getUserTeamScopes } from "@/utils/db/userQueries";
+import { decodeAndHardenBase64Image } from "@/utils/security/imageUpload";
+
+/**
+ * Decoded-size ceiling for a profile photo. Generous for a headshot; the product-upload route
+ * allows more per file because those come straight off a DSLR.
+ */
+const MAX_PROFILE_PHOTO_BYTES = 8 * 1024 * 1024;
 
 /**
  * The team whose coordinators may edit other members' profiles — they maintain member photos.
@@ -149,12 +156,40 @@ export async function PUT(request: Request, { params }: { params: { userId: stri
     // #180. Filed separately.
     if (updateData.photo !== undefined && mayManagePhotos) {
       if (updateData.photo && updateData.photo !== existingUser.photo) {
+        // Hardened through the same path as product uploads (#95), rather than writing the
+        // client's bytes straight to disk as this route used to (#187). That old write had no
+        // size cap — App Router handlers have no default body limit, so a 200 MB base64 string
+        // was decoded and written — and never checked that the content was an image at all,
+        // though it is served back as `image/png`.
+        //
+        // The cap is on the DECODED size because a JSON body has no `size` to inspect first,
+        // unlike the multipart product upload. 8 MB is generous for a profile photo; the product
+        // route allows 10 MB per file because those come straight off a DSLR.
+        const hardened = await decodeAndHardenBase64Image(
+          updateData.photo,
+          MAX_PROFILE_PHOTO_BYTES
+        );
+        if ("error" in hardened) {
+          return NextResponse.json(
+            {
+              error:
+                hardened.error === "too_large"
+                  ? "A imagem é demasiado grande (máximo 8 MB)."
+                  : "Ficheiro inválido: envie uma imagem JPEG ou PNG.",
+            },
+            { status: hardened.error === "too_large" ? 413 : 400 }
+          );
+        }
+
         try {
-          const buffer = Buffer.from(updateData.photo, "base64");
           const photoDir = path.join(process.cwd(), "data", "user_photos");
           await fs.mkdir(photoDir, { recursive: true });
+          // Still written as .png regardless of the source kind, because
+          // `/api/user/photo/[userId]` serves this path with a hard-coded `image/png` and the
+          // filename is derived from the istid. Changing that pair is its own change; what
+          // matters here is that the bytes are now sharp's output, not the client's.
           const filePath = path.join(photoDir, `${targetUserId}.png`);
-          await fs.writeFile(filePath, buffer);
+          await fs.writeFile(filePath, hardened.buffer);
           // Save custom photo path to DB
           await updateUserPhoto(
             targetUserId,
