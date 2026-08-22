@@ -21,11 +21,13 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
 
   // Board members see every team; everyone else sees only their own. The full list is fetched
   // solely to answer that first case — for an ordinary member it is filtered away entirely.
+  // Filtered on `active` to match `get_user_team_scopes`, which requires it. Without this the
+  // board would see retired teams that no member can see, and their rosters would stay browsable.
   const departments = await getAllDepartments();
   const teams = visibleWorkspaceTeams(
     session.roles,
     session.scopes,
-    departments.map((d) => d.name)
+    departments.filter((d) => d.active).map((d) => d.name)
   );
 
   return (

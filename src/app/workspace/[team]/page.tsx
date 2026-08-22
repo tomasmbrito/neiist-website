@@ -15,15 +15,17 @@ import styles from "@/styles/pages/Workspace.module.css";
  * future refactor, into the response.
  */
 export default async function TeamWorkspacePage({ params }: { params: Promise<{ team: string }> }) {
-  const { team: rawTeam } = await params;
-  const team = decodeURIComponent(rawTeam);
+  // Next's App Router already decodes dynamic params. Decoding again would be a second pass —
+  // it throws URIError on a literal "%" before the guard below can run, and it is the only
+  // decodeURIComponent on a param anywhere in src/app.
+  const { team } = await params;
 
   const session = await requireTeamWorkspace(team, "team.workspace.view");
 
   // Only after authorization: a team that does not exist is a 404, but an unauthorized caller
   // never learns the difference, because the guard above already redirected them.
   const departments = await getAllDepartments();
-  if (!departments.some((d) => d.name === team)) notFound();
+  if (!departments.some((d) => d.name === team && d.active)) notFound();
 
   const memberships = await getAllMemberships();
   const members = groupMembershipsByMember(

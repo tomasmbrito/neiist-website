@@ -19,7 +19,7 @@ export default async function WorkspacePage() {
   const teams = visibleWorkspaceTeams(
     session.roles,
     session.scopes,
-    departments.map((d) => d.name)
+    departments.filter((d) => d.active).map((d) => d.name)
   );
 
   const accessIn = (team: string) =>
