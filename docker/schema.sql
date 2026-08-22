@@ -3453,3 +3453,24 @@ $$;
 GRANT EXECUTE ON FUNCTION
   neiist.get_department_role_access(VARCHAR(30), VARCHAR(40)) TO neiist_app_user;
 
+-- Account lookup for the Google login path (#124); see migration 007.
+CREATE OR REPLACE FUNCTION neiist.find_user_by_any_email(u_email TEXT)
+RETURNS TABLE (
+  istid VARCHAR(50),
+  matched_primary_email BOOLEAN
+) AS $$
+  -- Primary (Fenix) email first: an exact match there is the account, unambiguously.
+  SELECT u.istid, TRUE
+  FROM neiist.users u
+  WHERE lower(u.email) = lower(u_email)
+  UNION ALL
+  -- Otherwise a verified alternative email. LIMIT 1 on the whole thing keeps the primary match
+  -- winning when an address is somehow both.
+  SELECT c.user_istid, FALSE
+  FROM neiist.user_contacts c
+  WHERE c.contact_type = 'alt_email'
+    AND lower(c.contact_value) = lower(u_email)
+  LIMIT 1;
+$$ LANGUAGE sql STABLE SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION neiist.find_user_by_any_email(TEXT) TO neiist_app_user;

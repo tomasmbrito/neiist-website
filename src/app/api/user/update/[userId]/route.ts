@@ -52,16 +52,33 @@ export async function PUT(request: Request, { params }: { params: { userId: stri
 
     const updates: Partial<User> = {};
 
+    // An alternative email may only be CLEARED here, never set (#124).
+    //
+    // Setting one used to be a direct write behind nothing but a format check, so anybody could
+    // put an address they do not own on their profile. That was harmless while nothing trusted
+    // the value, but it is the precondition for account linking: once a Google login can match
+    // an existing account by alternative email, an unverified one is an account-takeover path —
+    // an attacker claims a victim's address, and the victim's Google sign-in lands in the
+    // attacker's account.
+    //
+    // Setting it goes through POST /api/user/verify-email/request and the emailed token, which
+    // is the flow the profile UI already uses. Clearing stays here: removing an address you no
+    // longer control needs no proof, and requiring one would be a trap.
     if (updateData.alternativeEmail !== undefined) {
       let email: string | null = updateData.alternativeEmail;
       if (typeof email !== "string") email = null;
       email = email?.trim?.() ?? null;
       if (email === null || email === "") {
         updates.alternativeEmail = null;
-      } else if (isValidEmail(email)) {
-        updates.alternativeEmail = email;
       } else {
-        return NextResponse.json({ error: "Email alternativo inválido" }, { status: 400 });
+        return NextResponse.json(
+          {
+            error:
+              "Para definir um email alternativo é necessário confirmá-lo. " +
+              "Vais receber um email com um link de confirmação.",
+          },
+          { status: 400 }
+        );
       }
     }
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
+import { isTecnicoEmail } from "@/utils/identity/tecnicoEmail";
 import { cookies } from "next/headers";
-import { db_query } from "@/utils/db/dbClient";
-import { getUser, createUser } from "@/utils/db/userQueries";
+import { getUser, createUser, findUserByAnyEmail } from "@/utils/db/userQueries";
 import { signUserJWT } from "@/utils/authUtils";
 
 export async function GET(request: Request) {
@@ -64,22 +64,35 @@ export async function GET(request: Request) {
     const googleUserInfo = await userInfoResponse.json();
     const { email, name } = googleUserInfo;
 
-    // Task 1: Reject emails ending with @tecnico.ulisboa.pt
-    if (email.endsWith("@tecnico.ulisboa.pt")) {
+    // Técnico identities must come through Fenix, so a student cannot end up with two accounts
+    // (#124). This now covers subdomains — `endsWith("@tecnico.ulisboa.pt")` let every
+    // `@dei.tecnico.ulisboa.pt` address through, and those are Técnico identities too.
+    if (isTecnicoEmail(email)) {
       return NextResponse.redirect(new URL("/?error=use_fenix_for_tecnico_emails", request.url));
     }
 
-    // Lookup user by email securely
-    const { rows } = await db_query<{ get_user_by_email: string | null }>(
-      "SELECT neiist.get_user_by_email($1)",
-      [email]
-    );
-    let userIstid = rows[0]?.get_user_by_email;
+    const match = await findUserByAnyEmail(email);
+
+    // Matched an existing account by its VERIFIED alternative email rather than its primary one.
+    //
+    // Deliberately not a login (#124). Signing in with Google proves control of the Google
+    // address; it does not prove control of the Técnico account that address is recorded
+    // against. Adopting the identity here would turn "I know your personal email" into "I am
+    // you" — and the alternative email is user-supplied.
+    //
+    // Sending them to Fenix is not friction for its own sake: it is the one path that proves the
+    // claim, and it lands them in the account they already have instead of creating a second.
+    if (match && !match.matchedPrimaryEmail) {
+      return NextResponse.redirect(
+        new URL("/?error=email_belongs_to_existing_account", request.url)
+      );
+    }
+
+    let userIstid = match?.istid;
 
     if (userIstid) {
-      // User already exists with this email.
-      // Whether they're an IST student or external user, log them in to their existing account.
-      // This allows IST students to use Google as an alternative login method.
+      // Matched the primary (Fenix) email, so this is unambiguously their account. An IST
+      // student may use Google as an alternative way in.
     } else {
       // Create a new external (non-Técnico) account.
       //

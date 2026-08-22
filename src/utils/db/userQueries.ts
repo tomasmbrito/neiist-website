@@ -608,3 +608,25 @@ export const getDepartmentRoleAccess = async (
   );
   return row?.access ? mapRoleToUserRole(row.access) : null;
 };
+
+/**
+ * Find an account by any email it is known under, reporting HOW it matched (#124).
+ *
+ * `matchedPrimaryEmail: true` — the Fenix address. That is the account, unambiguously.
+ * `matchedPrimaryEmail: false` — a *verified* alternative email. The caller must treat this as a
+ * linking prompt, not a login: proving control of a Google address does not prove control of the
+ * Técnico account it is recorded against.
+ *
+ * Returns `null` when the address is unknown, which is the "create an external account" case.
+ */
+export const findUserByAnyEmail = async (
+  email: string
+): Promise<{ istid: string; matchedPrimaryEmail: boolean } | null> => {
+  const {
+    rows: [row],
+  } = await db_query<{ istid: string; matched_primary_email: boolean }>(
+    "SELECT istid, matched_primary_email FROM neiist.find_user_by_any_email($1)",
+    [email]
+  );
+  return row ? { istid: row.istid, matchedPrimaryEmail: row.matched_primary_email } : null;
+};
