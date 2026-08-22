@@ -190,3 +190,36 @@
     align-items: stretch;
   }
 }
+
+/*
+ * The access level is now editable in place (#158), so it is a control rather than a label.
+ * It is styled to sit at the same weight as the badges beside it — changing a role's access is
+ * consequential, but it should not look like a different kind of object from the state it shows.
+ */
+.accessSelect {
+  display: inline-block;
+  padding: 0.25rem 0.7rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-right: 0.5rem;
+  background: #fff;
+  color: var(--foreground-colour);
+  border: 1px solid var(--light-secondary-colour);
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.accessSelect:hover,
+.accessSelect:focus-visible {
+  border-color: var(--primary-colour);
+}
+
+.accessSelect.admin {
+  color: red;
+}
+
+.memberCount {
+  font-size: 0.85rem;
+  color: var(--light-foreground-colour);
+}
