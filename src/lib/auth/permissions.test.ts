@@ -35,6 +35,9 @@ const EXPECTED_POLICY: Record<Permission, UserRole[]> = {
   "org.units.manage": [UserRole._ADMIN],
   "members.manage": [UserRole._ADMIN, UserRole._COORDINATOR],
   "members.roles.manage": [UserRole._ADMIN, UserRole._COORDINATOR],
+  // Added in #193. _COORDINATOR absent is the whole point: it is what stops a coordinator
+  // promoting their own role to admin and becoming an organisation-wide administrator.
+  "members.roles.grantAdmin": [UserRole._ADMIN],
   "members.photos.manage": [UserRole._ADMIN, UserRole._COORDINATOR],
   "teams.manage": [UserRole._ADMIN, UserRole._COORDINATOR],
   "users.manage": [UserRole._ADMIN],

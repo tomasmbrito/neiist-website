@@ -140,7 +140,9 @@ export const addMember = async (
     try {
       await db_query("SELECT neiist.add_department($1)", [department]);
       await db_query("SELECT neiist.add_team($1, $2)", [department, "General membership team"]);
-      await db_query("SELECT neiist.add_valid_department_role($1, $2, $3)", [
+      // NULL actor: this path has no caller identity to thread and creates a `member` role, so
+      // it fails closed — a NULL actor can never satisfy may_grant_admin_access (#193).
+      await db_query("SELECT neiist.add_valid_department_role(NULL, $1, $2, $3)", [
         department,
         role,
         "member",
@@ -162,7 +164,8 @@ export const addCollaborator = async (
   try {
     for (const team of teams) {
       try {
-        await db_query("SELECT neiist.add_valid_department_role($1, $2, $3)", [
+        // NULL actor, as above: fixed `coordinator` level, so it cannot reach `admin` (#193).
+        await db_query("SELECT neiist.add_valid_department_role(NULL, $1, $2, $3)", [
           team,
           position,
           "coordinator",
@@ -398,22 +401,28 @@ export const getAllAdminBodies = async (): Promise<Array<{ name: string; active:
  */
 export type DepartmentRoleAccess = "admin" | "coordinator" | "shop_manager" | "member";
 
+/**
+ * Errors propagate on purpose, like `removeValidDepartmentRole` and for the same reason.
+ *
+ * This used to `catch { return false }`, which turned the #193 refusal — "only an administrator
+ * may create a role with admin access" — into an indistinguishable falsy value, so the route
+ * answered a generic failure instead of saying why. A security guard that reports itself by
+ * returning something can be swallowed by any caller that was written before the guard existed;
+ * that is the whole reason these rules RAISE.
+ */
 export const addValidDepartmentRole = async (
+  actorIstid: string,
   departmentName: string,
   roleName: string,
   access: DepartmentRoleAccess = "member"
 ): Promise<boolean> => {
-  try {
-    await db_query("SELECT neiist.add_valid_department_role($1, $2, $3)", [
-      departmentName,
-      roleName,
-      access,
-    ]);
-    return true;
-  } catch (error) {
-    console.error("Error adding valid department role:", error);
-    return false;
-  }
+  await db_query("SELECT neiist.add_valid_department_role($1::VARCHAR(50), $2, $3, $4)", [
+    actorIstid,
+    departmentName,
+    roleName,
+    access,
+  ]);
+  return true;
 };
 
 /**
@@ -433,11 +442,17 @@ export const removeValidDepartmentRole = async (
 
 /** Change which access level a department role grants (#158). Errors propagate — see above. */
 export const updateValidDepartmentRole = async (
+  actorIstid: string,
   departmentName: string,
   roleName: string,
   access: DepartmentRoleAccess
 ): Promise<boolean> => {
-  await db_query("SELECT neiist.update_valid_department_role($1, $2, $3)", [
+  // The actor goes to the database, which decides whether they may grant `admin` (#193). The
+  // route checks the same thing first for a friendly error, but this is the enforcement: the
+  // three-argument form has had EXECUTE revoked from the app role precisely so this cannot be
+  // routed around.
+  await db_query("SELECT neiist.update_valid_department_role($1::VARCHAR(50), $2, $3, $4)", [
+    actorIstid,
     departmentName,
     roleName,
     access,

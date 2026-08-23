@@ -21,6 +21,14 @@ const ROLE_A = "ZZ Test Admin Role";
 const ROLE_B = "ZZ Test Second Admin";
 const MEMBER_ROLE = "ZZ Test Member Role";
 const TEST_ISTID = "ist9990904";
+/**
+ * An actor who may grant `admin` (#193).
+ *
+ * These tests create `admin`-level roles, which now requires the caller to already hold admin.
+ * Their authority comes from a `ZZ Test%` role, so `isolateAdminRoles` — which parks every real
+ * admin role — leaves it alone, and the last-admin guard below still sees only fixture roles.
+ */
+const ADMIN_ACTOR = "ist9990905";
 
 let owner: Client;
 
@@ -49,11 +57,36 @@ beforeAll(async () => {
      WHERE NOT EXISTS (SELECT 1 FROM neiist.users WHERE istid = $1)`,
     [TEST_ISTID, `${TEST_ISTID}@tecnico.ulisboa.pt`]
   );
+  await owner.query(
+    `SELECT neiist.add_user($1::VARCHAR(50), 'Role Test Admin', $2)
+     WHERE NOT EXISTS (SELECT 1 FROM neiist.users WHERE istid = $1)`,
+    [ADMIN_ACTOR, `${ADMIN_ACTOR}@tecnico.ulisboa.pt`]
+  );
 });
+
+/**
+ * Give ADMIN_ACTOR real admin authority, as the owner role — deliberately not through
+ * `addValidDepartmentRole`, since that is the very function under test and it would need an
+ * admin to already exist.
+ */
+const grantActorAdmin = async (roleName: string): Promise<void> => {
+  await owner.query(
+    `INSERT INTO neiist.valid_department_roles (department_name, role_name, access, active)
+     VALUES ($1, $2, 'admin', TRUE) ON CONFLICT DO NOTHING`,
+    [DEPT, roleName]
+  );
+  await owner.query("SELECT neiist.add_team_member($1::VARCHAR(50), $2, $3)", [
+    ADMIN_ACTOR,
+    DEPT,
+    roleName,
+  ]);
+};
 
 afterEach(async () => {
   // Restore everything this file touched, including the real admin roles it parks.
-  await owner.query("DELETE FROM neiist.membership WHERE user_istid = $1", [TEST_ISTID]);
+  await owner.query("DELETE FROM neiist.membership WHERE user_istid = ANY($1)", [
+    [TEST_ISTID, ADMIN_ACTOR],
+  ]);
   await owner.query("DELETE FROM neiist.valid_department_roles WHERE role_name LIKE 'ZZ Test%'");
   await owner.query(
     "UPDATE neiist.valid_department_roles SET active = TRUE WHERE access = 'admin' AND NOT active"
@@ -61,13 +94,13 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
-  await owner.query("DELETE FROM neiist.users WHERE istid = $1", [TEST_ISTID]);
+  await owner.query("DELETE FROM neiist.users WHERE istid = ANY($1)", [[TEST_ISTID, ADMIN_ACTOR]]);
   await owner.end();
 });
 
 describe("changing a department role's access level", () => {
   it("changes the access level without touching memberships", async () => {
-    await addValidDepartmentRole(DEPT, MEMBER_ROLE, "member");
+    await addValidDepartmentRole(ADMIN_ACTOR, DEPT, MEMBER_ROLE, "member");
     await owner.query("SELECT neiist.add_team_member($1::VARCHAR(50), $2, $3)", [
       TEST_ISTID,
       DEPT,
@@ -75,7 +108,7 @@ describe("changing a department role's access level", () => {
     ]);
     expect(await countDepartmentRoleMembers(DEPT, MEMBER_ROLE)).toBe(1);
 
-    await updateValidDepartmentRole(DEPT, MEMBER_ROLE, "shop_manager");
+    await updateValidDepartmentRole(ADMIN_ACTOR, DEPT, MEMBER_ROLE, "shop_manager");
 
     // The membership survives — the point of the change. Deleting and re-adding the role, which
     // was the only way to do this before, stamps to_date on every current membership.
@@ -88,7 +121,7 @@ describe("changing a department role's access level", () => {
   });
 
   it("supports shop_manager, which the old TypeScript union omitted", async () => {
-    await addValidDepartmentRole(DEPT, MEMBER_ROLE, "shop_manager");
+    await addValidDepartmentRole(ADMIN_ACTOR, DEPT, MEMBER_ROLE, "shop_manager");
     const { rows } = await owner.query<{ access: string }>(
       "SELECT access::TEXT FROM neiist.valid_department_roles WHERE role_name = $1",
       [MEMBER_ROLE]
@@ -98,14 +131,14 @@ describe("changing a department role's access level", () => {
 
   it("reports a role that does not exist", async () => {
     await expect(
-      updateValidDepartmentRole(DEPT, "ZZ Test Nonexistent", "member")
+      updateValidDepartmentRole(ADMIN_ACTOR, DEPT, "ZZ Test Nonexistent", "member")
     ).rejects.toMatchObject({ code: "NEI06" });
   });
 });
 
 describe("the last-admin lockout guard", () => {
   it("refuses to remove the only role granting admin", async () => {
-    await addValidDepartmentRole(DEPT, ROLE_A, "admin");
+    await grantActorAdmin(ROLE_A);
     await isolateAdminRoles();
     expect(await adminRoleCount()).toBe(1);
 
@@ -114,18 +147,20 @@ describe("the last-admin lockout guard", () => {
   });
 
   it("refuses to demote the only role granting admin", async () => {
-    await addValidDepartmentRole(DEPT, ROLE_A, "admin");
+    await grantActorAdmin(ROLE_A);
     await isolateAdminRoles();
 
-    await expect(updateValidDepartmentRole(DEPT, ROLE_A, "member")).rejects.toMatchObject({
+    await expect(
+      updateValidDepartmentRole(ADMIN_ACTOR, DEPT, ROLE_A, "member")
+    ).rejects.toMatchObject({
       code: "NEI07",
     });
     expect(await adminRoleCount()).toBe(1);
   });
 
   it("allows removing an admin role while another one remains", async () => {
-    await addValidDepartmentRole(DEPT, ROLE_A, "admin");
-    await addValidDepartmentRole(DEPT, ROLE_B, "admin");
+    await grantActorAdmin(ROLE_A);
+    await grantActorAdmin(ROLE_B);
     await isolateAdminRoles();
     expect(await adminRoleCount()).toBe(2);
 
@@ -134,20 +169,20 @@ describe("the last-admin lockout guard", () => {
   });
 
   it("allows promoting a role to admin, and demoting it again while another remains", async () => {
-    await addValidDepartmentRole(DEPT, ROLE_A, "admin");
-    await addValidDepartmentRole(DEPT, ROLE_B, "member");
+    await grantActorAdmin(ROLE_A);
+    await addValidDepartmentRole(ADMIN_ACTOR, DEPT, ROLE_B, "member");
     await isolateAdminRoles();
 
-    await updateValidDepartmentRole(DEPT, ROLE_B, "admin");
+    await updateValidDepartmentRole(ADMIN_ACTOR, DEPT, ROLE_B, "admin");
     expect(await adminRoleCount()).toBe(2);
 
-    await updateValidDepartmentRole(DEPT, ROLE_B, "member");
+    await updateValidDepartmentRole(ADMIN_ACTOR, DEPT, ROLE_B, "member");
     expect(await adminRoleCount()).toBe(1);
   });
 
   /** A non-admin role is unaffected by the guard — it cannot cause a lockout. */
   it("does not block removing a non-admin role when no admin role would be left", async () => {
-    await addValidDepartmentRole(DEPT, MEMBER_ROLE, "member");
+    await addValidDepartmentRole(ADMIN_ACTOR, DEPT, MEMBER_ROLE, "member");
     await owner.query(
       "UPDATE neiist.valid_department_roles SET active = FALSE WHERE access = 'admin' AND active"
     );

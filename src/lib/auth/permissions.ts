@@ -33,6 +33,15 @@ export const PERMISSION_ROLES = {
   // ---- Members, roles and memberships --------------------------------------------------------
   "members.manage": [UserRole._ADMIN, UserRole._COORDINATOR],
   "members.roles.manage": [UserRole._ADMIN, UserRole._COORDINATOR],
+  /**
+   * Hand a role the `admin` access level, i.e. create organisation-wide power (#193).
+   *
+   * Split out of `members.roles.manage` on purpose. Coordinators legitimately manage their teams'
+   * roles, so removing them from that permission would break real work — the problem was
+   * specifically the `admin` *value*, which is `ORGANISATION_WIDE`. Without this split any
+   * coordinator could raise their own role to `admin` and take over the site.
+   */
+  "members.roles.grantAdmin": [UserRole._ADMIN],
   "members.photos.manage": [UserRole._ADMIN, UserRole._COORDINATOR],
   "teams.manage": [UserRole._ADMIN, UserRole._COORDINATOR],
 
@@ -143,6 +152,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   "org.units.manage": "Gerir órgãos sociais, departamentos e equipas",
   "members.manage": "Gerir membros e as suas participações",
   "members.roles.manage": "Gerir cargos e o nível de acesso que concedem",
+  "members.roles.grantAdmin": "Atribuir acesso de administrador a um cargo",
   "members.photos.manage": "Gerir fotografias dos membros",
   "teams.manage": "Gerir equipas",
   "users.manage": "Administrar utilizadores",
