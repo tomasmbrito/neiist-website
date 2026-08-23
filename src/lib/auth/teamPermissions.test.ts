@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { UserRole } from "@/types/user";
-import { TeamAccess, canForTeam, mayAssignAccess, mayDelegateGrant } from "@/lib/auth/permissions";
+import {
+  GRANTABLE_TEAM_PERMISSIONS,
+  TEAM_PERMISSION_ROLES,
+  TeamAccess,
+  TeamPermission,
+  canForTeam,
+  mayAssignAccess,
+  mayDelegateGrant,
+} from "@/lib/auth/permissions";
 
 /**
  * #180 — the escalation this closes, stated as a test.
@@ -337,5 +345,71 @@ describe("mayDelegateGrant (#184)", () => {
         UserRole._ADMIN
       )
     ).toBe(false);
+  });
+});
+
+/**
+ * The team-permission policy, written out.
+ *
+ * `permissions.test.ts` has done this for global permissions since #156; team permissions had no
+ * equivalent, even though since #183 they decide who reads another team's workspace. A change to
+ * `TEAM_PERMISSION_ROLES` does not fail to compile and does not fail a smoke test — it silently
+ * widens or narrows access to internal material. So it is asserted here, and a policy change has
+ * to be made twice, on purpose, and shows up in the diff.
+ */
+const EXPECTED_TEAM_POLICY: Record<TeamPermission, UserRole[]> = {
+  "team.members.manage": [UserRole._ADMIN, UserRole._COORDINATOR],
+  "team.workspace.view": [
+    UserRole._ADMIN,
+    UserRole._COORDINATOR,
+    UserRole._MEMBER,
+    UserRole._SHOP_MANAGER,
+  ],
+  "team.content.edit": [UserRole._ADMIN, UserRole._COORDINATOR],
+  // #129. Members may call meetings, matching what Notion allows today; coordinators run events,
+  // because an event is the team acting outwards.
+  "team.meetings.manage": [
+    UserRole._ADMIN,
+    UserRole._COORDINATOR,
+    UserRole._MEMBER,
+    UserRole._SHOP_MANAGER,
+  ],
+  "team.events.manage": [UserRole._ADMIN, UserRole._COORDINATOR],
+  "team.events.publish": [UserRole._ADMIN, UserRole._COORDINATOR],
+};
+
+/**
+ * Which permissions a *borrowed* scope satisfies. Default-deny: a new team permission is not
+ * grantable until it is added here, so forgetting refuses the grantee rather than over-serving.
+ */
+const EXPECTED_GRANTABLE: TeamPermission[] = [
+  "team.workspace.view",
+  "team.content.edit",
+  "team.meetings.manage",
+  "team.events.manage",
+  // Decided 2026-08-23: grants are treated as membership for events, publishing included. The
+  // accepted consequence is that a published event outlives the grant that created it.
+  "team.events.publish",
+];
+
+describe("team permission policy", () => {
+  it("matches the written-down table exactly", () => {
+    expect(TEAM_PERMISSION_ROLES).toEqual(EXPECTED_TEAM_POLICY);
+  });
+
+  it("has an entry for every team permission — no silent additions", () => {
+    // A new permission with no line above fails here rather than being quietly ungoverned.
+    expect(Object.keys(TEAM_PERMISSION_ROLES).sort()).toEqual(
+      Object.keys(EXPECTED_TEAM_POLICY).sort()
+    );
+  });
+
+  it("grants exactly the permissions a borrowed scope is meant to satisfy", () => {
+    expect([...GRANTABLE_TEAM_PERMISSIONS].sort()).toEqual([...EXPECTED_GRANTABLE].sort());
+  });
+
+  it("never lets a grant manage a team's membership", () => {
+    // The one that must not drift: memberships created by a grantee outlive the grant.
+    expect(GRANTABLE_TEAM_PERMISSIONS).not.toContain("team.members.manage");
   });
 });

@@ -6,7 +6,7 @@ import {
   ActivityProperties,
   ActivityEvent,
 } from "@/types/events";
-import { db_query } from "@/utils/db/dbClient";
+import { db_query, type Querier } from "@/utils/db/dbClient";
 
 export const updateActivitiesEvent = async (
   activity: Partial<ActivityEvent> & { id: string }
@@ -86,4 +86,123 @@ export const getActivitiesEventsFromDb = async (): Promise<CalendarEvent[]> => {
 
 export const deleteActivitiesEvent = async (id: string): Promise<void> => {
   await db_query(`SELECT neiist.delete_activities($1)`, [id]);
+};
+
+/** An internal event or meeting owned by a team (#129). */
+export type InternalEvent = {
+  id: number;
+  kind: "event" | "meeting";
+  name: string;
+  description: string | null;
+  startsAt: string;
+  endsAt: string | null;
+  isPublic: boolean;
+  createdByIstid: string;
+  createdByName: string;
+  locations: string[];
+  attendeeCount: number;
+};
+
+/**
+ * Create an event or meeting with its locations and attendees, atomically.
+ *
+ * **Errors throw.** The SQL function raises NEI14/NEI15 with messages written for the person who
+ * hit them; a `catch { return null }` here would collapse "the end date is before the start" into
+ * an indistinguishable falsy value, and the route would answer a generic 500. Most of this file
+ * still swallows — that is the thing to stop doing, not to copy.
+ *
+ * Takes an optional trailing `Querier` so Phase 3 (requerimentos) can compose this inside a larger
+ * `withTransaction` without a second implementation.
+ */
+export const createInternalEvent = async (
+  input: {
+    kind: "event" | "meeting";
+    name: string;
+    description?: string | null;
+    startsAt: string;
+    endsAt?: string | null;
+    isPublic: boolean;
+    departmentName: string;
+    createdByIstid: string;
+    locations?: string[];
+    attendees?: string[];
+  },
+  q: Querier = db_query
+): Promise<number> => {
+  const { rows } = await q<{ create_internal_event: number }>(
+    `SELECT neiist.create_internal_event(
+       $1::TEXT, $2::TEXT, $3::TEXT, $4::TIMESTAMPTZ, $5::TIMESTAMPTZ, $6::BOOLEAN,
+       $7::VARCHAR(30), $8::VARCHAR(50), $9::TEXT[], $10::VARCHAR(50)[]
+     )`,
+    [
+      input.kind,
+      input.name,
+      input.description ?? null,
+      input.startsAt,
+      input.endsAt ?? null,
+      input.isPublic,
+      input.departmentName,
+      input.createdByIstid,
+      input.locations ?? [],
+      input.attendees ?? [],
+    ]
+  );
+  return rows[0].create_internal_event;
+};
+
+/**
+ * One team's events and meetings.
+ *
+ * There is deliberately **no "all events" reader** in this slice. Every function that touches
+ * `internal_events` takes a department and filters on it, so a caller cannot receive another
+ * team's internal meetings by forgetting a filter — the structural half of the `is_public`
+ * boundary, asserted by a test that introspects `pg_proc`.
+ */
+export const getTeamInternalEvents = async (departmentName: string): Promise<InternalEvent[]> => {
+  const { rows } = await db_query<{
+    id: number;
+    kind: "event" | "meeting";
+    name: string;
+    description: string | null;
+    starts_at: string;
+    ends_at: string | null;
+    is_public: boolean;
+    created_by_istid: string;
+    created_by_name: string;
+    locations: string[];
+    attendee_count: number;
+  }>("SELECT * FROM neiist.get_team_internal_events($1::VARCHAR(30))", [departmentName]);
+
+  return rows.map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    name: row.name,
+    description: row.description,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    isPublic: row.is_public,
+    createdByIstid: row.created_by_istid,
+    createdByName: row.created_by_name,
+    locations: row.locations,
+    attendeeCount: Number(row.attendee_count),
+  }));
+};
+
+/**
+ * Which team owns this event.
+ *
+ * Read before any mutation so authorization runs against the **row's real owner**, never a
+ * department name supplied in the request — that substitution is the IDOR shape.
+ */
+export const getInternalEventOwner = async (eventId: number): Promise<string | null> => {
+  const { rows } = await db_query<{ get_internal_event_owner: string | null }>(
+    "SELECT neiist.get_internal_event_owner($1::INT)",
+    [eventId]
+  );
+  return rows[0]?.get_internal_event_owner ?? null;
+};
+
+/** Delete an event. Errors throw, as above. */
+export const deleteInternalEvent = async (eventId: number): Promise<void> => {
+  await db_query("SELECT neiist.delete_internal_event($1::INT)", [eventId]);
 };

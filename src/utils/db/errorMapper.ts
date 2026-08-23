@@ -95,6 +95,24 @@ export function throwIfGrantDbError(error: unknown): void {
   }
 }
 
+/** Internal events and meetings (#129). */
+const EVENT_SQLSTATE = {
+  /** The submitted event is malformed — bad kind, blank name, end before start. */
+  INVALID_EVENT: "NEI14",
+  /** The owning team does not exist or is inactive. */
+  UNKNOWN_TEAM: "NEI15",
+} as const;
+
+/** Both are the caller asking for something incoherent, so both are 400 with their own message. */
+export function throwIfEventDbError(error: unknown): void {
+  const dbError = error as { message?: string; code?: string };
+  switch (dbError?.code) {
+    case EVENT_SQLSTATE.INVALID_EVENT:
+    case EVENT_SQLSTATE.UNKNOWN_TEAM:
+      throw new ValidationError(dbError.message ?? "Pedido inválido.");
+  }
+}
+
 /**
  * Postgres SQLSTATE `23505`, unique_violation.
  *

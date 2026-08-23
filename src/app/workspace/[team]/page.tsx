@@ -9,7 +9,9 @@ import {
   getUserActiveGrants,
 } from "@/utils/db/userQueries";
 import { groupMembershipsByMember } from "@/types/memberships";
+import { getTeamInternalEvents } from "@/utils/db/eventQueries";
 import TeamAccessGrants from "@/components/workspace/TeamAccessGrants";
+import TeamEvents from "@/components/workspace/TeamEvents";
 import { UserRole } from "@/types/user";
 import styles from "@/styles/pages/Workspace.module.css";
 
@@ -46,6 +48,9 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
   // this team that they could pass on. Both only decide what the UI *offers* — every rule is
   // enforced in `create_team_access_grant`, so a wrong answer here is a bad offer, not a bad grant.
   const grants = await getTeamAccessGrants(team);
+  // Fetched only after `requireTeamWorkspace` above — a team's internal meetings are exactly what
+  // someone outside it must not receive, so this must never move before the guard.
+  const events = await getTeamInternalEvents(team);
   const canGrant = session.roles.includes(UserRole._ADMIN);
   // The receiving team's own coordinator may revoke anyone's grant on it — by MEMBERSHIP, so a
   // grantee holding coordinator-level borrowed access cannot revoke the people around them.
@@ -101,12 +106,13 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
         viewerIstid={session.user!.istid}
       />
 
-      <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Conteúdo</h2>
-        <p className={styles.empty}>
-          Ainda não há conteúdo nesta área. As páginas do Notion serão migradas para aqui.
-        </p>
-      </section>
+      <TeamEvents
+        team={team}
+        initialEvents={events}
+        canCreateMeeting={canForTeam(session.roles, session.scopes, "team.meetings.manage", team)}
+        canCreateEvent={canForTeam(session.roles, session.scopes, "team.events.manage", team)}
+        canPublish={canForTeam(session.roles, session.scopes, "team.events.publish", team)}
+      />
     </>
   );
 }
