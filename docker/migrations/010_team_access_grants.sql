@@ -64,6 +64,10 @@ RETURNS INT LANGUAGE sql IMMUTABLE AS $$
     WHEN 'coordinator'  THEN 2
     WHEN 'shop_manager' THEN 1
     WHEN 'member'       THEN 1
+    -- ELSE 0, not NULL. Without it a future `ALTER TYPE … ADD VALUE` makes this return NULL,
+    -- and `IF NULL > x THEN RAISE` is treated as false — so the delegation ceiling below would
+    -- fail OPEN and silently allow an over-privileged delegation.
+    ELSE 0
   END;
 $$;
 
@@ -71,8 +75,11 @@ GRANT EXECUTE ON FUNCTION neiist.access_rank(neiist.user_access_enum) TO neiist_
 
 -- Is this grant live right now? One definition, used by the read path, the delegation check and
 -- the UI, so "active" cannot come to mean three slightly different things.
+-- STABLE, not IMMUTABLE: it reads NOW(), which is STABLE. Declaring it IMMUTABLE is a false
+-- contract that entitles Postgres to constant-fold the result — and this one predicate is the
+-- entire expiry model, so a folded "true" would keep an expired grant granting forever.
 CREATE OR REPLACE FUNCTION neiist.is_grant_active(g neiist.team_access_grants)
-RETURNS BOOLEAN LANGUAGE sql IMMUTABLE AS $$
+RETURNS BOOLEAN LANGUAGE sql STABLE AS $$
   SELECT g.revoked_at IS NULL AND g.expires_at > NOW();
 $$;
 
@@ -164,18 +171,30 @@ BEGIN
     IF NOT EXISTS (
       SELECT 1
       FROM neiist.membership m
+      JOIN neiist.departments d ON d.name = m.department_name
       JOIN neiist.valid_department_roles v
         ON v.department_name = m.department_name AND v.role_name = m.role_name
       WHERE m.user_istid = g_actor_istid
         AND (m.to_date IS NULL OR m.to_date > CURRENT_DATE)
         AND v.active
         AND v.access = 'admin'
+        -- The authority must come from an ADMIN BODY, not from any role that happens to grant
+        -- `admin`. Checking only `access = 'admin'` made this claim false against the real seed:
+        -- `Dev-Team / Coordenador` is deliberately `admin` (#189), so one team's coordinator
+        -- satisfied "only the board may create new authority" and could mint 90-day grants on
+        -- every other team. Reading their department's type is what makes the sentence true.
+        AND d.department_type <> 'team'
     ) THEN
       RAISE EXCEPTION 'Apenas a direção pode conceder acesso temporário a uma equipa.'
         USING ERRCODE = 'NEI08';
     END IF;
   ELSE
-    SELECT * INTO v_parent FROM neiist.team_access_grants WHERE id = g_parent_id;
+    -- FOR SHARE, so a concurrent revoke_team_access_grant (which takes FOR UPDATE on the same
+    -- row) cannot commit between this read and the INSERT below. Without it, READ COMMITTED
+    -- lets a child be created against a parent that is being revoked in another transaction:
+    -- the revoke's cascading UPDATE never sees the new row, and the child outlives its source
+    -- with no parent left to revoke it through.
+    SELECT * INTO v_parent FROM neiist.team_access_grants WHERE id = g_parent_id FOR SHARE;
     IF NOT FOUND THEN
       RAISE EXCEPTION 'O acesso temporário de origem não existe.' USING ERRCODE = 'NEI09';
     END IF;
@@ -284,6 +303,20 @@ BEGIN
         AND (m.to_date IS NULL OR m.to_date > CURRENT_DATE)
         AND v.active
         AND v.access = 'admin'
+    )
+    -- The RECEIVING team's own coordinator, by membership. Without this the one person
+    -- responsible for a team could not remove an outsider the board lent to it — they would see
+    -- the grant on their own team's page and have no way to end it.
+    OR EXISTS (
+      SELECT 1
+      FROM neiist.membership m
+      JOIN neiist.valid_department_roles v
+        ON v.department_name = m.department_name AND v.role_name = m.role_name
+      WHERE m.user_istid = r_actor_istid
+        AND m.department_name = v_grant.department_name
+        AND (m.to_date IS NULL OR m.to_date > CURRENT_DATE)
+        AND v.active
+        AND neiist.access_rank(v.access) >= neiist.access_rank('coordinator')
     )
   ) THEN
     RAISE EXCEPTION 'Não tem permissão para revogar este acesso temporário.'
@@ -401,7 +434,24 @@ RETURNS TABLE (
   JOIN neiist.departments d ON d.name = g.department_name
   WHERE g.grantee_istid = u_istid
     AND neiist.is_grant_active(g)
-    AND d.active;
+    AND d.active
+    -- A grant is strictly ADDITIVE to membership, never a substitute for it.
+    --
+    -- `create_team_access_grant` already refuses a grant to a non-member, but that is checked
+    -- once, at INSERT. Checking it only there meant a grant kept working after the grantee left
+    -- the núcleo: offboarding ends their membership row, the membership branch above returns
+    -- nothing, and this branch alone would still return a scope — making `isNeiistMember`
+    -- (`scopes.length > 0`) true for an ex-member and handing them another team's internal
+    -- workspace for up to 90 more days, with nothing in the admin UI showing why.
+    --
+    -- Enforced on the READ path because that is the only place that can react to a membership
+    -- ending, which is an event this table never sees.
+    AND EXISTS (
+      SELECT 1
+      FROM neiist.membership m
+      WHERE m.user_istid = g.grantee_istid
+        AND (m.to_date IS NULL OR m.to_date > CURRENT_DATE)
+    );
 $$ LANGUAGE sql STABLE SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION neiist.get_user_team_scopes(VARCHAR(50)) TO neiist_app_user;

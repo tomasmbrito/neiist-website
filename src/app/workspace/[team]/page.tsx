@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTeamWorkspace } from "@/utils/permissionUtils";
-import { canForTeam, ROLE_LABELS } from "@/lib/auth/permissions";
+import { accessRank, canForTeam, ROLE_LABELS } from "@/lib/auth/permissions";
 import {
   getAllDepartments,
   getAllMemberships,
@@ -47,6 +47,16 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
   // enforced in `create_team_access_grant`, so a wrong answer here is a bad offer, not a bad grant.
   const grants = await getTeamAccessGrants(team);
   const canGrant = session.roles.includes(UserRole._ADMIN);
+  // The receiving team's own coordinator may revoke anyone's grant on it — by MEMBERSHIP, so a
+  // grantee holding coordinator-level borrowed access cannot revoke the people around them.
+  const canRevokeAny =
+    canGrant ||
+    session.scopes.some(
+      (scope) =>
+        scope.departmentName === team &&
+        scope.source === "membership" &&
+        accessRank(scope.access) >= accessRank(UserRole._COORDINATOR)
+    );
   const delegatable = canGrant
     ? null
     : ((await getUserActiveGrants(session.user!.istid)).find(
@@ -87,6 +97,8 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
         canGrant={canGrant}
         delegatableGrantId={delegatable?.id ?? null}
         maxAccess={delegatable?.access ?? null}
+        canRevokeAny={canRevokeAny}
+        viewerIstid={session.user!.istid}
       />
 
       <section className={styles.section}>

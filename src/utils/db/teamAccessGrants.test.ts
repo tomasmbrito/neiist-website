@@ -46,6 +46,9 @@ const addUser = async (istid: string, name: string) =>
 const purge = async (istid: string) => {
   await owner.query("DELETE FROM neiist.team_access_grants WHERE grantee_istid = $1", [istid]);
   await owner.query("DELETE FROM neiist.team_access_grants WHERE granted_by_istid = $1", [istid]);
+  // revoked_by_istid is a third FK to users; missing it made purge fail on anyone who had
+  // revoked something.
+  await owner.query("DELETE FROM neiist.team_access_grants WHERE revoked_by_istid = $1", [istid]);
   await owner.query("DELETE FROM neiist.membership WHERE user_istid = $1", [istid]);
   await owner.query("DELETE FROM neiist.user_courses WHERE user_istid = $1", [istid]);
   await owner.query("DELETE FROM neiist.user_contacts WHERE user_istid = $1", [istid]);
@@ -361,6 +364,66 @@ describe("grants reaching the scope pipeline", () => {
   });
 });
 
+describe("a grant is additive to membership, never a substitute", () => {
+  it("stops working the moment the grantee leaves the núcleo", async () => {
+    // Found by security review. Invariant 9 refuses a grant to a non-member, but it is checked
+    // once, at INSERT. Offboarding happens later: end the person's membership and, without the
+    // read-path check, the grant branch alone still returns a scope — making `isNeiistMember`
+    // (scopes.length > 0) true for an ex-member and handing them another team's workspace for
+    // up to 90 more days, with nothing in the admin UI showing why.
+    await createTeamAccessGrant(BOARD, OUTSIDER, TARGET, UserRole._MEMBER, inDays(60), "projeto");
+    expect((await getUserTeamScopes(OUTSIDER)).some((s) => s.departmentName === TARGET)).toBe(true);
+
+    // The normal offboarding action: their own membership ends.
+    // `to_date = CURRENT_DATE`, not CURRENT_DATE - 1: `valid_member_dates` requires
+    // `to_date >= from_date` and the fixture joined today (#181 relaxed it to allow same-day
+    // removal, which is exactly this case). Liveness is `to_date > CURRENT_DATE`, so today
+    // means the membership has ended.
+    await owner.query("UPDATE neiist.membership SET to_date = CURRENT_DATE WHERE user_istid = $1", [
+      OUTSIDER,
+    ]);
+
+    const scopes = await getUserTeamScopes(OUTSIDER);
+    expect(scopes).toEqual([]);
+
+    // Restore for the remaining tests.
+    await owner.query("UPDATE neiist.membership SET to_date = NULL WHERE user_istid = $1", [
+      OUTSIDER,
+    ]);
+  });
+});
+
+describe("only the board creates new authority", () => {
+  it("refuses a root grant from someone whose admin access comes from a TEAM role", async () => {
+    // Found by security review, and it is the seeded reality: `Dev-Team / Coordenador` is
+    // deliberately `admin` (#189). Checking only `access = 'admin'` therefore made "only the
+    // board may create a root grant" false — one team's coordinator could mint 90-day grants on
+    // every other team. Authority has to come from an admin body.
+    const DEVCOORD = "ist9991006";
+    await purge(DEVCOORD);
+    await addUser(DEVCOORD, "Dev Coordinator");
+    await owner.query("SELECT neiist.add_team_member($1::VARCHAR(50), 'Dev-Team', 'Coordenador')", [
+      DEVCOORD,
+    ]);
+
+    // Confirm the premise rather than assuming it: this person really does hold `admin`.
+    const { rows } = await owner.query<{ access: string }>(
+      `SELECT DISTINCT v.access FROM neiist.membership m
+       JOIN neiist.valid_department_roles v
+         ON v.department_name = m.department_name AND v.role_name = m.role_name
+       WHERE m.user_istid = $1 AND (m.to_date IS NULL OR m.to_date > CURRENT_DATE)`,
+      [DEVCOORD]
+    );
+    expect(rows.map((r) => r.access)).toContain("admin");
+
+    await expect(
+      createTeamAccessGrant(DEVCOORD, OUTSIDER, TARGET, UserRole._MEMBER, inDays(7), "motivo")
+    ).rejects.toMatchObject({ code: "NEI08" });
+
+    await purge(DEVCOORD);
+  });
+});
+
 describe("revocation", () => {
   it("revokes delegated grants along with their parent", async () => {
     const parent = await createTeamAccessGrant(
@@ -396,6 +459,23 @@ describe("revocation", () => {
     const id = await createTeamAccessGrant(BOARD, COORD, TARGET, UserRole._MEMBER, inDays(14), "m");
     await revokeTeamAccessGrant(COORD, id, "já não preciso");
     expect((await getUserTeamScopes(COORD)).some((s) => s.departmentName === TARGET)).toBe(false);
+  });
+
+  it("lets the receiving team's own coordinator revoke an outsider's grant", async () => {
+    // The one person responsible for Fotografia could not remove someone the board lent to it.
+    const FOTOCOORD = "ist9991007";
+    await purge(FOTOCOORD);
+    await addUser(FOTOCOORD, "Fotografia Coordinator");
+    await owner.query(
+      "SELECT neiist.add_team_member($1::VARCHAR(50), 'Fotografia', 'Coordenador')",
+      [FOTOCOORD]
+    );
+
+    const id = await createTeamAccessGrant(BOARD, COORD, TARGET, UserRole._MEMBER, inDays(14), "m");
+    await revokeTeamAccessGrant(FOTOCOORD, id, "já não é necessário");
+    expect((await getUserTeamScopes(COORD)).some((s) => s.departmentName === TARGET)).toBe(false);
+
+    await purge(FOTOCOORD);
   });
 
   it("refuses revocation by an unrelated person", async () => {

@@ -73,6 +73,11 @@ const GRANT_SQLSTATE = {
 export function throwIfGrantDbError(error: unknown): void {
   const dbError = error as { message?: string; code?: string };
   switch (dbError?.code) {
+    // Shared with the order functions. Unmapped, this fell through to a 500 that echoed the raw
+    // message — so a nonexistent grant id was distinguishable from one the caller may not touch,
+    // which is grant-id enumeration.
+    case ORDER_SQLSTATE.NOT_FOUND:
+      throw new NotFoundError(dbError.message ?? "Acesso temporário não encontrado.");
     case GRANT_SQLSTATE.NOT_BOARD:
     case GRANT_SQLSTATE.NOT_YOUR_TEAM:
     case GRANT_SQLSTATE.CANNOT_REVOKE:

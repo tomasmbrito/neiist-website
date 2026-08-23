@@ -3,9 +3,11 @@ import {
   createTeamAccessGrant,
   revokeTeamAccessGrant,
   getTeamAccessGrants,
+  getUserActiveGrants,
+  getUserTeamScopes,
 } from "@/utils/db/userQueries";
 import { getWorkspaceSession } from "@/utils/permissionUtils";
-import { canForTeam } from "@/lib/auth/permissions";
+import { canForTeam, isNeiistMember, mayDelegateGrant } from "@/lib/auth/permissions";
 import { throwIfGrantDbError } from "@/utils/db/errorMapper";
 import { handleApiError } from "@/lib/errors/apiErrorHandler";
 import { createGrantSchema, revokeGrantSchema } from "@/schemas/grants";
@@ -46,6 +48,18 @@ export async function POST(request: NextRequest) {
   const session = await getWorkspaceSession();
   if (!session?.user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
+  // Members only, BEFORE the database sees anything.
+  //
+  // Without this the endpoint was a membership oracle: `create_team_access_grant` validates the
+  // grant's shape before it checks the caller's authority, so any logged-in Técnico student could
+  // POST a candidate istid and read the answer off the status code — 400 "only members" for a
+  // non-member, 403 "only the board" for a member. The same ordering leaked which teams exist and
+  // which are active. Refusing non-members here closes it without reordering the SQL, and the SQL
+  // remains the authority for everything else.
+  if (!isNeiistMember(session.scopes)) {
+    return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+  }
+
   try {
     const parsed = createGrantSchema.safeParse(await request.json());
     if (!parsed.success) {
@@ -55,6 +69,31 @@ export async function POST(request: NextRequest) {
       );
     }
     const { granteeIstid, departmentName, access, expiresAt, reason, parentGrantId } = parsed.data;
+
+    // Fast, friendly pre-check for the delegation path, mirroring SQL invariants 2/4/5. SQL is
+    // still the authority — this exists so a coordinator delegating to the wrong person gets a
+    // clear 403 instead of a database exception, and so the rule is stated in the language the
+    // UI is written in. One extra scope read, on a rare path.
+    if (parentGrantId) {
+      const held = (await getUserActiveGrants(session.user.istid)).find(
+        (grant) => grant.id === parentGrantId
+      );
+      const granteeScopes = await getUserTeamScopes(granteeIstid);
+      if (
+        !held ||
+        !mayDelegateGrant(
+          session.scopes,
+          granteeScopes,
+          { departmentName: held.departmentName, access: held.access, source: "grant" },
+          access
+        )
+      ) {
+        return NextResponse.json(
+          { error: "Só pode delegar acesso a um membro de uma equipa que coordena." },
+          { status: 403 }
+        );
+      }
+    }
 
     const id = await createTeamAccessGrant(
       session.user.istid,

@@ -40,6 +40,8 @@ export default function TeamAccessGrants({
   canGrant,
   delegatableGrantId,
   maxAccess,
+  canRevokeAny,
+  viewerIstid,
 }: {
   team: string;
   initialGrants: TeamAccessGrant[];
@@ -49,6 +51,10 @@ export default function TeamAccessGrants({
   delegatableGrantId: number | null;
   /** Ceiling for the access select: their own grant's level when delegating. */
   maxAccess: UserRole | null;
+  /** The caller coordinates this team by membership, so may revoke anyone's grant on it. */
+  canRevokeAny: boolean;
+  /** The caller's own istid, so their own grants show a Revogar they are allowed to use. */
+  viewerIstid: string;
 }) {
   const [grants, setGrants] = useState(initialGrants);
   const [istid, setIstid] = useState("");
@@ -59,6 +65,14 @@ export default function TeamAccessGrants({
   const [pendingRevoke, setPendingRevoke] = useState<TeamAccessGrant | null>(null);
 
   const mayOfferForm = canGrant || delegatableGrantId !== null;
+
+  /**
+   * Mirrors `revoke_team_access_grant`'s rule so the button is not offered to someone the
+   * database will refuse. Previously every viewer saw "Revogar" on every live grant, including
+   * ones they had no standing to touch — a click that could only ever produce a 403.
+   */
+  const mayRevoke = (grant: TeamAccessGrant) =>
+    canRevokeAny || grant.grantedByIstid === viewerIstid || grant.granteeIstid === viewerIstid;
   const offered = maxAccess
     ? ACCESS_OPTIONS.filter(
         (option) => ACCESS_OPTIONS.indexOf(option) <= ACCESS_OPTIONS.indexOf(maxAccess)
@@ -162,7 +176,7 @@ export default function TeamAccessGrants({
                     ? `até ${formatDate(grant.expiresAt)}`
                     : `expirou em ${formatDate(grant.expiresAt)}`}{" "}
                 · {grant.reason}
-                {grant.isActive ? (
+                {grant.isActive && mayRevoke(grant) ? (
                   <button
                     type="button"
                     className={styles.revokeBtn}
@@ -221,7 +235,7 @@ export default function TeamAccessGrants({
               className={styles.grantInput}
               value={reason}
               onChange={(inputEvent) => setReason(inputEvent.target.value)}
-              placeholder="Motivo (fica registado)"
+              placeholder="Motivo (visível para toda a equipa)"
               disabled={busy}
               required
             />
