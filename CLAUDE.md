@@ -320,8 +320,13 @@ Things you should know before proposing work, so you don't "discover" them as ne
   `pg_proc` introspection test, not by discipline. And **every read and write is keyed by event id
   *and* department**, so an id from another team returns nothing rather than relying on the route
   to compare owners.
-- **`/activities` renders against Notion.** An empty events table triggers a sync during
-  render; it is now guarded (#118), but the page still depends on a third party at request time.
+- **`/activities` no longer calls Notion at request time** (#129 slice C). It reads
+  `neiist.activities` — still filled by the Notion sync, which Phase 10 (#137) retires — plus
+  public workspace events via `get_public_internal_events()`, **the only function allowed to read
+  `internal_events` without a department**, which earns that by filtering `WHERE is_public`. The
+  members-only panel reads `get_member_internal_events(istid)`, scoped through
+  `get_user_team_scopes`, so temporary grants (#184) are honoured without it knowing they exist.
+  The empty-table Notion sync during render still exists and is still guarded (#118).
 - **`xlsx`** is installed from a SheetJS CDN tarball URL, not the npm registry — it is outside
   normal audit/lockfile integrity tooling.
 - **Uploaded product images go to `public/products`**, which is gitignored and lives inside the

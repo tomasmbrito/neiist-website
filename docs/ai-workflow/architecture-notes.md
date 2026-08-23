@@ -70,5 +70,19 @@ The multi-table write is one plpgsql function rather than `withTransaction`: a s
 already one implicit transaction, and it never has to defend against the ~58 query functions that
 still `catch { return null }`.
 
-Deliberately untouched so far: `neiist.activities`, the Notion sync, `googleCalendar.ts`. Slices C
-and D own those.
+**Slice C (2026-08-23)** made `/activities` read the database. Two readers were added, and they
+are the two shapes the introspection guard permits:
+
+- `get_public_internal_events()` — no department, and therefore `WHERE is_public` is its **entire
+  authorization**, since anyone can call it. It also excludes `kind = 'meeting'`: not a security
+  control, but nothing wants a coordination meeting on the students' calendar and the mistake is
+  one checkbox away.
+- `get_member_internal_events(istid)` — scoped through `get_user_team_scopes`, so grants work with
+  no code mentioning them.
+
+The two public sources are merged in the **adapter**, not in SQL: the Notion sync deletes rows it
+does not recognise, and a UNION view would put workspace events in its path. Workspace ids are
+prefixed `workspace-` because `neiist.activities` ids are Notion page ids.
+
+`src/utils/notion/internalEvents.ts` (#127) is deleted — superseded, and narrower now by design.
+The Notion → `activities` sync stays until Phase 10 (#137). Google Calendar (slice D) is untouched.

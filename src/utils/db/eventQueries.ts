@@ -388,3 +388,104 @@ export const relateEvents = async (eventA: number, eventB: number): Promise<void
 export const unrelateEvents = async (eventA: number, eventB: number): Promise<void> => {
   await db_query("SELECT neiist.unrelate_events($1::INT, $2::INT)", [eventA, eventB]);
 };
+
+/** A public event, as the students' calendar needs it (#129 slice C). */
+export type PublicInternalEvent = {
+  id: number;
+  name: string;
+  description: string | null;
+  startsAt: string;
+  endsAt: string | null;
+  locations: string[];
+};
+
+/** What a member sees of their own teams' events on /activities. */
+export type MemberInternalEvent = {
+  id: number;
+  kind: "event" | "meeting";
+  name: string;
+  departmentName: string;
+  startsAt: string;
+  endsAt: string | null;
+  isPublic: boolean;
+  locations: string[];
+};
+
+/**
+ * The public calendar's view of workspace events.
+ *
+ * **The only function in the codebase that reads `internal_events` without a department**, and it
+ * earns that by filtering `WHERE is_public` in SQL. The introspection test in
+ * `internalEvents.test.ts` allows exactly this shape and fails on anything else, so adding a
+ * second unscoped reader is a test failure rather than a silent leak.
+ */
+export const getPublicInternalEvents = async (): Promise<PublicInternalEvent[]> => {
+  const { rows } = await db_query<{
+    id: number;
+    name: string;
+    description: string | null;
+    starts_at: string;
+    ends_at: string | null;
+    locations: string[];
+  }>("SELECT * FROM neiist.get_public_internal_events()");
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    locations: row.locations,
+  }));
+};
+
+/**
+ * Upcoming events for the teams this member belongs to.
+ *
+ * Scoped through `get_user_team_scopes`, so temporary grants (#184) are honoured without this
+ * function knowing they exist. Narrower than the Notion view it replaces, on purpose — see the
+ * migration comment.
+ */
+export const getMemberInternalEvents = async (istid: string): Promise<MemberInternalEvent[]> => {
+  const { rows } = await db_query<{
+    id: number;
+    kind: "event" | "meeting";
+    name: string;
+    department_name: string;
+    starts_at: string;
+    ends_at: string | null;
+    is_public: boolean;
+    locations: string[];
+  }>("SELECT * FROM neiist.get_member_internal_events($1::VARCHAR(50))", [istid]);
+
+  return rows.map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    name: row.name,
+    departmentName: row.department_name,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    isPublic: row.is_public,
+    locations: row.locations,
+  }));
+};
+
+/**
+ * A workspace event rendered as a calendar entry, so `/activities` can show one list.
+ *
+ * The public calendar has two sources during the migration: `neiist.activities`, which the Notion
+ * sync fills, and workspace events. Merging in the adapter rather than in SQL keeps the two
+ * tables independent — the Notion sync deletes rows it does not recognise, and a UNION view would
+ * put workspace events in its path.
+ *
+ * The `workspace-` id prefix matters: `neiist.activities` ids are Notion page ids, and a bare
+ * integer could collide with one. It also makes the source obvious in the DOM while both exist.
+ */
+export const publicEventToCalendarEvent = (event: PublicInternalEvent): CalendarEvent => ({
+  id: `workspace-${event.id}`,
+  summary: event.name,
+  description: event.description ?? undefined,
+  location: event.locations.join(", ") || undefined,
+  start: { dateTime: event.startsAt },
+  end: { dateTime: event.endsAt ?? event.startsAt },
+});

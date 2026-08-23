@@ -1,11 +1,15 @@
 import Calendar from "@/components/activities/Calendar";
 import { isFrameworkSignal } from "@/lib/errors/frameworkSignal";
-import { getActivitiesEventsFromDb } from "@/utils/db/eventQueries";
+import {
+  getActivitiesEventsFromDb,
+  getMemberInternalEvents,
+  getPublicInternalEvents,
+  publicEventToCalendarEvent,
+} from "@/utils/db/eventQueries";
 import { syncNotionEventsToDb, isNotionConfigured } from "@/utils/eventsUtils";
 import { UserRole } from "@/types/user";
 import { serverCheckRoles } from "@/utils/permissionUtils";
 import { can } from "@/lib/auth/permissions";
-import { getInternalNotionEvents } from "@/utils/notion/internalEvents";
 import InternalEvents from "@/components/activities/InternalEvents";
 import styles from "@/styles/pages/Activities.module.css";
 
@@ -20,6 +24,15 @@ async function getEventsAndSubscriptions() {
   }
 
   let events = await getActivitiesEventsFromDb();
+
+  // The public calendar now has two sources (#129 slice C): `neiist.activities`, which the Notion
+  // sync fills, and public events created in the workspace. Both are read from the database —
+  // this page no longer depends on Notion at request time for anything a *student* sees.
+  //
+  // Merged here rather than in a SQL view because the Notion sync deletes rows it does not
+  // recognise, and a UNION would put workspace events in its path. The two tables stay
+  // independent until Phase 10 (#137) retires the sync.
+  const publicWorkspaceEvents = (await getPublicInternalEvents()).map(publicEventToCalendarEvent);
 
   // An empty table triggers a sync from Notion. That is a third-party call inside a page
   // render, so it must not be able to take the page down: an unconfigured, rate-limited or
@@ -43,6 +56,8 @@ async function getEventsAndSubscriptions() {
     }
   }
 
+  events = [...events, ...publicWorkspaceEvents];
+
   const signedUpEventIds = istid
     ? events.filter((event) => event.subscribers?.includes(istid)).map((event) => event.id)
     : [];
@@ -56,15 +71,22 @@ export default async function ActivitiesPage({
   searchParams?: Promise<{ eventId?: string }>;
 }) {
   const params = searchParams ? await searchParams : {};
-  const { events, signedUpEventIds, roles } = await getEventsAndSubscriptions();
+  const { events, signedUpEventIds, roles, istid } = await getEventsAndSubscriptions();
   const urlSelectdEventID = params.eventId || undefined;
 
   // Authorized BEFORE fetching, not filtered after. An internal meeting must never enter the
   // response payload for a caller who may not see it — filtering in the component would put it
   // there and rely on the client not to render it (#127).
-  const internalEvents = can(roles, "activities.viewInternal")
-    ? await getInternalNotionEvents()
-    : [];
+  // Reads the database, not Notion (#129 slice C). Narrower than what it replaced: the Notion
+  // view showed every team's internal events to anyone holding `activities.viewInternal`, which
+  // predates the team boundary #183 established. Now a member sees their own teams' events —
+  // including any reached through a temporary grant, since the SQL goes through
+  // `get_user_team_scopes`.
+  //
+  // Still authorized BEFORE fetching, not filtered after: an internal meeting must never enter
+  // the response payload for a caller who may not see it (#127).
+  const internalEvents =
+    istid && can(roles, "activities.viewInternal") ? await getMemberInternalEvents(istid) : [];
 
   return (
     <div className={styles.container}>
