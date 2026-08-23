@@ -2,8 +2,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTeamWorkspace } from "@/utils/permissionUtils";
 import { canForTeam, ROLE_LABELS } from "@/lib/auth/permissions";
-import { getAllDepartments, getAllMemberships } from "@/utils/db/userQueries";
+import {
+  getAllDepartments,
+  getAllMemberships,
+  getTeamAccessGrants,
+  getUserActiveGrants,
+} from "@/utils/db/userQueries";
 import { groupMembershipsByMember } from "@/types/memberships";
+import TeamAccessGrants from "@/components/workspace/TeamAccessGrants";
+import { UserRole } from "@/types/user";
 import styles from "@/styles/pages/Workspace.module.css";
 
 /**
@@ -34,6 +41,19 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
   const mayEdit = canForTeam(session.roles, session.scopes, "team.content.edit", team);
   const myAccess = session.scopes.find((s) => s.departmentName === team)?.access;
 
+  // Temporary access (#184). `canGrant` is organisation-wide access, mirroring the SQL rule that
+  // only the board creates new authority; `delegatable` is a live grant of the caller's own on
+  // this team that they could pass on. Both only decide what the UI *offers* — every rule is
+  // enforced in `create_team_access_grant`, so a wrong answer here is a bad offer, not a bad grant.
+  const grants = await getTeamAccessGrants(team);
+  const canGrant = session.roles.includes(UserRole._ADMIN);
+  const delegatable = canGrant
+    ? null
+    : ((await getUserActiveGrants(session.user!.istid)).find(
+        // Only a root grant may be delegated: the chain is capped at one hop.
+        (grant) => grant.departmentName === team && grant.parentGrantId === null
+      ) ?? null);
+
   return (
     <>
       <header className={styles.header}>
@@ -60,6 +80,14 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
           ))}
         </ul>
       </section>
+
+      <TeamAccessGrants
+        team={team}
+        initialGrants={grants}
+        canGrant={canGrant}
+        delegatableGrantId={delegatable?.id ?? null}
+        maxAccess={delegatable?.access ?? null}
+      />
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Conteúdo</h2>

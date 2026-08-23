@@ -213,8 +213,37 @@ export const TEAM_PERMISSION_ROLES = {
 
 export type TeamPermission = keyof typeof TEAM_PERMISSION_ROLES;
 
-/** A team the caller belongs to, and the access level they hold there. */
-export type TeamAccess = { departmentName: string; access: UserRole };
+/**
+ * Where a scope came from. **Required, never optional** (#184).
+ *
+ * Since grants are unioned into `get_user_team_scopes`, every guard sees them automatically —
+ * which is the point, and also the danger. A borrowed two-week coordinator scope must not confer
+ * everything a real coordinator has: notably the power to hand out *permanent* memberships.
+ *
+ * Optional would mean a future construction site that omits it silently gets membership
+ * semantics, i.e. the wide answer. Required makes the compiler enumerate every site.
+ */
+export type TeamAccessSource = "membership" | "grant";
+
+/** A team the caller has access to, the level they hold there, and how they got it. */
+export type TeamAccess = {
+  departmentName: string;
+  access: UserRole;
+  source: TeamAccessSource;
+};
+
+/**
+ * The team permissions a *grant* can satisfy. Everything else requires real membership.
+ *
+ * **Default-deny, and that is the whole design.** A team permission added later — say
+ * `team.finance.view` or `team.members.manage` — is not grantable until someone adds it here on
+ * purpose. So the cost of forgetting is "the grantee is refused", never "the grantee quietly got
+ * more than the board intended".
+ */
+export const GRANTABLE_TEAM_PERMISSIONS: readonly TeamPermission[] = [
+  "team.workspace.view",
+  "team.content.edit",
+];
 
 /**
  * Organisation-wide access levels: holding one grants a team permission in EVERY team.
@@ -247,6 +276,9 @@ export function canForTeam(
 
   if ((globalRoles ?? []).some((role) => ORGANISATION_WIDE.includes(role))) return true;
 
+  // A grant only counts for permissions on the allowlist. Membership counts for everything.
+  const grantMayAnswer = GRANTABLE_TEAM_PERMISSIONS.includes(permission);
+
   // EXACT comparison, deliberately.
   //
   // An earlier version trimmed and lower-cased both sides "defensively". That was a widening:
@@ -261,7 +293,10 @@ export function canForTeam(
   if (departmentName === "") return false;
 
   return (teamScopes ?? []).some(
-    (scope) => scope.departmentName === departmentName && granted.includes(scope.access)
+    (scope) =>
+      scope.departmentName === departmentName &&
+      granted.includes(scope.access) &&
+      (scope.source === "membership" || grantMayAnswer)
   );
 }
 
@@ -307,8 +342,12 @@ export function mayAssignAccess(
 ): boolean {
   if ((globalRoles ?? []).some((role) => ORGANISATION_WIDE.includes(role))) return true;
 
+  // Membership-derived scopes ONLY (#184). A temporary grant lends access to a team; it does not
+  // lend the authority to restructure that team permanently. Without this filter, unioning grants
+  // into the scope pipeline would silently turn a two-week loan into the power to appoint
+  // members who outlast it — the loan expires, the memberships it created do not.
   const callerRank = (teamScopes ?? [])
-    .filter((scope) => scope.departmentName === departmentName)
+    .filter((scope) => scope.departmentName === departmentName && scope.source === "membership")
     .reduce((highest, scope) => Math.max(highest, accessRank(scope.access)), 0);
 
   // Two conditions, not one. "At least coordinator" is what makes this safe to call on its own:
@@ -363,4 +402,51 @@ export function visibleWorkspaceTeams(
     .map((scope) => scope.departmentName);
 
   return [...new Set(mine)].sort((a, b) => a.localeCompare(b, "pt"));
+}
+
+/**
+ * May this person delegate part of a grant they hold to someone else? (#184)
+ *
+ * **`mayAssignAccess` does not answer this, and stretching it would be wrong.** That helper asks
+ * "may X hand out a role of rank R *in department D*", where D is both the department supplying
+ * X's authority and the department receiving the role — one department used twice. Delegation
+ * spans two: the Dev-Team coordinator's authority comes from **Dev-Team**, while the grant they
+ * are passing on is for **Eventos**. Asking `mayAssignAccess(..., "Eventos", ...)` would look for
+ * their rank in Eventos, find only the grant-derived scope, and (correctly, per the filter above)
+ * return false. It is not merely insufficient — it is the wrong question.
+ *
+ * The rule, stated as the requirement was: *"he should also be able to give access to a member of
+ * his team"*. So all three of:
+ *
+ *   - the delegator holds `coordinator`-or-higher somewhere **by membership** — a grant can never
+ *     bootstrap the authority to delegate;
+ *   - the grantee is a member of **that same department** — "his team", exactly;
+ *   - the delegated access does not exceed the grant being delegated, and is never `_ADMIN`.
+ *
+ * This mirrors SQL invariants 2, 4 and 5. SQL remains the authority; this is the fast, friendly
+ * answer that keeps the UI from offering something the database will refuse.
+ */
+export function mayDelegateGrant(
+  granterScopes: readonly TeamAccess[] | undefined,
+  granteeScopes: readonly TeamAccess[] | undefined,
+  grant: TeamAccess,
+  targetAccess: UserRole
+): boolean {
+  // An admin grant would be organisation-wide, which is a global grant wearing a team's name.
+  if (targetAccess === UserRole._ADMIN) return false;
+  if (accessRank(targetAccess) > accessRank(grant.access)) return false;
+
+  const ownTeams = (granterScopes ?? [])
+    .filter(
+      (scope) =>
+        scope.source === "membership" &&
+        accessRank(scope.access) >= accessRank(UserRole._COORDINATOR)
+    )
+    .map((scope) => scope.departmentName);
+
+  if (ownTeams.length === 0) return false;
+
+  return (granteeScopes ?? []).some(
+    (scope) => scope.source === "membership" && ownTeams.includes(scope.departmentName)
+  );
 }
