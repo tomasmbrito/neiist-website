@@ -139,7 +139,8 @@ export default function TeamEvents({
           {events.map((item) => (
             <li key={item.id} className={styles.member}>
               <span className={styles.memberName}>
-                {item.name}
+                {/* Links to the detail page (#129 slice B): agenda, attendance, documents. */}
+                <a href={`/workspace/${encodeURIComponent(team)}/events/${item.id}`}>{item.name}</a>
                 <span className={styles.cardMeta}>
                   {" "}
                   {item.kind === "meeting" ? "· reunião" : "· evento"}

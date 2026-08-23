@@ -29,3 +29,35 @@ export const createEventSchema = z
 export const deleteEventSchema = z.object({
   eventId: z.number().int().positive(),
 });
+
+/** Slice B: agenda, attendance, documents and relations on one event. */
+export const eventNotesSchema = z.object({
+  agenda: z.string().trim().max(20000).nullable().optional(),
+  minutes: z.string().trim().max(20000).nullable().optional(),
+});
+
+export const attendanceSchema = z.object({
+  istid: z.string().trim().min(1).max(50),
+  response: z.enum(["invited", "accepted", "declined", "attended"]),
+});
+
+export const eventDocumentSchema = z.object({
+  kind: z.enum(["plano", "relatorio", "ata", "other"]).default("other"),
+  title: z.string().trim().min(1, "O título é obrigatório.").max(200),
+  /**
+   * http/https only, and refused in three places — here, in the CHECK constraint, and in
+   * `add_event_document`. The value is rendered into an `href`, and a `javascript:` URL there is
+   * stored XSS; `z.url()` alone would accept it.
+   */
+  url: z
+    .string()
+    .trim()
+    .max(2000)
+    .refine((value) => /^https?:\/\//i.test(value), {
+      message: "O endereço tem de começar por http:// ou https://.",
+    }),
+});
+
+export const relateEventSchema = z.object({
+  relatedEventId: z.number().int().positive(),
+});

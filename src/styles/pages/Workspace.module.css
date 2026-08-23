@@ -243,3 +243,34 @@
 .revokeBtn:hover {
   background: #ffd6d6;
 }
+
+/* Event detail (#129 slice B). */
+.notesArea {
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--light-secondary-colour);
+  background: var(--background-colour);
+  color: var(--foreground-colour);
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.notesRead {
+  white-space: pre-wrap;
+  color: var(--foreground-colour);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin: 0 0 0.8rem;
+}
+
+.inlineSelect {
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--light-secondary-colour);
+  background: var(--background-colour);
+  color: var(--foreground-colour);
+  font-size: 0.8rem;
+}

@@ -311,6 +311,15 @@ Things you should know before proposing work, so you don't "discover" them as ne
   and absent from a fresh checkout — see #110. `deploy-staging.yml` still fires on every push
   to `main`. **A test runner exists as of #52** — Vitest, plus a separate CI job with a Postgres
   service container. The `quality` job stays database-free on purpose; keep it that way.
+- **The Notion migration has started (#126, Phase 1).** `neiist.internal_events` +
+  `event_locations` / `event_attendees` / `event_documents` / `event_relations` live in
+  `src/utils/db/eventQueries.ts`, surfaced at `/workspace/[team]` and
+  `/workspace/[team]/events/[eventId]`. Two rules hold there and must keep holding:
+  **`is_public` is `NOT NULL DEFAULT FALSE`** and no row-returning function may read
+  `internal_events` without either a department parameter or `WHERE is_public` — pinned by a
+  `pg_proc` introspection test, not by discipline. And **every read and write is keyed by event id
+  *and* department**, so an id from another team returns nothing rather than relying on the route
+  to compare owners.
 - **`/activities` renders against Notion.** An empty events table triggers a sync during
   render; it is now guarded (#118), but the page still depends on a third party at request time.
 - **`xlsx`** is installed from a SheetJS CDN tarball URL, not the npm registry — it is outside
