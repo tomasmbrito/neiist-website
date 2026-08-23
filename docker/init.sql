@@ -18,7 +18,11 @@ SELECT neiist.add_valid_department_role('Direção', 'Diretor de Atividades (Tag
 SELECT neiist.add_valid_department_role('Direção', 'Diretora SINFO', 'member');
 SELECT neiist.add_valid_department_role('Direção', 'Tesoureiro', 'member');
 
-SELECT neiist.add_valid_department_role('Mesa da Assembleia Geral', 'Presidente', 'admin');
+-- `coordinator`, not `admin`: `admin` is organisation-wide, so this seeded the MAG president
+-- with read access to every team's workspace including Direção's (#189). The MAG gets only what
+-- it is explicitly given; organisation-wide access belongs to Direção's Presidente and
+-- Vice-Presidente. Level with the MAG's own vice-president, already `coordinator`.
+SELECT neiist.add_valid_department_role('Mesa da Assembleia Geral', 'Presidente', 'coordinator');
 SELECT neiist.add_valid_department_role('Mesa da Assembleia Geral', 'Vice-Presidente', 'coordinator');
 SELECT neiist.add_valid_department_role('Mesa da Assembleia Geral', 'Secretário', 'member');
 

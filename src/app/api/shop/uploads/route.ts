@@ -2,44 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import fs from "fs/promises";
 import crypto from "crypto";
-import sharp from "sharp";
 import { serverCheckPermission } from "@/utils/permissionUtils";
+import { detectImageKind, reencodeImage } from "@/utils/security/imageUpload";
 
 // Bounds chosen to stop disk-exhaustion abuse without rejecting real uploads: product photos
 // straight from a phone are routinely 5-8 MB, and ProductForm posts a whole image group at once.
 const MAX_FILES_PER_REQUEST = 20;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 60 * 1024 * 1024;
-
-/**
- * Decoded-pixel ceiling. A decompression bomb is a tiny file declaring enormous dimensions: it
- * passes every size check above, because those measure the *container*, and only costs memory
- * when something decodes it — which the Next image optimizer then does through sharp on render.
- *
- * 50 MP is roughly 8660x5773, comfortably above any phone or DSLR product photo.
- */
-const MAX_PIXELS = 50_000_000;
-
-type ImageKind = "jpg" | "png";
-
-/**
- * Identifies the image type from its magic bytes.
- *
- * The extension is derived from the content, never from the client-supplied filename: a file
- * named "x.html" whose bytes start with the PNG signature would otherwise be written as
- * .html and served as text/html from our own origin, which is stored XSS.
- */
-function detectImageKind(buffer: Buffer): ImageKind | null {
-  const isJpeg =
-    buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-  if (isJpeg) return "jpg";
-
-  const pngSig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  const isPng = buffer.length >= 8 && buffer.subarray(0, 8).equals(pngSig);
-  if (isPng) return "png";
-
-  return null;
-}
 
 export async function POST(req: NextRequest) {
   const permissionCheck = await serverCheckPermission("shop.uploads.write");
@@ -97,22 +67,13 @@ export async function POST(req: NextRequest) {
       //  3. EXIF is dropped, and sharp does not carry it over unless asked. Product photos are
       //     taken on committee members' phones and currently carry GPS coordinates into a
       //     public directory, which is a privacy leak nobody chose.
-      let reencoded: Buffer;
-      try {
-        const pipeline = sharp(buffer, { limitInputPixels: MAX_PIXELS });
-        reencoded =
-          kind === "png"
-            ? await pipeline.png({ compressionLevel: 9 }).toBuffer()
-            : await pipeline.jpeg({ quality: 85, mozjpeg: true }).toBuffer();
-      } catch (error) {
-        // Covers both a pixel-limit refusal and a file whose magic bytes were right but whose
-        // body is corrupt. Either way it is not an image we are willing to serve.
-        console.warn("Rejected image that failed re-encoding", error);
+      const hardened = await reencodeImage(buffer, kind);
+      if (!hardened) {
         return NextResponse.json({ error: "Imagem inválida ou demasiado grande" }, { status: 400 });
       }
 
       // A generated name also removes the ability to overwrite an existing product image.
-      validated.push({ name: `${crypto.randomUUID()}.${kind}`, buffer: reencoded });
+      validated.push({ name: `${crypto.randomUUID()}.${kind}`, buffer: hardened.buffer });
     }
 
     const uploadDir = path.join(process.cwd(), "public", "products");
