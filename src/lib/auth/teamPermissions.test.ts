@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { UserRole } from "@/types/user";
-import { canForTeam, mayAssignAccess, TeamAccess } from "@/lib/auth/permissions";
+import { TeamAccess, canForTeam, mayAssignAccess, mayDelegateGrant } from "@/lib/auth/permissions";
 
 /**
  * #180 — the escalation this closes, stated as a test.
@@ -14,8 +14,8 @@ import { canForTeam, mayAssignAccess, TeamAccess } from "@/lib/auth/permissions"
 /** Ana: a plain member of Fotografia, a coordinator of Divulgação. */
 const ANA_GLOBAL_ROLES = [UserRole._COORDINATOR, UserRole._MEMBER];
 const ANA_SCOPES: TeamAccess[] = [
-  { departmentName: "Fotografia", access: UserRole._MEMBER },
-  { departmentName: "Divulgação", access: UserRole._COORDINATOR },
+  { departmentName: "Fotografia", access: UserRole._MEMBER, source: "membership" },
+  { departmentName: "Divulgação", access: UserRole._COORDINATOR, source: "membership" },
 ];
 
 describe("canForTeam", () => {
@@ -84,7 +84,11 @@ describe("canForTeam", () => {
    */
   it("does not match a team whose name merely contains the target", () => {
     const scopes: TeamAccess[] = [
-      { departmentName: "Fotografia de Eventos", access: UserRole._COORDINATOR },
+      {
+        departmentName: "Fotografia de Eventos",
+        access: UserRole._COORDINATOR,
+        source: "membership",
+      },
     ];
     expect(canForTeam([UserRole._COORDINATOR], scopes, "team.members.manage", "Fotografia")).toBe(
       false
@@ -96,7 +100,9 @@ describe("canForTeam", () => {
    * because both are drawn from roles the caller actually holds.
    */
   it("cannot grant to a caller who holds no qualifying role anywhere", () => {
-    const scopes: TeamAccess[] = [{ departmentName: "Fotografia", access: UserRole._MEMBER }];
+    const scopes: TeamAccess[] = [
+      { departmentName: "Fotografia", access: UserRole._MEMBER, source: "membership" },
+    ];
     expect(canForTeam([UserRole._MEMBER], scopes, "team.members.manage", "Fotografia")).toBe(false);
   });
 });
@@ -113,7 +119,7 @@ describe("canForTeam", () => {
 describe("mayAssignAccess", () => {
   const DIRECAO = "Direção";
   const coordinatorOfDirecao: TeamAccess[] = [
-    { departmentName: DIRECAO, access: UserRole._COORDINATOR },
+    { departmentName: DIRECAO, access: UserRole._COORDINATOR, source: "membership" },
   ];
 
   it("refuses a coordinator handing out an admin-level role", () => {
@@ -142,7 +148,9 @@ describe("mayAssignAccess", () => {
   });
 
   it("refuses a plain member entirely", () => {
-    const member: TeamAccess[] = [{ departmentName: DIRECAO, access: UserRole._MEMBER }];
+    const member: TeamAccess[] = [
+      { departmentName: DIRECAO, access: UserRole._MEMBER, source: "membership" },
+    ];
     expect(mayAssignAccess([UserRole._MEMBER], member, DIRECAO, UserRole._MEMBER)).toBe(false);
   });
 
@@ -151,9 +159,183 @@ describe("mayAssignAccess", () => {
    * higher rank, and treating it as senior would let a shop manager assign membership roles.
    */
   it("does not treat shop_manager as senior to member", () => {
-    const shopManager: TeamAccess[] = [{ departmentName: DIRECAO, access: UserRole._SHOP_MANAGER }];
+    const shopManager: TeamAccess[] = [
+      { departmentName: DIRECAO, access: UserRole._SHOP_MANAGER, source: "membership" },
+    ];
     expect(mayAssignAccess([UserRole._SHOP_MANAGER], shopManager, DIRECAO, UserRole._MEMBER)).toBe(
       false
     );
+  });
+});
+
+/**
+ * #184 — the price of unioning grants into the scope pipeline.
+ *
+ * Every guard now sees grants automatically, which is the point. These tests pin the two places
+ * where that reach had to be paid for, because without them a two-week loan quietly becomes
+ * permanent authority over someone else's team.
+ */
+describe("grants do not confer everything a membership does (#184)", () => {
+  const membership = (departmentName: string, access: UserRole): TeamAccess => ({
+    departmentName,
+    access,
+    source: "membership",
+  });
+  const grant = (departmentName: string, access: UserRole): TeamAccess => ({
+    departmentName,
+    access,
+    source: "grant",
+  });
+
+  it("lets a grant open the team's workspace", async () => {
+    // The whole purpose of the feature: borrowed access reaches the pages.
+    expect(
+      canForTeam(
+        [UserRole._MEMBER],
+        [grant("Fotografia", UserRole._MEMBER)],
+        "team.workspace.view",
+        "Fotografia"
+      )
+    ).toBe(true);
+  });
+
+  it("lets a coordinator-level grant edit the team's content", async () => {
+    expect(
+      canForTeam(
+        [UserRole._MEMBER],
+        [grant("Fotografia", UserRole._COORDINATOR)],
+        "team.content.edit",
+        "Fotografia"
+      )
+    ).toBe(true);
+  });
+
+  it("does NOT let a coordinator-level grant manage the team's members", async () => {
+    // `team.members.manage` is absent from GRANTABLE_TEAM_PERMISSIONS. Lending someone the
+    // workspace for a fortnight must not let them add and remove people from a team that is not
+    // theirs — those memberships would outlive the grant that created them.
+    expect(
+      canForTeam(
+        [UserRole._MEMBER],
+        [grant("Fotografia", UserRole._COORDINATOR)],
+        "team.members.manage",
+        "Fotografia"
+      )
+    ).toBe(false);
+
+    // A real coordinator of the same team still can.
+    expect(
+      canForTeam(
+        [UserRole._COORDINATOR],
+        [membership("Fotografia", UserRole._COORDINATOR)],
+        "team.members.manage",
+        "Fotografia"
+      )
+    ).toBe(true);
+  });
+
+  it("does NOT let a grant confer the power to assign permanent access", async () => {
+    expect(
+      mayAssignAccess(
+        [UserRole._MEMBER],
+        [grant("Fotografia", UserRole._COORDINATOR)],
+        "Fotografia",
+        UserRole._MEMBER
+      )
+    ).toBe(false);
+
+    expect(
+      mayAssignAccess(
+        [UserRole._COORDINATOR],
+        [membership("Fotografia", UserRole._COORDINATOR)],
+        "Fotografia",
+        UserRole._MEMBER
+      )
+    ).toBe(true);
+  });
+});
+
+describe("mayDelegateGrant (#184)", () => {
+  const membership = (departmentName: string, access: UserRole): TeamAccess => ({
+    departmentName,
+    access,
+    source: "membership",
+  });
+  const grant = (departmentName: string, access: UserRole): TeamAccess => ({
+    departmentName,
+    access,
+    source: "grant",
+  });
+
+  const held = grant("Fotografia", UserRole._COORDINATOR);
+
+  it("lets a coordinator pass their grant to a member of their own team", () => {
+    expect(
+      mayDelegateGrant(
+        [membership("Divulgação", UserRole._COORDINATOR), held],
+        [membership("Divulgação", UserRole._MEMBER)],
+        held,
+        UserRole._MEMBER
+      )
+    ).toBe(true);
+  });
+
+  it("refuses delegating to someone outside the delegator's own team", () => {
+    // "a member of HIS team", stated exactly. The Visuais person is a member of the núcleo, just
+    // not one this coordinator has authority over.
+    expect(
+      mayDelegateGrant(
+        [membership("Divulgação", UserRole._COORDINATOR), held],
+        [membership("Visuais", UserRole._MEMBER)],
+        held,
+        UserRole._MEMBER
+      )
+    ).toBe(false);
+  });
+
+  it("refuses a delegator who is only a member of their own team", () => {
+    expect(
+      mayDelegateGrant(
+        [membership("Divulgação", UserRole._MEMBER), held],
+        [membership("Divulgação", UserRole._MEMBER)],
+        held,
+        UserRole._MEMBER
+      )
+    ).toBe(false);
+  });
+
+  it("refuses a delegator whose coordinator status is itself only a grant", () => {
+    // A grant must never bootstrap the authority to make more grants, or one loan multiplies.
+    expect(
+      mayDelegateGrant(
+        [grant("Divulgação", UserRole._COORDINATOR), held],
+        [membership("Divulgação", UserRole._MEMBER)],
+        held,
+        UserRole._MEMBER
+      )
+    ).toBe(false);
+  });
+
+  it("refuses delegating more than was granted", () => {
+    const memberGrant = grant("Fotografia", UserRole._MEMBER);
+    expect(
+      mayDelegateGrant(
+        [membership("Divulgação", UserRole._COORDINATOR), memberGrant],
+        [membership("Divulgação", UserRole._MEMBER)],
+        memberGrant,
+        UserRole._COORDINATOR
+      )
+    ).toBe(false);
+  });
+
+  it("never delegates admin", () => {
+    expect(
+      mayDelegateGrant(
+        [membership("Divulgação", UserRole._COORDINATOR), held],
+        [membership("Divulgação", UserRole._MEMBER)],
+        held,
+        UserRole._ADMIN
+      )
+    ).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 import { Membership, DbMembership, mapDbMembershipToMembership } from "@/types/memberships";
 import { User, UserRole, mapRoleToUserRole, mapDbUserToUser } from "@/types/user";
 import { db_query } from "@/utils/db/dbClient";
+import { TeamAccessSource } from "@/lib/auth/permissions";
 
 export const createUser = async (user: Partial<User>): Promise<User | null> => {
   if (!user.istid || !user.name || !user.email) return null;
@@ -578,6 +579,8 @@ export type TeamScope = {
   departmentName: string;
   departmentType: string;
   access: UserRole;
+  /** Membership, or a temporary grant (#184). See `TeamAccessSource` for why this is required. */
+  source: TeamAccessSource;
 };
 
 /**
@@ -594,12 +597,17 @@ export const getUserTeamScopes = async (istid: string): Promise<TeamScope[]> => 
     department_name: string;
     department_type: string;
     access: string;
+    source: string;
   }>("SELECT * FROM neiist.get_user_team_scopes($1::VARCHAR(50))", [istid]);
 
   return rows.map((row) => ({
     departmentName: row.department_name,
     departmentType: row.department_type,
     access: mapRoleToUserRole(row.access),
+    // Anything the database does not explicitly label a grant is treated as a grant, not as a
+    // membership. Fail closed: an unrecognised value must not silently acquire the wider
+    // membership semantics that `mayAssignAccess` keys off.
+    source: row.source === "membership" ? "membership" : "grant",
   }));
 };
 
@@ -644,4 +652,126 @@ export const findUserByAnyEmail = async (
     [email]
   );
   return row ? { istid: row.istid, matchedPrimaryEmail: row.matched_primary_email } : null;
+};
+
+/** A temporary team access grant, as the UI needs it (#184). */
+export type TeamAccessGrant = {
+  id: number;
+  granteeIstid: string;
+  granteeName: string;
+  access: UserRole;
+  grantedByIstid: string;
+  grantedByName: string;
+  parentGrantId: number | null;
+  reason: string;
+  grantedAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  isActive: boolean;
+};
+
+/**
+ * Create a temporary grant (#184).
+ *
+ * **Errors are allowed to throw**, unlike most of this file. Every rule that decides who may
+ * grant what lives in `neiist.create_team_access_grant` and is reported by `RAISE … USING
+ * ERRCODE`; a `catch { return null }` here would turn "the database refused this on security
+ * grounds" into an indistinguishable falsy value, and the route would answer 500 instead of
+ * telling the person why. `errorMapper` turns NEI08–NEI12 into the right status and message.
+ *
+ * `actorIstid` is the caller's own istid and nothing else about them: the function derives their
+ * authority from the database itself, so no argument can assert it.
+ */
+export const createTeamAccessGrant = async (
+  actorIstid: string,
+  granteeIstid: string,
+  departmentName: string,
+  access: UserRole,
+  expiresAt: string,
+  reason: string,
+  parentGrantId: number | null = null
+): Promise<number> => {
+  const { rows } = await db_query<{ create_team_access_grant: number }>(
+    `SELECT neiist.create_team_access_grant(
+       $1::VARCHAR(50), $2::VARCHAR(50), $3::VARCHAR(30),
+       $4::neiist.user_access_enum, $5::TIMESTAMPTZ, $6::TEXT, $7::INT
+     )`,
+    [actorIstid, granteeIstid, departmentName, access, expiresAt, reason, parentGrantId]
+  );
+  return rows[0].create_team_access_grant;
+};
+
+/** Revoke a grant and anything delegated from it. Throws for the same reason as create. */
+export const revokeTeamAccessGrant = async (
+  actorIstid: string,
+  grantId: number,
+  reason: string | null = null
+): Promise<void> => {
+  await db_query("SELECT neiist.revoke_team_access_grant($1::VARCHAR(50), $2::INT, $3::TEXT)", [
+    actorIstid,
+    grantId,
+    reason,
+  ]);
+};
+
+/** Every grant on a team, live or not — the audit view the coordinator's screen shows. */
+export const getTeamAccessGrants = async (departmentName: string): Promise<TeamAccessGrant[]> => {
+  const { rows } = await db_query<{
+    id: number;
+    grantee_istid: string;
+    grantee_name: string;
+    access: string;
+    granted_by_istid: string;
+    granted_by_name: string;
+    parent_grant_id: number | null;
+    reason: string;
+    granted_at: string;
+    expires_at: string;
+    revoked_at: string | null;
+    is_active: boolean;
+  }>("SELECT * FROM neiist.get_team_access_grants($1::VARCHAR(30))", [departmentName]);
+
+  return rows.map((row) => ({
+    id: row.id,
+    granteeIstid: row.grantee_istid,
+    granteeName: row.grantee_name,
+    access: mapRoleToUserRole(row.access),
+    grantedByIstid: row.granted_by_istid,
+    grantedByName: row.granted_by_name,
+    parentGrantId: row.parent_grant_id,
+    reason: row.reason,
+    grantedAt: row.granted_at,
+    expiresAt: row.expires_at,
+    revokedAt: row.revoked_at,
+    isActive: row.is_active,
+  }));
+};
+
+/** The live grants this person holds — used to decide whether they have anything to delegate. */
+export const getUserActiveGrants = async (
+  istid: string
+): Promise<
+  Array<{
+    id: number;
+    departmentName: string;
+    access: UserRole;
+    parentGrantId: number | null;
+    expiresAt: string;
+  }>
+> => {
+  const { rows } = await db_query<{
+    id: number;
+    department_name: string;
+    access: string;
+    parent_grant_id: number | null;
+    expires_at: string;
+  }>("SELECT * FROM neiist.get_user_active_grants($1::VARCHAR(50))", [istid]);
+
+  return rows.map((row) => ({
+    id: row.id,
+    departmentName: row.department_name,
+    access: mapRoleToUserRole(row.access),
+    parentGrantId: row.parent_grant_id,
+    expiresAt: row.expires_at,
+  }));
 };

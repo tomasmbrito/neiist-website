@@ -9,6 +9,7 @@ import {
   isNeiistMember,
   visibleWorkspaceTeams,
   TeamAccess,
+  TeamAccessSource,
 } from "@/lib/auth/permissions";
 
 /**
@@ -160,9 +161,14 @@ describe("ROLE_PERMISSIONS", () => {
  * That makes the interesting cases the negative ones, so most of what follows asserts refusal.
  */
 describe("isNeiistMember", () => {
-  const scope = (departmentName: string, access: UserRole): TeamAccess => ({
+  const scope = (
+    departmentName: string,
+    access: UserRole,
+    source: TeamAccessSource = "membership"
+  ): TeamAccess => ({
     departmentName,
     access,
+    source,
   });
 
   it("refuses a logged-in Técnico student who belongs to no team", () => {
@@ -183,9 +189,14 @@ describe("isNeiistMember", () => {
 
 describe("visibleWorkspaceTeams", () => {
   const ALL = ["Dev-Team", "Divulgação", "Visuais"];
-  const scope = (departmentName: string, access: UserRole): TeamAccess => ({
+  const scope = (
+    departmentName: string,
+    access: UserRole,
+    source: TeamAccessSource = "membership"
+  ): TeamAccess => ({
     departmentName,
     access,
+    source,
   });
 
   it("shows a member only their own team", () => {

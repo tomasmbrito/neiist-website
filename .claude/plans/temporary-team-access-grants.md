@@ -1,5 +1,10 @@
 # Plan: temporary, delegable team access grants (#184)
 
+> **Status: implemented and reviewed — PR #194.** The plan below is as written before any code
+> existed; it is kept intact because the reasoning is the useful part. What the security review
+> then found is recorded at the bottom under "Corrections from security review", rather than by
+> editing the plan to look as if it had been right all along.
+
 **Status: proposal. Needs human approval before implementation** — it adds a table and a
 migration (`CLAUDE.md` §2.7, §4a) and it changes authorization (`CLAUDE.md` §9).
 
@@ -456,3 +461,53 @@ local demotion of `Dev-Team / Coordenador` to `coordinator`):
   (a grantee has a scope), but it is an assumption written as a string literal.
 - `src/utils/db/userQueries.ts:517` `getAllMemberships` still `catch { return [] }` and is called
   by the team page; a failed read renders an **empty team**, indistinguishable from a real one.
+
+---
+
+## Corrections from security review
+
+The plan was implemented as written. Review then found two **High** issues in it, both real, both
+now fixed with a mutation-proven test each. Recorded here because each was a gap in the *design*,
+not a slip in the coding.
+
+**1. Invariant 9 was specified as an INSERT-time check, and that is not sufficient.**
+"The grantee must hold a current membership" was enforced only when the grant was created.
+Offboarding happens later: end someone's membership and the grant branch of `get_user_team_scopes`
+still returned a scope on its own, so `isNeiistMember` — `scopes.length > 0` — stayed **true for an
+ex-member**, handing them another team's internal workspace for up to 90 more days with nothing in
+the admin UI showing why. The predicate now also runs on the **read path**, which is the only place
+that can react to a membership ending — an event the grants table never sees.
+
+**2. Invariant 1 said "the board", but `access = 'admin'` does not mean "the board".**
+`Dev-Team / Coordenador` is deliberately seeded `admin` (#189), so one team's coordinator satisfied
+"only the board may create new authority" and could mint 90-day grants on every other team, revoke
+anyone's, and seed a delegation chain into a team they have no relationship with. The check now
+requires the granting membership to be in a department whose `department_type` is not `'team'`.
+
+Also corrected, all from the same review:
+
+| finding | fix |
+|---|---|
+| POST was a membership oracle — shape validated before authority, so any logged-in student could read "is X a member" off the status code | the route refuses non-members before the database sees anything |
+| a delegated grant could outlive its parent's revocation under READ COMMITTED | the parent read takes `FOR SHARE`, serialising against the revoke's `FOR UPDATE` |
+| `is_grant_active` declared `IMMUTABLE` while reading `NOW()` | `STABLE` — the one predicate the whole expiry model rests on must not be constant-folded |
+| `access_rank` had no `ELSE`, so a future enum value makes the delegation ceiling `NULL > x`, i.e. false | `ELSE 0`, so it fails closed |
+| NEI01 unmapped: a nonexistent grant id returned 500 with the raw message while a forbidden one returned 403 | mapped to 404; grant-id enumeration closed |
+| the receiving team's own coordinator could not revoke an outsider on their own team | added to the SQL clause, and the Revogar button now mirrors it |
+| `mayDelegateGrant` was exported, tested, and never called | it is the route's pre-check now, so the helper is live rather than rotting |
+
+### One mutation that mattered
+
+Removing the coordinator-or-higher condition from the SQL delegation check **failed no test**,
+because every other delegation case in the suite also differed by department. The case that
+isolates it — a plain member of a team delegating to another member of that *same* team — did not
+exist. It does now.
+
+### Still open, deliberately
+
+- No `SET search_path` on the new `SECURITY DEFINER` functions. Not a regression (all 76 existing
+  ones omit it) but worth a repo-wide change.
+- No cap on how many children one root grant may spawn.
+- Grant reasons are readable by everyone who can open the team's workspace. The placeholder now
+  says so rather than hiding it.
+

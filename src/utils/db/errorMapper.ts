@@ -52,6 +52,49 @@ export function throwIfRoleDbError(error: unknown): void {
   }
 }
 
+/** Temporary team access grants (#184). */
+const GRANT_SQLSTATE = {
+  /** Only the board may create a root grant. */
+  NOT_BOARD: "NEI08",
+  /** The parent grant is missing, not yours, expired, revoked, already delegated, or exceeded. */
+  BAD_DELEGATION: "NEI09",
+  /** The grantee is not a member of a team the delegator coordinates. */
+  NOT_YOUR_TEAM: "NEI10",
+  /** The grant itself is invalid — admin access, out of range, blank reason, wrong department. */
+  INVALID_GRANT: "NEI11",
+  /** Not permitted to revoke this grant. */
+  CANNOT_REVOKE: "NEI12",
+} as const;
+
+/**
+ * Maps the grant guards to domain errors.
+ *
+ * Every one of these carries a Portuguese message written for the person who hit it — "you cannot
+ * delegate more access than you were given", "only the board may grant temporary access to a
+ * team". They exist precisely so a refusal explains itself, so collapsing them into a 500 would
+ * throw away the whole point of raising them.
+ *
+ * NEI08/NEI10/NEI12 are authorization refusals → 403. NEI09/NEI11 are the caller asking for
+ * something incoherent → 400.
+ */
+export function throwIfGrantDbError(error: unknown): void {
+  const dbError = error as { message?: string; code?: string };
+  switch (dbError?.code) {
+    // Shared with the order functions. Unmapped, this fell through to a 500 that echoed the raw
+    // message — so a nonexistent grant id was distinguishable from one the caller may not touch,
+    // which is grant-id enumeration.
+    case ORDER_SQLSTATE.NOT_FOUND:
+      throw new NotFoundError(dbError.message ?? "Acesso temporário não encontrado.");
+    case GRANT_SQLSTATE.NOT_BOARD:
+    case GRANT_SQLSTATE.NOT_YOUR_TEAM:
+    case GRANT_SQLSTATE.CANNOT_REVOKE:
+      throw new ForbiddenError(dbError.message ?? "Sem permissão para esta operação.");
+    case GRANT_SQLSTATE.BAD_DELEGATION:
+    case GRANT_SQLSTATE.INVALID_GRANT:
+      throw new ValidationError(dbError.message ?? "Pedido inválido.");
+  }
+}
+
 /**
  * Postgres SQLSTATE `23505`, unique_violation.
  *
