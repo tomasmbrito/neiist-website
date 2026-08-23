@@ -183,3 +183,63 @@
     position: static;
   }
 }
+
+/* Temporary access grants (#184). */
+.grantForm {
+  margin-top: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1.1rem 1.2rem;
+  border-radius: 12px;
+  background-color: var(--background-colour-hover);
+}
+
+.grantRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.grantInput {
+  flex: 1 1 12rem;
+  min-width: 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--light-secondary-colour);
+  background: var(--background-colour);
+  color: var(--foreground-colour);
+  font-size: 0.9rem;
+}
+
+.grantBtn {
+  padding: 0.55rem 1.2rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary-colour);
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.grantBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.revokeBtn {
+  margin-left: 0.6rem;
+  padding: 0.2rem 0.6rem;
+  border: none;
+  border-radius: 6px;
+  background: #ffeaea;
+  color: #d32f2f;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.revokeBtn:hover {
+  background: #ffd6d6;
+}
