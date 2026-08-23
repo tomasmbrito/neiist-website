@@ -1,4 +1,5 @@
 import Calendar from "@/components/activities/Calendar";
+import { isFrameworkSignal } from "@/lib/errors/frameworkSignal";
 import { getActivitiesEventsFromDb } from "@/utils/db/eventQueries";
 import { syncNotionEventsToDb, isNotionConfigured } from "@/utils/eventsUtils";
 import { UserRole } from "@/types/user";
@@ -32,6 +33,12 @@ async function getEventsAndSubscriptions() {
       await syncNotionEventsToDb();
       events = await getActivitiesEventsFromDb();
     } catch (error) {
+      // Neither call above can throw a framework signal today — one is a Notion request, the
+      // other a database read. The re-throw is here so that stays true if a line is added: the
+      // rule is "no blanket catch on a Server Component path swallows a digest" (#111, #153),
+      // and a rule with an exception is one people stop checking.
+      if (isFrameworkSignal(error)) throw error;
+
       console.error("[activities] Notion sync failed; rendering without synced events:", error);
     }
   }

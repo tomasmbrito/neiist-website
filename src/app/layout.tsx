@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { isFrameworkSignal } from "@/lib/errors/frameworkSignal";
 import { Metadata } from "next";
 import { cookies } from "next/headers";
 import { Secular_One } from "next/font/google";
@@ -44,6 +45,16 @@ async function getInitialUser(): Promise<User | null> {
     if (!jwtUser) return null;
     return (await getUser(jwtUser.istid)) ?? null;
   } catch (error) {
+    // Re-throw the framework's own signals (#153). `cookies()` throws `DynamicServerError` to
+    // tell Next this route is dynamic, and this layout runs on EVERY route — so swallowing it
+    // meant the root layout lied to the framework about dynamism on every page, which is why
+    // every build logged "Failed to resolve the initial user … couldn't be rendered statically".
+    //
+    // Chosen deliberately over preserving static rendering (option 2 in #153): measured, this
+    // costs nothing. `/sitemap.xml` is the only statically prerendered route and it is a route
+    // handler outside this layout, so it stays static.
+    if (isFrameworkSignal(error)) throw error;
+
     console.error("Failed to resolve the initial user", error);
     return null;
   }

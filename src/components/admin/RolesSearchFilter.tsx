@@ -33,6 +33,18 @@ const ACCESS_OPTIONS: UserRole[] = [
   UserRole._ADMIN,
 ];
 
+/**
+ * The levels this caller may actually set (#193).
+ *
+ * `_ADMIN` is organisation-wide, so granting it is a separate permission held only by admins.
+ * A role that is *already* admin still renders its current value — hiding it would make the
+ * select silently misreport the role as something it is not.
+ */
+const optionsFor = (mayGrantAdmin: boolean, current?: string): UserRole[] =>
+  ACCESS_OPTIONS.filter(
+    (option) => option !== UserRole._ADMIN || mayGrantAdmin || current === UserRole._ADMIN
+  );
+
 interface Department {
   name: string;
   department_type: string;
@@ -42,10 +54,13 @@ interface Department {
 export default function RolesSearchFilter({
   departments,
   initialRoles,
+  mayGrantAdmin,
 }: {
   departments: Department[];
   initialDepartment: string;
   initialRoles: Role[];
+  /** Decided on the server (#193). The API and SQL re-check it; this only shapes the options. */
+  mayGrantAdmin: boolean;
 }) {
   const [roles, setRoles] = useState<Role[]>(initialRoles);
   const [selectedDepartment, setSelectedDepartment] = useState<string>("");
@@ -337,7 +352,7 @@ export default function RolesSearchFilter({
                       onChange={(inputEvent) => handleAccessChange(role, inputEvent.target.value)}
                       className={`${styles.accessSelect}${role.access === "admin" ? " " + styles.admin : ""}`}
                       aria-label={`Nível de acesso do cargo ${role.role_name}`}>
-                      {ACCESS_OPTIONS.map((option) => (
+                      {optionsFor(mayGrantAdmin, role.access).map((option) => (
                         <option key={option} value={option}>
                           {ROLE_LABELS[option]}
                         </option>
@@ -406,7 +421,7 @@ export default function RolesSearchFilter({
               onChange={(inputEvent) => setNewRole({ ...newRole, access: inputEvent.target.value })}
               className={styles.select}
               disabled={loading}>
-              {ACCESS_OPTIONS.map((option) => (
+              {optionsFor(mayGrantAdmin).map((option) => (
                 <option key={option} value={option}>
                   {ROLE_LABELS[option]}
                 </option>
