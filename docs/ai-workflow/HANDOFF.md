@@ -138,6 +138,59 @@ DB-backed suites need Postgres; pure-logic suites do not.
 
 ---
 
+## 3a. Notion → website: where it stands
+
+The one table to look at. **"Foundation"** is the access model everything else needs; **"Content"**
+is the actual Notion material, none of which has moved yet.
+
+### Foundation — the access model (epic #182)
+
+| | What | State |
+|---|---|---|
+| #180 | Team-scoped authorization (`canForTeam`) — a coordinator of one team is not one everywhere | ✅ merged |
+| #181 | A member added today can be removed today | ✅ merged |
+| #183 | The members-only boundary and `/workspace` shell | ✅ merged |
+| #185 | Decision: board access is per-role **data**, not a hardcoded list | ✅ decided |
+| #158 | Roles UI — change a role's access level without a deploy | ✅ merged |
+| #189 | Mesa da Assembleia Geral is not organisation-wide admin | ✅ merged |
+| #187 | Profile photo write hardened (shared with product uploads) | ✅ merged (half) |
+| **#184** | **Temporary, delegable team access grants** | 🔵 PR #194 |
+| **#193** | **P0 — any coordinator could promote their own role to `admin`** | 🔵 PR #195 |
+
+Once those two merge, **the access model is complete** and the epic can close.
+
+### Content — the actual Notion migration (epic #126)
+
+| | What | State |
+|---|---|---|
+| #127 | Read-only Notion-backed events view | ✅ merged |
+| #128 | Phase 0 — teams and team membership | ✅ superseded by #182 |
+| #129 | Phase 1 — events and meetings | ⬜ not started — **next** |
+| #130 | Phase 2 — tasks and the member dashboard | ⬜ not started |
+| #131 | Phase 3 — requerimentos (cross-team approval) | ⬜ blocked on order integrity |
+| #132 | Phase 4 — forms engine for C&Q inscrições | ⬜ not started |
+| #138 | Phase 5 — sponsorship outreach | ⬜ not started |
+| #133 | Phase 6 — event finance ledger | ⬜ not started |
+| #134 | Phase 7 — recruitment pipeline | ⬜ not started |
+| #135 | Phase 8 — venue scouting | ⬜ not started |
+| #136 | Phase 9 — fold Sweats Verdes into the shop | ⬜ not started |
+| #137 | Phase 10 — retire Notion | ⬜ last |
+
+**Nothing under Content has moved.** `/workspace/[team]` renders the roster, the temporary-access
+panel and an explicit placeholder saying the Notion pages will land there. That is honest: the
+boundary is built and proven, the content is not.
+
+### Supporting, deliberately deferred
+
+| | What | Why deferred |
+|---|---|---|
+| #159 | Per-member permission overrides | Should reuse the `team_access_grants` table from #184 |
+| #160 | Audit log | The grants table already records grant/revoke; #160 is a pure addition |
+| #152 | Measure production schema drift | Do before migrations touch the order functions |
+| #187 | Should members manage their own photo? | Product question — ask Fotografia |
+
+---
+
 ## 4. State right now
 
 **#186 and #188 are merged.** `/workspace` is live on `main`. **PR #190** (the roles edit control)
