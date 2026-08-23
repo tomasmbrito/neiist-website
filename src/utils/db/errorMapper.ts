@@ -24,6 +24,8 @@ const ORDER_SQLSTATE = {
 const ROLE_SQLSTATE = {
   NOT_FOUND: "NEI06",
   LAST_ADMIN: "NEI07",
+  /** Only an admin may grant the `admin` access level (#193). */
+  NOT_ADMIN: "NEI13",
 } as const;
 
 /**
@@ -38,6 +40,11 @@ export function throwIfRoleDbError(error: unknown): void {
   switch (dbError?.code) {
     case ROLE_SQLSTATE.NOT_FOUND:
       throw new NotFoundError(dbError.message ?? "Cargo não encontrado");
+    case ROLE_SQLSTATE.NOT_ADMIN:
+      throw new ForbiddenError(
+        dbError.message ??
+          "Apenas um administrador pode atribuir o nível de acesso de administrador."
+      );
     case ROLE_SQLSTATE.LAST_ADMIN:
       throw new ConflictError(
         dbError.message ?? "Não é possível remover o último cargo com acesso de administrador."

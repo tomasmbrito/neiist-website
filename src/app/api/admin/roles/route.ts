@@ -10,6 +10,8 @@ import { serverCheckPermission } from "@/utils/permissionUtils";
 import { throwIfRoleDbError } from "@/utils/db/errorMapper";
 import { handleApiError } from "@/lib/errors/apiErrorHandler";
 import { departmentRoleAccessSchema, updateDepartmentRoleSchema } from "@/schemas/admin";
+import { can } from "@/lib/auth/permissions";
+import { UserRole } from "@/types/user";
 
 export async function GET(request: NextRequest) {
   const userRoles = await serverCheckPermission("members.roles.manage");
@@ -57,7 +59,27 @@ export async function POST(request: NextRequest) {
     if (!accessParsed.success) {
       return NextResponse.json({ error: "Nível de acesso inválido" }, { status: 400 });
     }
-    const success = await addValidDepartmentRole(departmentName, roleName, accessParsed.data);
+
+    // #193: a coordinator may manage their teams' roles, but only an admin may create
+    // organisation-wide power. Checked here for a clear 403, and again in SQL, which is the
+    // enforcement — the unguarded three-argument function has had EXECUTE revoked from the app
+    // role so this cannot be routed around by a future caller.
+    if (
+      accessParsed.data === UserRole._ADMIN &&
+      !can(userRoles.roles, "members.roles.grantAdmin")
+    ) {
+      return NextResponse.json(
+        { error: "Apenas um administrador pode atribuir o nível de acesso de administrador." },
+        { status: 403 }
+      );
+    }
+
+    const success = await addValidDepartmentRole(
+      userRoles.user!.istid,
+      departmentName,
+      roleName,
+      accessParsed.data
+    );
     if (success) {
       return NextResponse.json({ success: true });
     } else {
@@ -89,7 +111,17 @@ export async function PATCH(request: NextRequest) {
       );
     }
     const { departmentName, roleName, access } = parsed.data;
-    await updateValidDepartmentRole(departmentName, roleName, access);
+
+    // Same rule as POST. This is the path that was exploitable: a coordinator PATCHing their own
+    // role to `admin` became an organisation-wide administrator (#193).
+    if (access === UserRole._ADMIN && !can(userRoles.roles, "members.roles.grantAdmin")) {
+      return NextResponse.json(
+        { error: "Apenas um administrador pode atribuir o nível de acesso de administrador." },
+        { status: 403 }
+      );
+    }
+
+    await updateValidDepartmentRole(userRoles.user!.istid, departmentName, roleName, access);
     return NextResponse.json({ success: true });
   } catch (error) {
     // NEI07 (last admin) becomes a 409 carrying its Portuguese message rather than a blanket 500.
