@@ -209,6 +209,32 @@ export const TEAM_PERMISSION_ROLES = {
   ],
   /** Edit a team's workspace content. Its coordinators, not its members. */
   "team.content.edit": [UserRole._ADMIN, UserRole._COORDINATOR],
+  /**
+   * Create and edit a team's **meetings** (#129).
+   *
+   * Every access level, matching what Notion allows today: a meeting is internal team business
+   * and any member can call one. Deliberately separate from `team.events.manage` so that
+   * matching Notion here does not also hand out the power to schedule public events.
+   */
+  "team.meetings.manage": [
+    UserRole._ADMIN,
+    UserRole._COORDINATOR,
+    UserRole._MEMBER,
+    UserRole._SHOP_MANAGER,
+  ],
+  /**
+   * Create and edit a team's **events** — the núcleo doing something, as opposed to meeting about
+   * it. Coordinators, because an event is the team acting outwards.
+   */
+  "team.events.manage": [UserRole._ADMIN, UserRole._COORDINATOR],
+  /**
+   * Mark an event public, putting it on the calendar students see.
+   *
+   * Separate from `team.events.manage` because publishing is the irreversible-ish half: slice C
+   * will make `is_public` drive `/activities`, and an event announced in NEIIST's name is not
+   * really taken back by unticking a box.
+   */
+  "team.events.publish": [UserRole._ADMIN, UserRole._COORDINATOR],
 } as const satisfies Record<string, readonly UserRole[]>;
 
 export type TeamPermission = keyof typeof TEAM_PERMISSION_ROLES;
@@ -243,6 +269,16 @@ export type TeamAccess = {
 export const GRANTABLE_TEAM_PERMISSIONS: readonly TeamPermission[] = [
   "team.workspace.view",
   "team.content.edit",
+  // #129, decided 2026-08-23: a temporary grant is treated as membership for events, including
+  // publishing. Lending someone access to a team is usually *so that* they can help run its
+  // events, and splitting the two would have made the grant not much use.
+  //
+  // The consequence is real and was accepted knowingly: **a published event outlives the grant
+  // that created it.** Unticking `is_public` later does not unsay it. Revoking the grant stops
+  // further changes, not the announcement already made.
+  "team.meetings.manage",
+  "team.events.manage",
+  "team.events.publish",
 ];
 
 /**
