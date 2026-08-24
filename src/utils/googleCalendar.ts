@@ -400,25 +400,42 @@ export async function syncEventToCalendar(
   }
 }
 
+/**
+ * Sync events into a user's NEIIST calendar.
+ *
+ * **Only public events, and the filter lives here rather than at the call site (#202).**
+ *
+ * These calendars are created with `scope: { type: "default" }` — the Google Calendar API's
+ * *public* scope — so anything written here is world-readable. Every internal NEIIST meeting was
+ * being written to one, because the caller passed `fetchAllNotionEvents()` unfiltered while the
+ * sibling sync path (`eventsUtils.ts`, Notion → `neiist.activities`) had always filtered on
+ * `e.public`. One path filtered and the other did not, which is the shape this repo keeps
+ * relearning (#97, #117, #180).
+ *
+ * Filtering at the sink rather than the source is deliberate: a future caller cannot reintroduce
+ * the leak by forgetting, and the guarantee is stated where the write happens.
+ */
 export async function syncEventsToCalendarBatched(
   calendarId: string,
   events: NotionEvent[],
   userEmail: string,
   alternativeEmail?: string
 ) {
+  const publicEvents = events.filter((event) => event.public);
+
   const existingEvents = await getExistingCalendarEvents(calendarId);
   const existingEventIds = new Set(existingEvents.keys());
 
   let synced = 0;
-  for (let i = 0; i < events.length; i += BATCH_SIZE) {
-    const batch = events.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < publicEvents.length; i += BATCH_SIZE) {
+    const batch = publicEvents.slice(i, i + BATCH_SIZE);
     await Promise.all(
       batch.map((event) =>
         syncEventToCalendar(calendarId, event, userEmail, existingEventIds, alternativeEmail)
       )
     );
     synced += batch.length;
-    if (i + BATCH_SIZE < events.length) {
+    if (i + BATCH_SIZE < publicEvents.length) {
       await delay(BATCH_DELAY_MS);
     }
   }

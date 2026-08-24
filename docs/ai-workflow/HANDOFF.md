@@ -154,10 +154,20 @@ is the actual Notion material, none of which has moved yet.
 | #158 | Roles UI — change a role's access level without a deploy | ✅ merged |
 | #189 | Mesa da Assembleia Geral is not organisation-wide admin | ✅ merged |
 | #187 | Profile photo write hardened (shared with product uploads) | ✅ merged (half) |
-| **#184** | **Temporary, delegable team access grants** | 🔵 PR #194 |
-| **#193** | **P0 — any coordinator could promote their own role to `admin`** | 🔵 PR #195 |
+| #184 | Temporary, delegable team access grants | ✅ merged |
+| #193 | P0 — any coordinator could promote their own role to `admin` | ✅ merged |
 
-Once those two merge, **the access model is complete** and the epic can close.
+**The access model is complete and epic #182 is closed.** Everything after this builds on it
+rather than extending it. Four things to know before you touch it:
+
+- **Membership is `scopes.length > 0`, not "is logged in".** A Técnico student who bought a
+  t-shirt and an external Google account both authenticate fine and both hold zero scopes.
+- **`canForTeam` is a separate type from `can()` on purpose**, so a team question cannot be
+  answered globally — that mistake was #180.
+- **Board access is data**, per (department, role), editable without a deploy (#185).
+- **Grants union into `get_user_team_scopes`**, so every guard honours them by construction. The
+  price is the required `source` discriminator and the default-deny `GRANTABLE_TEAM_PERMISSIONS`
+  allowlist; without those, a two-week loan would have become permanent authority.
 
 ### Content — the actual Notion migration (epic #126)
 

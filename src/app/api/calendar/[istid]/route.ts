@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getUser } from "@/utils/db/userQueries";
+import { getUser, getUserTeamScopes } from "@/utils/db/userQueries";
+import { isNeiistMember } from "@/lib/auth/permissions";
 import {
   getOrCreateUserCalendar,
   getAddCalendarLink,
@@ -60,6 +61,17 @@ export async function GET(
     const user = await getUser(istid);
     if (!user || !user.email) {
       return new NextResponse("User not found or missing email", { status: 404 });
+    }
+
+    // Members only (#202). This route exists to give a *member* their NEIIST calendar; before
+    // this, any authenticated Técnico student — including one with zero team scopes who logged in
+    // to buy a t-shirt — could trigger a full Notion sync into a world-readable calendar.
+    //
+    // `isNeiistMember` is `scopes.length > 0`, not "is logged in" — the same boundary as
+    // /workspace (#183).
+    const scopes = await getUserTeamScopes(istid);
+    if (!isNeiistMember(scopes)) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     const alternativeEmailRaw = user.alternativeEmailVerified ? user.alternativeEmail : undefined;
