@@ -413,3 +413,74 @@ describe("team permission policy", () => {
     expect(GRANTABLE_TEAM_PERMISSIONS).not.toContain("team.members.manage");
   });
 });
+
+/**
+ * #205 — role management is team-scoped, like membership management.
+ *
+ * `members.roles.manage` is a global permission held by every coordinator, and the roles handlers
+ * took the department from the request body. So a coordinator of Fotografia could redefine
+ * Dev-Team's access levels, or DELETE one — which stamps `to_date` on every live membership of
+ * that role, terminating another team's whole roster.
+ *
+ * Demonstrated against a running app before the fix: `PATCH {departmentName:"Dev-Team", …}` from
+ * an account whose only membership is Fotografia returned 200 and changed the row.
+ *
+ * The unit-level guard is `canForTeam(..., "team.members.manage", departmentName)` — the same
+ * call `/api/admin/memberships` already made. These pin the decision it encodes.
+ */
+describe("role management is scoped to the caller's own team (#205)", () => {
+  const membership = (departmentName: string, access: UserRole): TeamAccess => ({
+    departmentName,
+    access,
+    source: "membership",
+  });
+  const grant = (departmentName: string, access: UserRole): TeamAccess => ({
+    departmentName,
+    access,
+    source: "grant",
+  });
+
+  const fotografiaCoordinator = [membership("Fotografia", UserRole._COORDINATOR)];
+
+  it("lets a coordinator manage roles in their own team", () => {
+    expect(
+      canForTeam(
+        [UserRole._COORDINATOR],
+        fotografiaCoordinator,
+        "team.members.manage",
+        "Fotografia"
+      )
+    ).toBe(true);
+  });
+
+  it("refuses them in another team", () => {
+    expect(
+      canForTeam([UserRole._COORDINATOR], fotografiaCoordinator, "team.members.manage", "Dev-Team")
+    ).toBe(false);
+  });
+
+  it("still lets the board manage every team's roles", () => {
+    // `_ADMIN` is ORGANISATION_WIDE, so the President is unaffected by the scoping.
+    expect(
+      canForTeam(
+        [UserRole._ADMIN],
+        [membership("Direção", UserRole._ADMIN)],
+        "team.members.manage",
+        "Dev-Team"
+      )
+    ).toBe(true);
+  });
+
+  it("does NOT let a temporary grant redefine the team's roles", () => {
+    // `team.members.manage` is absent from GRANTABLE_TEAM_PERMISSIONS, which is what stops a
+    // two-week loan from rewriting what a role is worth — a change that would outlive it.
+    expect(
+      canForTeam(
+        [UserRole._MEMBER],
+        [grant("Fotografia", UserRole._COORDINATOR)],
+        "team.members.manage",
+        "Fotografia"
+      )
+    ).toBe(false);
+  });
+});

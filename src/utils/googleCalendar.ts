@@ -325,6 +325,31 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Should this event be written to a user's NEIIST calendar? **One definition, on purpose.**
+ *
+ * These calendars carry `acl.insert({ role: "reader", scope: { type: "default" } })` — the Google
+ * API's PUBLIC scope, re-asserted on every `getOrCreateUserCalendar` — so anything written to one
+ * is world-readable by anybody, with no authentication at all. `event.public` is therefore the
+ * load-bearing clause, not the type/attendee test beside it.
+ *
+ * This rule existed in THREE places: `syncEventToCalendar`, `syncAllEventsToCalendar`, and
+ * implicitly at the call sites. The first fix for #202 added the public filter to one batcher and
+ * left the other — the one the Notion webhook drives across every user who has a calendar —
+ * untouched, reproducing the exact defect it was fixing. Extracting it is the actual fix for that
+ * class; adding a fourth caller now cannot miss it.
+ *
+ * Returning false also **removes** the event from a calendar it previously reached: both callers
+ * treat "should not include" as "delete if present". So the next sync after this ships cleans up
+ * internal meetings that earlier versions leaked, rather than merely stopping new ones.
+ */
+function shouldSyncToCalendar(event: NotionEvent, userEmails: string[]): boolean {
+  if (!event.public) return false;
+  if (!event.date) return false;
+  if (event.type !== "Meeting") return true;
+  return event.attendees.some((email) => userEmails.includes(email));
+}
+
 export async function syncEventToCalendar(
   calendarId: string,
   event: NotionEvent,
@@ -335,10 +360,7 @@ export async function syncEventToCalendar(
   const calendar = getCalendarClient();
 
   const userEmails = [userEmail, ...(alternativeEmail ? [alternativeEmail] : [])];
-  const shouldInclude =
-    event.date &&
-    (event.type !== "Meeting" ||
-      (event.type === "Meeting" && event.attendees.some((email) => userEmails.includes(email))));
+  const shouldInclude = shouldSyncToCalendar(event, userEmails);
 
   const googleEventId = event.id.replace(/-/g, "").substring(0, 64);
 
@@ -421,6 +443,9 @@ export async function syncEventsToCalendarBatched(
   userEmail: string,
   alternativeEmail?: string
 ) {
+  // Redundant with the filter in `syncEventToCalendar` and kept deliberately: it is what makes
+  // the returned count mean "written" rather than "offered", and a caller that trusts `synced`
+  // should not be told 4 when 2 were sent.
   const publicEvents = events.filter((event) => event.public);
 
   const existingEvents = await getExistingCalendarEvents(calendarId);
@@ -457,10 +482,7 @@ export async function syncAllEventsToCalendar(
   const userEmails = [userEmail, ...(alternativeEmail ? [alternativeEmail] : [])];
 
   for (const event of events) {
-    const shouldInclude =
-      event.date &&
-      (event.type !== "Meeting" ||
-        (event.type === "Meeting" && event.attendees.some((email) => userEmails.includes(email))));
+    const shouldInclude = shouldSyncToCalendar(event, userEmails);
 
     const googleEventId = event.id.replace(/-/g, "").substring(0, 64);
 

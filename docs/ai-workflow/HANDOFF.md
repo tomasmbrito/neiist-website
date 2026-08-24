@@ -208,12 +208,10 @@ team's internal events to any member.
 it still holds events created before the migration, and retiring it is Phase 10 (#137), not this.
 
 **Slice D is deliberately half of what the issue sketched.** Public workspace events now reach
-members' Google Calendars, satisfying the "public events appear on Google Calendar" criterion.
-The other half — internal meetings to a per-team calendar — is **blocked on #202**: these
-calendars are created with the Google API's public ACL scope (`scope: { type: "default" }`), so
-writing an internal meeting to one is the exact leak #202 exists to stop. That half needs the ACL
-decision first, and someone with production credentials to check whether existing calendars are
-already exposed.
+members' Google Calendars, satisfying "public events appear on Google Calendar". The other half —
+internal meetings to a per-team calendar — is **blocked on #202**: those calendars are created
+with the Google API's public ACL scope (`scope: { type: "default" }`), so writing an internal
+meeting to one is the exact leak #202 exists to stop. That half needs the ACL decision first.
 
 ### Supporting, deliberately deferred
 
