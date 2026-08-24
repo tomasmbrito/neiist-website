@@ -5,13 +5,40 @@ import {
   updateValidDepartmentRole,
   countDepartmentRoleMembers,
   getDepartmentRoles,
+  getUserTeamScopes,
 } from "@/utils/db/userQueries";
 import { serverCheckPermission } from "@/utils/permissionUtils";
 import { throwIfRoleDbError } from "@/utils/db/errorMapper";
 import { handleApiError } from "@/lib/errors/apiErrorHandler";
 import { departmentRoleAccessSchema, updateDepartmentRoleSchema } from "@/schemas/admin";
-import { can } from "@/lib/auth/permissions";
+import { can, canForTeam } from "@/lib/auth/permissions";
 import { UserRole } from "@/types/user";
+
+/**
+ * May this caller manage roles **in this department**? (#205)
+ *
+ * `members.roles.manage` is a global permission held by every coordinator, and these handlers took
+ * the department from the request body — so a coordinator of Fotografia could redefine Dev-Team's
+ * roles, or DELETE one and have `remove_valid_department_role` stamp `to_date` on every live
+ * membership of it, terminating another team's roster.
+ *
+ * That is the cross-team boundary #180 exists to hold, and `/api/admin/memberships` already holds
+ * it the same way — `canForTeam(..., "team.members.manage", departmentName)`. This brings roles
+ * into line. Organisation-wide `_ADMIN` still passes everywhere, via `ORGANISATION_WIDE` inside
+ * `canForTeam`, so the board is unaffected.
+ *
+ * Scoped in TypeScript rather than SQL deliberately, matching memberships: the precise rule
+ * depends on `GRANTABLE_TEAM_PERMISSIONS`, which is a TypeScript artefact, and an SQL copy would
+ * be the same policy written twice and free to drift.
+ */
+async function mayManageRolesIn(
+  roles: UserRole[] | undefined,
+  istid: string,
+  departmentName: string
+): Promise<boolean> {
+  const scopes = await getUserTeamScopes(istid);
+  return canForTeam(roles, scopes, "team.members.manage", departmentName);
+}
 
 export async function GET(request: NextRequest) {
   const userRoles = await serverCheckPermission("members.roles.manage");
@@ -58,6 +85,10 @@ export async function POST(request: NextRequest) {
     const accessParsed = departmentRoleAccessSchema.safeParse(access ?? "member");
     if (!accessParsed.success) {
       return NextResponse.json({ error: "Nível de acesso inválido" }, { status: 400 });
+    }
+
+    if (!(await mayManageRolesIn(userRoles.roles, userRoles.user!.istid, departmentName))) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     // #193: a coordinator may manage their teams' roles, but only an admin may create
@@ -112,6 +143,10 @@ export async function PATCH(request: NextRequest) {
     }
     const { departmentName, roleName, access } = parsed.data;
 
+    if (!(await mayManageRolesIn(userRoles.roles, userRoles.user!.istid, departmentName))) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+    }
+
     // Same rule as POST. This is the path that was exploitable: a coordinator PATCHing their own
     // role to `admin` became an organisation-wide administrator (#193).
     if (access === UserRole._ADMIN && !can(userRoles.roles, "members.roles.grantAdmin")) {
@@ -147,6 +182,14 @@ export async function DELETE(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // The most destructive of the three: `remove_valid_department_role` stamps `to_date` on every
+    // current membership of the role, so an unscoped DELETE terminated another team's entire
+    // roster and their workspace access in one request.
+    if (!(await mayManageRolesIn(userRoles.roles, userRoles.user!.istid, departmentName))) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+    }
+
     await removeValidDepartmentRole(departmentName, roleName);
     return NextResponse.json({ success: true });
   } catch (error) {
