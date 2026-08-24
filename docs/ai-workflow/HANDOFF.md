@@ -165,7 +165,7 @@ Once those two merge, **the access model is complete** and the epic can close.
 |---|---|---|
 | #127 | Read-only Notion-backed events view | ✅ merged |
 | #128 | Phase 0 — teams and team membership | ✅ superseded by #182 |
-| #129 | Phase 1 — events and meetings | ⬜ not started — **next** |
+| #129 | Phase 1 — events and meetings | 🔵 **slice A merged-pending (#198), slice B in review** |
 | #130 | Phase 2 — tasks and the member dashboard | ⬜ not started |
 | #131 | Phase 3 — requerimentos (cross-team approval) | ⬜ blocked on order integrity |
 | #132 | Phase 4 — forms engine for C&Q inscrições | ⬜ not started |
@@ -176,9 +176,22 @@ Once those two merge, **the access model is complete** and the epic can close.
 | #136 | Phase 9 — fold Sweats Verdes into the shop | ⬜ not started |
 | #137 | Phase 10 — retire Notion | ⬜ last |
 
-**Nothing under Content has moved.** `/workspace/[team]` renders the roster, the temporary-access
-panel and an explicit placeholder saying the Notion pages will land there. That is honest: the
-boundary is built and proven, the content is not.
+**Content has started moving.** `/workspace/[team]` no longer shows a placeholder: it lists the
+team's events and meetings, and each opens a detail page with agenda, minutes, attendance,
+document links and related events. Everything else in the table above is still untouched.
+
+#129 is sliced into four PRs, because it is far too big for one:
+
+| slice | what | state |
+|---|---|---|
+| A | events + meetings, team-scoped, in the workspace | #198 |
+| B | agenda, minutes, attendance, documents, relations | in review |
+| C | `is_public` drives `/activities` — read from the database, not Notion | next |
+| D | push to Google Calendar | after C |
+
+Slices A and B deliberately touch neither `/activities`, the Notion sync, nor
+`googleCalendar.ts`, so they cannot break the public calendar. **Slice C is the first time a
+student-facing page stops depending on Notion at request time**, which is the visible win.
 
 ### Supporting, deliberately deferred
 

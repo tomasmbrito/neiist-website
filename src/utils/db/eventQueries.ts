@@ -206,3 +206,185 @@ export const getInternalEventOwner = async (eventId: number): Promise<string | n
 export const deleteInternalEvent = async (eventId: number): Promise<void> => {
   await db_query("SELECT neiist.delete_internal_event($1::INT)", [eventId]);
 };
+
+/** One event in full, for its detail page (#129 slice B). */
+export type InternalEventDetail = InternalEvent & {
+  agenda: string | null;
+  minutes: string | null;
+};
+
+export type EventAttendee = {
+  userIstid: string;
+  userName: string;
+  response: "invited" | "accepted" | "declined" | "attended";
+};
+
+export type EventDocument = {
+  id: number;
+  kind: "plano" | "relatorio" | "ata" | "other";
+  title: string;
+  url: string;
+};
+
+export type RelatedEvent = {
+  id: number;
+  name: string;
+  kind: "event" | "meeting";
+  startsAt: string;
+};
+
+/**
+ * One event, **keyed by id AND department**.
+ *
+ * The department is not decoration: passing an id alone would be an object reference with no
+ * tenancy check, leaving the caller to compare the owner afterwards and to remember to. A
+ * mismatched pair simply returns `null` here, so the IDOR case fails closed at the query rather
+ * than at whoever wrote the route.
+ */
+export const getInternalEventDetail = async (
+  eventId: number,
+  departmentName: string
+): Promise<InternalEventDetail | null> => {
+  const { rows } = await db_query<{
+    id: number;
+    kind: "event" | "meeting";
+    name: string;
+    description: string | null;
+    agenda: string | null;
+    minutes: string | null;
+    starts_at: string;
+    ends_at: string | null;
+    is_public: boolean;
+    created_by_istid: string;
+    created_by_name: string;
+    locations: string[];
+  }>("SELECT * FROM neiist.get_internal_event_detail($1::INT, $2::VARCHAR(30))", [
+    eventId,
+    departmentName,
+  ]);
+
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    kind: row.kind,
+    name: row.name,
+    description: row.description,
+    agenda: row.agenda,
+    minutes: row.minutes,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    isPublic: row.is_public,
+    createdByIstid: row.created_by_istid,
+    createdByName: row.created_by_name,
+    locations: row.locations,
+    // The detail page lists attendees individually, so the count is redundant there.
+    attendeeCount: 0,
+  };
+};
+
+export const getEventAttendees = async (
+  eventId: number,
+  departmentName: string
+): Promise<EventAttendee[]> => {
+  const { rows } = await db_query<{
+    user_istid: string;
+    user_name: string;
+    response: EventAttendee["response"];
+  }>("SELECT * FROM neiist.get_event_attendees($1::INT, $2::VARCHAR(30))", [
+    eventId,
+    departmentName,
+  ]);
+  return rows.map((row) => ({
+    userIstid: row.user_istid,
+    userName: row.user_name,
+    response: row.response,
+  }));
+};
+
+export const getEventDocuments = async (
+  eventId: number,
+  departmentName: string
+): Promise<EventDocument[]> => {
+  const { rows } = await db_query<EventDocument>(
+    "SELECT * FROM neiist.get_event_documents($1::INT, $2::VARCHAR(30))",
+    [eventId, departmentName]
+  );
+  return rows;
+};
+
+export const getEventRelations = async (
+  eventId: number,
+  departmentName: string
+): Promise<RelatedEvent[]> => {
+  const { rows } = await db_query<{
+    id: number;
+    name: string;
+    kind: "event" | "meeting";
+    starts_at: string;
+  }>("SELECT * FROM neiist.get_event_relations($1::INT, $2::VARCHAR(30))", [
+    eventId,
+    departmentName,
+  ]);
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    kind: row.kind,
+    startsAt: row.starts_at,
+  }));
+};
+
+/** Agenda and minutes. Errors throw — NEI14/NEI15 carry messages meant to be read. */
+export const updateEventNotes = async (
+  eventId: number,
+  agenda: string | null,
+  minutes: string | null
+): Promise<void> => {
+  await db_query("SELECT neiist.update_event_notes($1::INT, $2::TEXT, $3::TEXT)", [
+    eventId,
+    agenda,
+    minutes,
+  ]);
+};
+
+export const setEventAttendance = async (
+  eventId: number,
+  istid: string,
+  response: EventAttendee["response"]
+): Promise<void> => {
+  await db_query("SELECT neiist.set_event_attendance($1::INT, $2::VARCHAR(50), $3::TEXT)", [
+    eventId,
+    istid,
+    response,
+  ]);
+};
+
+export const removeEventAttendee = async (eventId: number, istid: string): Promise<void> => {
+  await db_query("SELECT neiist.remove_event_attendee($1::INT, $2::VARCHAR(50))", [eventId, istid]);
+};
+
+export const addEventDocument = async (
+  eventId: number,
+  kind: EventDocument["kind"],
+  title: string,
+  url: string
+): Promise<number> => {
+  const { rows } = await db_query<{ add_event_document: number }>(
+    "SELECT neiist.add_event_document($1::INT, $2::TEXT, $3::TEXT, $4::TEXT)",
+    [eventId, kind, title, url]
+  );
+  return rows[0].add_event_document;
+};
+
+export const removeEventDocument = async (documentId: number): Promise<void> => {
+  await db_query("SELECT neiist.remove_event_document($1::INT)", [documentId]);
+};
+
+/** Relate two events. The function normalises the pair, so callers need not know the ordering. */
+export const relateEvents = async (eventA: number, eventB: number): Promise<void> => {
+  await db_query("SELECT neiist.relate_events($1::INT, $2::INT)", [eventA, eventB]);
+};
+
+export const unrelateEvents = async (eventA: number, eventB: number): Promise<void> => {
+  await db_query("SELECT neiist.unrelate_events($1::INT, $2::INT)", [eventA, eventB]);
+};

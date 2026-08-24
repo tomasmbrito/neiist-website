@@ -41,3 +41,34 @@ Key architectural patterns and conventions in the NEIIST Website codebase.
 - **Google Drive**: File uploads (CVs, sweats photos).
 - **SumUp**: Payment processing for shop.
 - **Nodemailer**: Email sending via SMTP.
+
+---
+
+## Internal events (#129, Phase 1) — 2026-08-23
+
+The first Notion material in the database. Five tables under `neiist.internal_events`, read and
+written only through `src/utils/db/eventQueries.ts`.
+
+**Two invariants, both structural rather than conventional:**
+
+1. **No row-returning function reads `internal_events` without a department parameter or
+   `WHERE is_public`.** Pinned by a test that introspects `pg_proc`, because the mistake it guards
+   against is a function that *does not exist yet* — someone adding `get_all_events()` for a
+   dashboard and forgetting the filter. That passes every behavioural test, since the function is
+   new. Verified by writing the leaky function and watching the test name it.
+2. **Every read and write is keyed by event id AND department.** An id is the one thing a client
+   fully controls, so a mismatched pair returns nothing at the query rather than relying on the
+   route to compare owners afterwards.
+
+Authorization is `canForTeam`, never a bespoke check. Two permissions, not one: members may call
+their team's **meetings** (matching what Notion allows today), coordinators run **events**, and
+publishing is a third permission again. All three are on `GRANTABLE_TEAM_PERMISSIONS` — decided
+2026-08-23, with the accepted consequence that **a published event outlives the grant that created
+it**.
+
+The multi-table write is one plpgsql function rather than `withTransaction`: a single call is
+already one implicit transaction, and it never has to defend against the ~58 query functions that
+still `catch { return null }`.
+
+Deliberately untouched so far: `neiist.activities`, the Notion sync, `googleCalendar.ts`. Slices C
+and D own those.
