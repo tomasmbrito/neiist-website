@@ -197,7 +197,7 @@ document links and related events. Everything else in the table above is still u
 | A | events + meetings, team-scoped, in the workspace | #198 |
 | B | agenda, minutes, attendance, documents, relations | in review |
 | C | `is_public` drives `/activities` — read from the database, not Notion | in review |
-| D | push to Google Calendar | after C |
+| D | public events reach members' Google Calendars | in review |
 
 **Slice C landed the visible win: `/activities` no longer calls Notion at request time.** Public
 workspace events appear on the students' calendar, and the members-only panel reads the database
@@ -206,6 +206,14 @@ team's internal events to any member.
 
 `src/utils/notion/internalEvents.ts` is deleted. The Notion → `neiist.activities` sync **stays**:
 it still holds events created before the migration, and retiring it is Phase 10 (#137), not this.
+
+**Slice D is deliberately half of what the issue sketched.** Public workspace events now reach
+members' Google Calendars, satisfying the "public events appear on Google Calendar" criterion.
+The other half — internal meetings to a per-team calendar — is **blocked on #202**: these
+calendars are created with the Google API's public ACL scope (`scope: { type: "default" }`), so
+writing an internal meeting to one is the exact leak #202 exists to stop. That half needs the ACL
+decision first, and someone with production credentials to check whether existing calendars are
+already exposed.
 
 ### Supporting, deliberately deferred
 
