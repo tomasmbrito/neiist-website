@@ -196,12 +196,16 @@ document links and related events. Everything else in the table above is still u
 |---|---|---|
 | A | events + meetings, team-scoped, in the workspace | #198 |
 | B | agenda, minutes, attendance, documents, relations | in review |
-| C | `is_public` drives `/activities` — read from the database, not Notion | next |
+| C | `is_public` drives `/activities` — read from the database, not Notion | in review |
 | D | push to Google Calendar | after C |
 
-Slices A and B deliberately touch neither `/activities`, the Notion sync, nor
-`googleCalendar.ts`, so they cannot break the public calendar. **Slice C is the first time a
-student-facing page stops depending on Notion at request time**, which is the visible win.
+**Slice C landed the visible win: `/activities` no longer calls Notion at request time.** Public
+workspace events appear on the students' calendar, and the members-only panel reads the database
+scoped to the caller's own teams — narrower than the Notion view it replaced, which showed every
+team's internal events to any member.
+
+`src/utils/notion/internalEvents.ts` is deleted. The Notion → `neiist.activities` sync **stays**:
+it still holds events created before the migration, and retiring it is Phase 10 (#137), not this.
 
 ### Supporting, deliberately deferred
 
