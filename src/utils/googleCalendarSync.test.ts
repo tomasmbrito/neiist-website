@@ -14,13 +14,23 @@ import type { NotionEvent } from "@/types/events";
  * mock is the boundary being observed, and the filtering under test is entirely our own.
  */
 const inserted: string[] = [];
+const deleted: string[] = [];
+/** Google ids already on the calendar, so the "clean up what leaked" path can be exercised. */
+let existingOnCalendar: string[] = [];
 
 vi.mock("googleapis", () => ({
   google: {
     auth: { GoogleAuth: class {} },
     calendar: () => ({
       events: {
-        list: async () => ({ data: { items: [] } }),
+        list: async () => ({
+          data: {
+            items: existingOnCalendar.map((id) => ({
+              id,
+              extendedProperties: { private: { notionLastEdited: "2000-01-01T00:00:00.000Z" } },
+            })),
+          },
+        }),
         insert: async ({ requestBody }: { requestBody: { summary: string } }) => {
           inserted.push(requestBody.summary);
           return { data: {} };
@@ -32,7 +42,10 @@ vi.mock("googleapis", () => ({
         get: async () => {
           throw Object.assign(new Error("not found"), { code: 404 });
         },
-        delete: async () => ({ data: {} }),
+        delete: async ({ eventId }: { eventId: string }) => {
+          deleted.push(eventId);
+          return { data: {} };
+        },
       },
     }),
   },
@@ -58,9 +71,17 @@ const event = (id: string, isPublic: boolean, title: string): NotionEvent =>
     url: "https://notion.so/x",
   }) as unknown as NotionEvent;
 
+/**
+ * Both batchers, deliberately. The first fix for #202 covered only
+ * `syncEventsToCalendarBatched`, so this file passed while `syncAllEventsToCalendar` — the one
+ * the Notion webhook drives across every user with a calendar — kept leaking. A test that guards
+ * the half already fixed is worse than none, because it reads like coverage.
+ */
 describe("syncEventsToCalendarBatched only writes public events (#202)", () => {
   beforeEach(() => {
     inserted.length = 0;
+    deleted.length = 0;
+    existingOnCalendar = [];
     vi.unstubAllEnvs();
     vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY", "{}");
   });
@@ -104,5 +125,84 @@ describe("syncEventsToCalendarBatched only writes public events (#202)", () => {
 
     expect(inserted).toEqual([]);
     expect(synced).toBe(0);
+  });
+});
+
+describe("syncAllEventsToCalendar only writes public events (#202)", () => {
+  beforeEach(() => {
+    inserted.length = 0;
+    deleted.length = 0;
+    existingOnCalendar = [];
+    vi.unstubAllEnvs();
+    vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY", "{}");
+  });
+
+  it("writes public events and never internal ones", async () => {
+    // This is the path the Notion webhook uses, for EVERY user who has a NEIIST calendar — the
+    // higher-volume sink, and the one the first #202 fix missed entirely.
+    const { syncAllEventsToCalendar } = await import("@/utils/googleCalendar");
+
+    await syncAllEventsToCalendar(
+      "cal-1",
+      [
+        event("11111111-0000-0000-0000-000000000001", true, "Semana Informática"),
+        event("22222222-0000-0000-0000-000000000002", false, "Reunião interna de coordenação"),
+        event("33333333-0000-0000-0000-000000000003", false, "Reunião da direção"),
+      ],
+      "member@tecnico.ulisboa.pt"
+    );
+
+    expect(inserted).not.toContain("Reunião interna de coordenação");
+    expect(inserted).not.toContain("Reunião da direção");
+    expect(inserted).toContain("Semana Informática");
+  });
+
+  it("writes nothing when every event is internal", async () => {
+    const { syncAllEventsToCalendar } = await import("@/utils/googleCalendar");
+
+    await syncAllEventsToCalendar(
+      "cal-1",
+      [
+        event("55555555-0000-0000-0000-000000000005", false, "Interna A"),
+        event("66666666-0000-0000-0000-000000000006", false, "Interna B"),
+      ],
+      "member@tecnico.ulisboa.pt"
+    );
+
+    expect(inserted).toEqual([]);
+  });
+});
+
+describe("cleaning up what earlier versions leaked (#202)", () => {
+  beforeEach(() => {
+    inserted.length = 0;
+    deleted.length = 0;
+    existingOnCalendar = [];
+    vi.unstubAllEnvs();
+    vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_KEY", "{}");
+  });
+
+  it("REMOVES an internal event that is already on the calendar", async () => {
+    // The property that makes this a remediation rather than only a fix. Both callers treat
+    // "should not sync" as "delete if present", so the next sync after this ships takes the
+    // internal meetings earlier versions wrote off every user's calendar.
+    //
+    // It is also the thing that distinguishes filtering in the shared `shouldSyncToCalendar`
+    // from filtering only at the write point: if the pre-filter in syncAllEventsToCalendar does
+    // not know about `public`, an internal event is queued as an update, silently refused at the
+    // write, and never queued for deletion — so it stays on the calendar forever.
+    const internalId = "22222222-0000-0000-0000-000000000002";
+    const googleId = internalId.replace(/-/g, "").substring(0, 64);
+    existingOnCalendar = [googleId];
+
+    const { syncAllEventsToCalendar } = await import("@/utils/googleCalendar");
+    await syncAllEventsToCalendar(
+      "cal-1",
+      [event(internalId, false, "Reunião interna já sincronizada")],
+      "member@tecnico.ulisboa.pt"
+    );
+
+    expect(deleted).toContain(googleId);
+    expect(inserted).toEqual([]);
   });
 });
