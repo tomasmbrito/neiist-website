@@ -176,7 +176,7 @@ rather than extending it. Four things to know before you touch it:
 | #127 | Read-only Notion-backed events view | ✅ merged |
 | #128 | Phase 0 — teams and team membership | ✅ superseded by #182 |
 | #129 | Phase 1 — events and meetings | 🔵 **slice A merged-pending (#198), slice B in review** |
-| #130 | Phase 2 — tasks and the member dashboard | ⬜ not started |
+| #130 | Phase 2 — tasks and the member dashboard | 🔵 in review |
 | #131 | Phase 3 — requerimentos (cross-team approval) | ⬜ blocked on order integrity |
 | #132 | Phase 4 — forms engine for C&Q inscrições | ⬜ not started |
 | #138 | Phase 5 — sponsorship outreach | ⬜ not started |

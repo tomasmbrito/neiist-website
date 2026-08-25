@@ -35,6 +35,12 @@ beforeAll(async () => {
      WHERE NOT EXISTS (SELECT 1 FROM neiist.users WHERE istid = $1)`,
     [AUTHOR, `${AUTHOR}@tecnico.ulisboa.pt`]
   );
+  // A membership, because `create_internal_event` now only accepts members as attendees (#208's
+  // rule, extended to the create path). This fixture had none — it was inviting a non-member.
+  await owner.query("SELECT neiist.add_team_member($1::VARCHAR(50), $2, 'Membro')", [
+    AUTHOR,
+    TEAM_A,
+  ]);
 });
 
 afterEach(async () => {
@@ -42,6 +48,7 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
+  await owner.query("DELETE FROM neiist.membership WHERE user_istid = $1", [AUTHOR]);
   await owner.query("DELETE FROM neiist.users WHERE istid = $1", [AUTHOR]);
   await owner.end();
 });

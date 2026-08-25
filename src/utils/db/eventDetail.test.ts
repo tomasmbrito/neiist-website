@@ -51,6 +51,17 @@ beforeAll(async () => {
       [istid, name, `${istid}@tecnico.ulisboa.pt`]
     );
   }
+
+  // Memberships, because attendance now requires them on BOTH write paths (#208, extended to
+  // create here). These fixtures had none — they were inviting non-members.
+  await owner.query("SELECT neiist.add_team_member($1::VARCHAR(50), $2, 'Membro')", [
+    AUTHOR,
+    TEAM_A,
+  ]);
+  await owner.query("SELECT neiist.add_team_member($1::VARCHAR(50), $2, 'Membro')", [
+    GUEST,
+    TEAM_B,
+  ]);
 });
 
 afterEach(async () => {
@@ -58,6 +69,7 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
+  await owner.query("DELETE FROM neiist.membership WHERE user_istid = ANY($1)", [[AUTHOR, GUEST]]);
   await owner.query("DELETE FROM neiist.users WHERE istid = ANY($1)", [[AUTHOR, GUEST]]);
   await owner.end();
 });

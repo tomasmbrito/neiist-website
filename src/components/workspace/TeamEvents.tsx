@@ -107,17 +107,24 @@ export default function TeamEvents({
     const target = pendingDelete;
     setPendingDelete(null);
     if (!target) return;
-    const response = await fetch("/api/workspace/events", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ eventId: target.id }),
-    });
-    if (response.ok) {
-      await refresh();
-      toast.success("Removido.", { closeButton: true });
-    } else {
-      const body = await response.json();
-      toast.error(body.error || "Não foi possível remover.", { closeButton: true });
+    // try/catch, matching TeamAccessGrants.confirmRevoke. Without it a dropped network gives an
+    // unhandled rejection out of ConfirmDialog's onConfirm: no toast, the row stays on screen,
+    // and the user reasonably concludes the deletion worked.
+    try {
+      const response = await fetch("/api/workspace/events", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId: target.id }),
+      });
+      if (response.ok) {
+        await refresh();
+        toast.success("Removido.", { closeButton: true });
+      } else {
+        const body = await response.json().catch(() => ({}));
+        toast.error(body.error || "Não foi possível remover.", { closeButton: true });
+      }
+    } catch {
+      toast.error("Não foi possível remover.", { closeButton: true });
     }
   };
 
