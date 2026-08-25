@@ -248,6 +248,25 @@ export const TEAM_PERMISSION_ROLES = {
    */
   "team.events.delete": [UserRole._ADMIN, UserRole._COORDINATOR],
   /**
+   * Create, assign and edit a team's tasks (#130).
+   *
+   * Every access level, like meetings: keeping track of who is doing what is ordinary team
+   * business, and a member who cannot create a task will simply not use the board. Coordinators
+   * are not a gate on writing something down.
+   */
+  "team.tasks.manage": [
+    UserRole._ADMIN,
+    UserRole._COORDINATOR,
+    UserRole._MEMBER,
+    UserRole._SHOP_MANAGER,
+  ],
+  /**
+   * Delete a task permanently. Coordinators only, and **not grantable** — same reasoning as
+   * `team.events.delete` (#208): deletion is irreversible and a borrowed scope must not be able
+   * to erase the team's record of what it was doing.
+   */
+  "team.tasks.delete": [UserRole._ADMIN, UserRole._COORDINATOR],
+  /**
    * See and decide on applications to **this team** (#134).
    *
    * Its coordinators, and the board through `ORGANISATION_WIDE` — decided 2026-08-25: the
@@ -288,6 +307,13 @@ export type TeamAccess = {
   departmentName: string;
   access: UserRole;
   source: TeamAccessSource;
+  /**
+   * `'team'` or an admin-body type. `get_user_team_scopes` has always returned it and the type
+   * dropped it, which is how "is this person the board" came to be written two different ways —
+   * `roles.includes(_ADMIN)` in TypeScript and `department_type <> 'team'` in SQL. Since #189
+   * seeds `Dev-Team / Coordenador` as `admin`, those two stopped agreeing.
+   */
+  departmentType?: string;
 };
 
 /**
@@ -310,6 +336,9 @@ export const GRANTABLE_TEAM_PERMISSIONS: readonly TeamPermission[] = [
   // further changes, not the announcement already made.
   "team.meetings.manage",
   "team.events.manage",
+  // #130. A grantee lent a team is usually there to help do its work; tasks are how that work is
+  // tracked. Deletion is deliberately absent, as with events.
+  "team.tasks.manage",
   "team.events.publish",
 ];
 

@@ -7,6 +7,7 @@ import {
   getTeamAccessGrants,
 } from "@/utils/db/userQueries";
 import { UserRole } from "@/types/user";
+import { accessRank } from "@/lib/auth/permissions";
 
 /**
  * #184, against the real database.
@@ -521,7 +522,16 @@ describe("access_rank agrees with ACCESS_RANK in permissions.ts", () => {
       `SELECT a::TEXT AS a, neiist.access_rank(a) AS r
        FROM unnest(ARRAY['admin','coordinator','shop_manager','member']::neiist.user_access_enum[]) a`
     );
+    // Asserted against `accessRank` ITSELF, not a hardcoded literal. The previous version was
+    // titled "agrees with ACCESS_RANK in permissions.ts" and compared against `{admin: 3, ...}` —
+    // so changing the TypeScript side left this passing, which is the one thing the test exists
+    // to prevent.
     const rank = Object.fromEntries(rows.map((r) => [r.a, Number(r.r)]));
-    expect(rank).toEqual({ admin: 3, coordinator: 2, shop_manager: 1, member: 1 });
+    expect(rank).toEqual({
+      admin: accessRank(UserRole._ADMIN),
+      coordinator: accessRank(UserRole._COORDINATOR),
+      shop_manager: accessRank(UserRole._SHOP_MANAGER),
+      member: accessRank(UserRole._MEMBER),
+    });
   });
 });

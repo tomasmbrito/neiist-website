@@ -52,9 +52,10 @@ beforeAll(async () => {
     );
   }
 
-  // Both need a real membership since #208: `set_event_attendance` now refuses to invite anyone
-  // who is not a current NEIIST member, which is what stops the endpoint being a directory
-  // oracle over every account the site has. These fixtures had no membership at all.
+  // Both need a real membership since #208, and since #130 that applies to BOTH write paths:
+  // `set_event_attendance` and `create_internal_event` each refuse anyone who is not a current
+  // NEIIST member, which is what stops the endpoints being a directory oracle over every account
+  // the site has. These fixtures had none — they were inviting non-members.
   await owner.query("SELECT neiist.add_team_member($1::VARCHAR(50), $2, 'Membro')", [
     AUTHOR,
     TEAM_A,

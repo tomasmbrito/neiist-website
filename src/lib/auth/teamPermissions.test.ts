@@ -379,6 +379,14 @@ const EXPECTED_TEAM_POLICY: Record<TeamPermission, UserRole[]> = {
   // grantability, not which role holds it.
   "team.events.delete": [UserRole._ADMIN, UserRole._COORDINATOR],
   "team.events.publish": [UserRole._ADMIN, UserRole._COORDINATOR],
+  // #130. Members manage tasks (ordinary team business); only coordinators delete them.
+  "team.tasks.manage": [
+    UserRole._ADMIN,
+    UserRole._COORDINATOR,
+    UserRole._MEMBER,
+    UserRole._SHOP_MANAGER,
+  ],
+  "team.tasks.delete": [UserRole._ADMIN, UserRole._COORDINATOR],
   // #134. Coordinators of the team, plus the board. Absent from GRANTABLE — applications are
   // other people's personal data and the decision changes somebody's year.
   "team.recruitment.decide": [UserRole._ADMIN, UserRole._COORDINATOR],
@@ -393,6 +401,7 @@ const EXPECTED_GRANTABLE: TeamPermission[] = [
   "team.content.edit",
   "team.meetings.manage",
   "team.events.manage",
+  "team.tasks.manage",
   // Decided 2026-08-23: grants are treated as membership for events, publishing included. The
   // accepted consequence is that a published event outlives the grant that created it.
   "team.events.publish",
