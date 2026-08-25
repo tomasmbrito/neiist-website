@@ -267,6 +267,17 @@ export const TEAM_PERMISSION_ROLES = {
    */
   "team.tasks.delete": [UserRole._ADMIN, UserRole._COORDINATOR],
   /**
+   * Add or remove a team collaborating on an event (#219).
+   *
+   * Coordinators. An event grows collaborators as the work needs them — a poster pulls in
+   * Visuais — and deciding who is brought in is the same kind of act as running the event.
+   *
+   * Grantable: a borrowed coordinator scope exists precisely so someone can help run the team's
+   * events, and pulling in a collaborator is part of that. Nothing it creates outlives the grant
+   * in a way that matters — a collaborating team can be removed again.
+   */
+  "team.events.collaborators": [UserRole._ADMIN, UserRole._COORDINATOR],
+  /**
    * Mark an event public, putting it on the calendar students see.
    *
    * Separate from `team.events.manage` because publishing is the irreversible-ish half: slice C
@@ -328,6 +339,7 @@ export const GRANTABLE_TEAM_PERMISSIONS: readonly TeamPermission[] = [
   // tracked. Deletion is deliberately absent, as with events.
   "team.tasks.manage",
   "team.events.publish",
+  "team.events.collaborators",
 ];
 
 /**

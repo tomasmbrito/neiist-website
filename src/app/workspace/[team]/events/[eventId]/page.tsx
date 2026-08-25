@@ -8,8 +8,9 @@ import {
   getEventRelations,
   getInternalEventDetail,
   getTeamInternalEvents,
+  getEventTeams,
 } from "@/utils/db/eventQueries";
-import { getAllMemberships } from "@/utils/db/userQueries";
+import { getAllDepartments, getAllMemberships } from "@/utils/db/userQueries";
 import { groupMembershipsByMember } from "@/types/memberships";
 import EventDetail from "@/components/workspace/EventDetail";
 import styles from "@/styles/pages/Workspace.module.css";
@@ -35,13 +36,18 @@ export default async function EventDetailPage({
   const event = await getInternalEventDetail(eventId, team);
   if (!event) notFound();
 
-  const [attendees, documents, related, memberships, teamEvents] = await Promise.all([
-    getEventAttendees(eventId, team),
-    getEventDocuments(eventId, team),
-    getEventRelations(eventId, team),
-    getAllMemberships(),
-    getTeamInternalEvents(team),
-  ]);
+  const [attendees, documents, related, memberships, teamEvents, collaborators, departments] =
+    await Promise.all([
+      getEventAttendees(eventId, team),
+      getEventDocuments(eventId, team),
+      getEventRelations(eventId, team),
+      getAllMemberships(),
+      getTeamInternalEvents(team),
+      // Keyed by event id *and* team, like every other read here (#126) — an id belonging to
+      // another team returns nothing rather than trusting the route to compare owners.
+      getEventTeams(eventId, team),
+      getAllDepartments(),
+    ]);
 
   // The roster, for the attendee picker. Grouped so someone holding two roles appears once (#8).
   const roster = groupMembershipsByMember(
@@ -49,6 +55,10 @@ export default async function EventDetailPage({
   ).map((member) => ({ istid: member.userNumber, name: member.userName }));
 
   const canEdit = canForTeam(session.roles, session.scopes, "team.events.manage", team);
+  // #219. Only the owning team decides who helps — a team viewing an event it merely collaborates
+  // on cannot add a third. The route re-checks against the owner for the same reason.
+  const canSetCollaborators =
+    event.isOwner && canForTeam(session.roles, session.scopes, "team.events.collaborators", team);
 
   return (
     <>
@@ -79,6 +89,12 @@ export default async function EventDetailPage({
           .filter((candidate) => candidate.id !== eventId)
           .map((candidate) => ({ id: candidate.id, name: candidate.name }))}
         canEdit={canEdit}
+        initialCollaborators={collaborators}
+        canSetCollaborators={canSetCollaborators}
+        addableTeams={departments
+          .filter((d) => d.active && d.name !== team)
+          .map((d) => d.name)
+          .sort((a, b) => a.localeCompare(b, "pt"))}
       />
     </>
   );

@@ -286,17 +286,17 @@ describe("related events", () => {
 });
 
 describe("slice A's structural guard still holds", () => {
-  it("adds no row-returning reader without a department parameter", async () => {
-    const { rows } = await owner.query<{ proname: string }>(
-      `SELECT p.proname
-       FROM pg_proc p
-       JOIN pg_namespace n ON n.oid = p.pronamespace
-       WHERE n.nspname = 'neiist'
-         AND p.prosrc LIKE '%internal_events%'
-         AND p.proretset
-         AND p.prosrc NOT LIKE '%is_public%'
-         AND pg_get_function_identity_arguments(p.oid) NOT LIKE '%character varying%'`
-    );
-    expect(rows.map((r) => r.proname)).toEqual([]);
+  it("is asserted in internalEvents.test.ts, not duplicated here", () => {
+    // This file used to carry a second copy of the pg_proc guard, using the ORIGINAL predicate
+    // that #208 proved catches nothing: a JSONB return is not `proretset`, an unused VARCHAR
+    // argument satisfies the varchar test, SELECTing `is_public` is indistinguishable from
+    // filtering on it, and `prosrc` is empty for PG14+ BEGIN ATOMIC bodies.
+    //
+    // #209 replaced it with a positive allow-list in `internalEvents.test.ts`. This copy was left
+    // behind and kept passing — a weak test that looks like coverage is worse than none, and two
+    // copies of a guard is how one gets fixed and the other does not (#202, twice).
+    //
+    // Deleted rather than patched. The real guard lives in one place.
+    expect(true).toBe(true);
   });
 });
