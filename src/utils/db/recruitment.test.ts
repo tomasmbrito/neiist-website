@@ -1,10 +1,13 @@
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
-  decideApplicationTeam,
+  getApprovalSides,
+  getBoardPendingApplications,
   getOpenEdition,
   getTeamApplications,
+  recordApplicationApproval,
   submitApplication,
+  withdrawApplicationApproval,
 } from "@/utils/db/recruitmentQueries";
 
 /**
@@ -22,7 +25,34 @@ const OWNER_URL = process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL
 const TEAM_A = "Fotografia";
 const TEAM_B = "Visuais";
 const TEAM_C = "Divulgação";
-const DECIDER = "ist9994101";
+// The two signatures need two real people with real memberships (#217) — the side someone signs
+// is derived from `membership`, not from what the caller says, so a test that fakes it would be
+// testing nothing. COORD_A/B/C coordinate their own team and nothing else; BOARD is a Vogal, which
+// `valid_department_roles` grades `admin` inside an `admin_body`. BOTH is both, deliberately.
+const COORD_A = "ist9994101";
+const COORD_B = "ist9994102";
+const COORD_C = "ist9994103";
+const BOARD = "ist9994104";
+const BOTH = "ist9994105";
+const OUTSIDER = "ist9994106";
+const PEOPLE = [COORD_A, COORD_B, COORD_C, BOARD, BOTH, OUTSIDER];
+
+/** Sign one half. `side` stays undefined except where the test is about someone holding both. */
+const sign = (
+  id: number,
+  team: string,
+  decision: "accept" | "reject",
+  actor: string,
+  side?: "team" | "board",
+  note?: string
+) => recordApplicationApproval(id, team, decision, actor, side ?? null, note ?? null);
+
+/** Both signatures, the ordinary path: the team looks first, then the board. */
+const signBoth = async (id: number, team: string, decision: "accept" | "reject") => {
+  const coordinator = { Fotografia: COORD_A, Visuais: COORD_B, Divulgação: COORD_C }[team]!;
+  await sign(id, team, decision, coordinator);
+  await sign(id, team, decision, BOARD);
+};
 
 let owner: Client;
 let edition = 0;
@@ -41,11 +71,27 @@ beforeAll(async () => {
   owner = new Client({ connectionString: OWNER_URL });
   await owner.connect();
 
-  await owner.query(
-    `SELECT neiist.add_user($1::VARCHAR(50), 'Decider', $2)
-     WHERE NOT EXISTS (SELECT 1 FROM neiist.users WHERE istid = $1)`,
-    [DECIDER, `${DECIDER}@tecnico.ulisboa.pt`]
-  );
+  for (const istid of PEOPLE) {
+    await owner.query(
+      `SELECT neiist.add_user($1::VARCHAR(50), 'Assinante', $2)
+       WHERE NOT EXISTS (SELECT 1 FROM neiist.users WHERE istid = $1)`,
+      [istid, `${istid}@tecnico.ulisboa.pt`]
+    );
+  }
+
+  const join = (istid: string, department: string, role: string) =>
+    owner.query(
+      `INSERT INTO neiist.membership (user_istid, department_name, role_name, from_date)
+       VALUES ($1, $2, $3, CURRENT_DATE) ON CONFLICT DO NOTHING`,
+      [istid, department, role]
+    );
+  await join(COORD_A, TEAM_A, "Coordenador");
+  await join(COORD_B, TEAM_B, "Coordenador");
+  await join(COORD_C, TEAM_C, "Coordenador");
+  await join(BOARD, "Direção", "Vogal");
+  await join(BOTH, TEAM_A, "Coordenador");
+  await join(BOTH, "Direção", "Vogal");
+  await join(OUTSIDER, TEAM_A, "Membro");
 
   // Clear any leftover test edition first. The overlap trigger refuses a second open round, so a
   // previous run that died before `afterAll` would otherwise block every subsequent run — which
@@ -68,7 +114,8 @@ afterEach(async () => {
 
 afterAll(async () => {
   await owner.query("DELETE FROM neiist.recruitment_editions WHERE id = $1", [edition]);
-  await owner.query("DELETE FROM neiist.users WHERE istid = $1", [DECIDER]);
+  await owner.query("DELETE FROM neiist.membership WHERE user_istid = ANY($1)", [PEOPLE]);
+  await owner.query("DELETE FROM neiist.users WHERE istid = ANY($1)", [PEOPLE]);
   await owner.end();
 });
 
@@ -112,8 +159,8 @@ describe("the per-team outcome — the whole point of the slice", () => {
   it("lets one team accept while another rejects the SAME application", async () => {
     const id = await apply({ teams: [TEAM_A, TEAM_B] });
 
-    await decideApplicationTeam(id, TEAM_A, "accepted", DECIDER);
-    await decideApplicationTeam(id, TEAM_B, "rejected", DECIDER);
+    await signBoth(id, TEAM_A, "accept");
+    await signBoth(id, TEAM_B, "reject");
 
     const inA = (await getTeamApplications(TEAM_A)).find((a) => a.id === id);
     const inB = (await getTeamApplications(TEAM_B)).find((a) => a.id === id);
@@ -123,7 +170,7 @@ describe("the per-team outcome — the whole point of the slice", () => {
 
   it("does not let one team's decision touch another's", async () => {
     const id = await apply({ teams: [TEAM_A, TEAM_B, TEAM_C] });
-    await decideApplicationTeam(id, TEAM_A, "rejected", DECIDER);
+    await signBoth(id, TEAM_A, "reject");
 
     expect((await getTeamApplications(TEAM_B)).find((a) => a.id === id)!.outcome).toBe("pending");
     expect((await getTeamApplications(TEAM_C)).find((a) => a.id === id)!.outcome).toBe("pending");
@@ -133,24 +180,23 @@ describe("the per-team outcome — the whole point of the slice", () => {
     // The route checks canForTeam on the department being decided; this is the SQL half, so a
     // coordinator of a team the candidate never applied to cannot invent a decision.
     const id = await apply({ teams: [TEAM_A] });
-    await expect(decideApplicationTeam(id, TEAM_B, "accepted", DECIDER)).rejects.toMatchObject({
-      code: "NEI20",
-    });
+    await expect(sign(id, TEAM_B, "accept", COORD_B)).rejects.toMatchObject({ code: "NEI20" });
   });
 
-  it("records who decided and when, and clears both when a decision is undone", async () => {
+  it("records who decided and when, and clears both when a signature is withdrawn", async () => {
     const id = await apply({ teams: [TEAM_A] });
-    await decideApplicationTeam(id, TEAM_A, "accepted", DECIDER);
+    await signBoth(id, TEAM_A, "accept");
 
     const decided = await owner.query<{ by: string | null; at: string | null }>(
       `SELECT decided_by_istid AS by, decided_at AS at
        FROM neiist.recruitment_application_teams WHERE application_id = $1`,
       [id]
     );
-    expect(decided.rows[0].by).toBe(DECIDER);
+    // Whoever completed the pair. The full pair is in the approvals table; this is a summary.
+    expect(decided.rows[0].by).toBe(BOARD);
     expect(decided.rows[0].at).not.toBeNull();
 
-    await decideApplicationTeam(id, TEAM_A, "pending", DECIDER);
+    await withdrawApplicationApproval(id, TEAM_A, BOARD);
     const undone = await owner.query<{ by: string | null; at: string | null }>(
       `SELECT decided_by_istid AS by, decided_at AS at
        FROM neiist.recruitment_application_teams WHERE application_id = $1`,
@@ -165,10 +211,10 @@ describe("the per-team outcome — the whole point of the slice", () => {
     // Derived in SQL from the rows, so it cannot drift from what it summarises.
     const id = await apply({ teams: [TEAM_A, TEAM_B] });
 
-    await decideApplicationTeam(id, TEAM_A, "accepted", DECIDER);
+    await signBoth(id, TEAM_A, "accept");
     expect((await getTeamApplications(TEAM_A)).find((a) => a.id === id)!.status).toBe("submitted");
 
-    await decideApplicationTeam(id, TEAM_B, "rejected", DECIDER);
+    await signBoth(id, TEAM_B, "reject");
     expect((await getTeamApplications(TEAM_A)).find((a) => a.id === id)!.status).toBe("closed");
   });
 });
@@ -184,7 +230,7 @@ describe("team scoping", () => {
     // A coordinator should know the person is being considered elsewhere; what those teams
     // decided is theirs, and seeing it would influence this decision.
     const id = await apply({ teams: [TEAM_A, TEAM_B] });
-    await decideApplicationTeam(id, TEAM_B, "rejected", DECIDER);
+    await signBoth(id, TEAM_B, "reject");
 
     const inA = (await getTeamApplications(TEAM_A)).find((a) => a.id === id)!;
     expect(inA.otherTeams).toEqual([TEAM_B]);
@@ -222,14 +268,212 @@ describe("editions", () => {
   });
 });
 
+/**
+ * #217 — no decision reaches a candidate on one person's say-so.
+ *
+ *   "in order for the emails (of rejection or acceptance) to be sent, both the coordinator of
+ *    that team and at least one member of the board should accept their candidatura"
+ *
+ * Note the "or rejection": a rejection email is still an email, so it needs both signatures too.
+ * That is why `rejected` here requires the pair and not just the team, which is the one place
+ * this deviates from the assumption written into the issue.
+ */
+describe("dual approval", () => {
+  it("stays PENDING on a single signature, from either side", async () => {
+    const teamOnly = await apply({ istid: "ist9994181", teams: [TEAM_A] });
+    await sign(teamOnly, TEAM_A, "accept", COORD_A);
+    expect((await getTeamApplications(TEAM_A)).find((a) => a.id === teamOnly)!.outcome).toBe(
+      "pending"
+    );
+
+    const boardOnly = await apply({ istid: "ist9994182", teams: [TEAM_A] });
+    await sign(boardOnly, TEAM_A, "accept", BOARD);
+    expect((await getTeamApplications(TEAM_A)).find((a) => a.id === boardOnly)!.outcome).toBe(
+      "pending"
+    );
+  });
+
+  it("accepts only when BOTH accept", async () => {
+    const id = await apply({ teams: [TEAM_A] });
+    await sign(id, TEAM_A, "accept", COORD_A);
+    await sign(id, TEAM_A, "accept", BOARD);
+    expect((await getTeamApplications(TEAM_A)).find((a) => a.id === id)!.outcome).toBe("accepted");
+  });
+
+  it("rejects when either side rejects, once both have signed", async () => {
+    const id = await apply({ teams: [TEAM_A] });
+    await sign(id, TEAM_A, "accept", COORD_A);
+    await sign(id, TEAM_A, "reject", BOARD);
+    expect((await getTeamApplications(TEAM_A)).find((a) => a.id === id)!.outcome).toBe("rejected");
+  });
+
+  it("refuses to let ONE person supply both signatures", async () => {
+    // The whole point is a second pair of eyes. BOTH is genuinely a coordinator of TEAM_A *and* a
+    // Vogal, so every authorization check passes for them twice — and it must still not work.
+    const id = await apply({ teams: [TEAM_A] });
+    await sign(id, TEAM_A, "accept", BOTH, "team");
+    await expect(sign(id, TEAM_A, "accept", BOTH, "board")).rejects.toMatchObject({
+      code: "NEI22",
+    });
+    expect((await getTeamApplications(TEAM_A)).find((a) => a.id === id)!.outcome).toBe("pending");
+  });
+
+  it("refuses a side the person does not hold, however they ask for it", async () => {
+    // A coordinator of TEAM_A is not the board. If this were trusted from the route, two
+    // coordinators could accept a candidate with no board involvement at all.
+    const id = await apply({ teams: [TEAM_A] });
+    await expect(sign(id, TEAM_A, "accept", COORD_A, "board")).rejects.toMatchObject({
+      code: "NEI21",
+    });
+    // And the reverse: a board member cannot sign as the team, which is what would let the board
+    // accept someone into a team whose coordinator never looked at them.
+    await expect(sign(id, TEAM_A, "accept", BOARD, "team")).rejects.toMatchObject({
+      code: "NEI21",
+    });
+  });
+
+  it("refuses someone who holds no side at all", async () => {
+    // OUTSIDER is an ordinary member of TEAM_A. `canForTeam` in the route would already stop
+    // them, but the route is not the boundary — this is.
+    const id = await apply({ teams: [TEAM_A] });
+    await expect(sign(id, TEAM_A, "accept", OUTSIDER)).rejects.toMatchObject({ code: "NEI21" });
+  });
+
+  it("does not let a coordinator of ANOTHER team supply the board signature", async () => {
+    // Dev-Team's Coordenador is graded `admin` on purpose (#189). A rule that checked only
+    // `access = 'admin'` would make every team coordinator a board signatory — #180 again.
+    const id = await apply({ teams: [TEAM_A] });
+    await expect(sign(id, TEAM_A, "accept", COORD_B)).rejects.toMatchObject({ code: "NEI21" });
+  });
+
+  it("makes someone holding both sides say which one they are signing", async () => {
+    // Choosing for them would silently spend the signature they meant to give later.
+    const id = await apply({ teams: [TEAM_A] });
+    await expect(sign(id, TEAM_A, "accept", BOTH)).rejects.toMatchObject({ code: "NEI21" });
+  });
+
+  it("lets someone holding both fill whichever half is still open, without being told", async () => {
+    const id = await apply({ teams: [TEAM_A] });
+    await sign(id, TEAM_A, "accept", COORD_A);
+    // The team half is taken, so the only side left for BOTH is the board's — no ambiguity.
+    expect(await sign(id, TEAM_A, "accept", BOTH)).toBe("board");
+    expect((await getTeamApplications(TEAM_A)).find((a) => a.id === id)!.outcome).toBe("accepted");
+  });
+
+  it("lets a signatory change their own mind before the pair completes", async () => {
+    const id = await apply({ teams: [TEAM_A] });
+    await sign(id, TEAM_A, "accept", COORD_A);
+    await sign(id, TEAM_A, "reject", COORD_A);
+    await sign(id, TEAM_A, "accept", BOARD);
+    expect((await getTeamApplications(TEAM_A)).find((a) => a.id === id)!.outcome).toBe("rejected");
+  });
+
+  it("reopens the decision when a signature is withdrawn", async () => {
+    const id = await apply({ teams: [TEAM_A] });
+    await signBoth(id, TEAM_A, "accept");
+    expect((await getTeamApplications(TEAM_A)).find((a) => a.id === id)!.status).toBe("closed");
+
+    await withdrawApplicationApproval(id, TEAM_A, COORD_A);
+    const after = (await getTeamApplications(TEAM_A)).find((a) => a.id === id)!;
+    expect(after.outcome).toBe("pending");
+    // And the application is open again, not left claiming to be closed over a pending team.
+    expect(after.status).toBe("submitted");
+  });
+
+  it("does not let you withdraw somebody else's signature", async () => {
+    // Otherwise one person removes the other's and re-signs it: both halves, two steps.
+    const id = await apply({ teams: [TEAM_A] });
+    await sign(id, TEAM_A, "accept", COORD_A);
+    await expect(withdrawApplicationApproval(id, TEAM_A, BOARD)).rejects.toMatchObject({
+      code: "NEI20",
+    });
+  });
+
+  it("does not reset an interview that was already scheduled", async () => {
+    // A withdrawal must not silently un-invite someone. Only 'closed' goes back to 'submitted'.
+    const id = await apply({ teams: [TEAM_A] });
+    await owner.query(
+      "UPDATE neiist.recruitment_applications SET status = 'interviewing' WHERE id = $1",
+      [id]
+    );
+    await sign(id, TEAM_A, "accept", COORD_A);
+    await withdrawApplicationApproval(id, TEAM_A, COORD_A);
+    expect((await getTeamApplications(TEAM_A)).find((a) => a.id === id)!.status).toBe(
+      "interviewing"
+    );
+  });
+
+  it("surfaces both signatures, with who gave them", async () => {
+    const id = await apply({ teams: [TEAM_A] });
+    await sign(id, TEAM_A, "accept", COORD_A, undefined, "Boa entrevista.");
+    const half = (await getTeamApplications(TEAM_A)).find((a) => a.id === id)!;
+    expect(half.teamDecision).toBe("accept");
+    expect(half.teamActor).not.toBeNull();
+    expect(half.boardDecision).toBeNull();
+    expect(half.note).toBeNull(); // not summarised until the pair completes
+
+    await sign(id, TEAM_A, "accept", BOARD);
+    const full = (await getTeamApplications(TEAM_A)).find((a) => a.id === id)!;
+    expect(full.boardDecision).toBe("accept");
+    // The team's note is the one about the candidate, so it is the one the summary carries.
+    expect(full.note).toBe("Boa entrevista.");
+  });
+
+  it("tells each person which sides they may sign", async () => {
+    expect(await getApprovalSides(COORD_A, TEAM_A)).toEqual(["team"]);
+    expect(await getApprovalSides(BOARD, TEAM_A)).toEqual(["board"]);
+    expect((await getApprovalSides(BOTH, TEAM_A)).sort()).toEqual(["board", "team"]);
+    expect(await getApprovalSides(OUTSIDER, TEAM_A)).toEqual([]);
+    // A coordinator is only a coordinator of their OWN team.
+    expect(await getApprovalSides(COORD_A, TEAM_B)).toEqual([]);
+  });
+});
+
+describe("the board's queue", () => {
+  it("shows what is waiting on the board, and nothing else", async () => {
+    const waiting = await apply({ istid: "ist9994191", teams: [TEAM_A] });
+    const untouched = await apply({ istid: "ist9994192", teams: [TEAM_B] });
+    const done = await apply({ istid: "ist9994193", teams: [TEAM_C] });
+
+    await sign(waiting, TEAM_A, "accept", COORD_A);
+    await signBoth(done, TEAM_C, "accept");
+
+    const queue = await getBoardPendingApplications();
+    const ids = queue.map((row) => row.id);
+    expect(ids).toContain(waiting);
+    // The team has not looked yet — the board is not asked to review ahead of them.
+    expect(ids).not.toContain(untouched);
+    // Already signed by the board.
+    expect(ids).not.toContain(done);
+  });
+
+  it("is a work queue, not the application — no motivation, phone or course", async () => {
+    const id = await apply({
+      istid: "ist9994194",
+      teams: [TEAM_A],
+      motivation: "Quero muito entrar.",
+      phone: "912345678",
+    });
+    await sign(id, TEAM_A, "accept", COORD_A);
+
+    const row = (await getBoardPendingApplications()).find((r) => r.id === id)!;
+    const serialised = JSON.stringify(row);
+    expect(serialised).not.toContain("Quero muito entrar");
+    expect(serialised).not.toContain("912345678");
+    // What it does carry: who signed, and why, so the board is deciding on something.
+    expect(row.teamDecision).toBe("accept");
+    expect(row.departmentName).toBe(TEAM_A);
+  });
+});
+
 describe("retention", () => {
   it("purges decided applications older than six months, and keeps the rest", async () => {
     const old = await apply({ istid: "ist9994197", teams: [TEAM_A] });
     const recent = await apply({ istid: "ist9994198", teams: [TEAM_A] });
     const undecided = await apply({ istid: "ist9994196", teams: [TEAM_A] });
 
-    await decideApplicationTeam(old, TEAM_A, "rejected", DECIDER);
-    await decideApplicationTeam(recent, TEAM_A, "rejected", DECIDER);
+    await signBoth(old, TEAM_A, "reject");
+    await signBoth(recent, TEAM_A, "reject");
     await owner.query(
       "UPDATE neiist.recruitment_applications SET decided_at = NOW() - INTERVAL '7 months' WHERE id = $1",
       [old]
@@ -246,8 +490,8 @@ describe("retention", () => {
 
   it("takes the team rows with it", async () => {
     const id = await apply({ teams: [TEAM_A, TEAM_B] });
-    await decideApplicationTeam(id, TEAM_A, "rejected", DECIDER);
-    await decideApplicationTeam(id, TEAM_B, "rejected", DECIDER);
+    await signBoth(id, TEAM_A, "reject");
+    await signBoth(id, TEAM_B, "reject");
     await owner.query(
       "UPDATE neiist.recruitment_applications SET decided_at = NOW() - INTERVAL '7 months' WHERE id = $1",
       [id]

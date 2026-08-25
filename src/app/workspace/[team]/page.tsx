@@ -14,7 +14,7 @@ import { getTeamTasks } from "@/utils/db/taskQueries";
 import TeamAccessGrants from "@/components/workspace/TeamAccessGrants";
 import TeamEvents from "@/components/workspace/TeamEvents";
 import TeamTasks from "@/components/workspace/TeamTasks";
-import { getTeamApplications } from "@/utils/db/recruitmentQueries";
+import { getApprovalSides, getTeamApplications } from "@/utils/db/recruitmentQueries";
 import TeamApplications from "@/components/workspace/TeamApplications";
 import { UserRole } from "@/types/user";
 import styles from "@/styles/pages/Workspace.module.css";
@@ -87,6 +87,12 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
     team
   );
   const applications = canReviewApplications ? await getTeamApplications(team) : [];
+  // Which half of the two-signature approval this person may give (#217). Derived from their
+  // memberships in SQL, not from `canForTeam` — a board member's organisation-wide access lets
+  // them take part in every team's recruitment, and must not thereby become the team's own
+  // signature. Used only to choose which button to render; SQL decides again on the write.
+  const approvalSides =
+    canReviewApplications && session.user ? await getApprovalSides(session.user.istid, team) : [];
   // The receiving team's own coordinator may revoke anyone's grant on it — by MEMBERSHIP, so a
   // grantee holding coordinator-level borrowed access cannot revoke the people around them.
   const canRevokeAny =
@@ -151,7 +157,12 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
         canDelete={canForTeam(session.roles, session.scopes, "team.tasks.delete", team)}
       />
       {canReviewApplications ? (
-        <TeamApplications team={team} initialApplications={applications} />
+        <TeamApplications
+          team={team}
+          initialApplications={applications}
+          mySides={approvalSides}
+          viewerIstid={session.user!.istid}
+        />
       ) : null}
 
       <TeamEvents

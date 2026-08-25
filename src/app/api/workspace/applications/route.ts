@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { decideApplicationTeam, getTeamApplications } from "@/utils/db/recruitmentQueries";
+import {
+  getApprovalSides,
+  getTeamApplications,
+  recordApplicationApproval,
+  withdrawApplicationApproval,
+} from "@/utils/db/recruitmentQueries";
 import { getWorkspaceSession } from "@/utils/permissionUtils";
 import { canForTeam } from "@/lib/auth/permissions";
-import { decideApplicationSchema } from "@/schemas/recruitment";
+import { decideApplicationSchema, withdrawApprovalSchema } from "@/schemas/recruitment";
 import { throwIfRecruitmentDbError } from "@/utils/db/errorMapper";
 import { handleApiError } from "@/lib/errors/apiErrorHandler";
 
@@ -27,7 +32,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
   }
 
-  return NextResponse.json(await getTeamApplications(departmentName));
+  // The caller's own sides ride along, so the UI knows which button to offer without a second
+  // round trip — and without ever being the thing that decides. SQL checks it again on write.
+  const [applications, sides] = await Promise.all([
+    getTeamApplications(departmentName),
+    session.user ? getApprovalSides(session.user.istid, departmentName) : Promise.resolve([]),
+  ]);
+  return NextResponse.json({ applications, sides });
 }
 
 export async function PATCH(request: NextRequest) {
@@ -42,7 +53,7 @@ export async function PATCH(request: NextRequest) {
         { status: 400 }
       );
     }
-    const { applicationId, departmentName, outcome, note } = parsed.data;
+    const { applicationId, departmentName, decision, side, note } = parsed.data;
 
     // Authorized against the department being decided. A coordinator of Visuais deciding
     // Dev-Team's part of a shared application is exactly what must not happen — and the SQL
@@ -51,13 +62,48 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
-    await decideApplicationTeam(
+    // `canForTeam` says they may take part in this team's recruitment. WHICH half they sign is a
+    // separate question, answered in SQL from their memberships — a board member's
+    // organisation-wide access satisfies the check above for every team, and must not thereby
+    // become the team's own signature.
+    const signedAs = await recordApplicationApproval(
       applicationId,
       departmentName,
-      outcome,
+      decision,
       session.user.istid,
+      side ?? null,
       note ?? null
     );
+    return NextResponse.json({ success: true, side: signedAs });
+  } catch (error) {
+    try {
+      throwIfRecruitmentDbError(error);
+    } catch (mapped) {
+      return handleApiError(mapped);
+    }
+    return handleApiError(error);
+  }
+}
+
+/** Take back your own signature, reopening a decision that has not been acted on. */
+export async function DELETE(request: NextRequest) {
+  const session = await getWorkspaceSession();
+  if (!session?.user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+  try {
+    const parsed = withdrawApprovalSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Pedido inválido" }, { status: 400 });
+    }
+    const { applicationId, departmentName } = parsed.data;
+
+    if (!canForTeam(session.roles, session.scopes, "team.recruitment.decide", departmentName)) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+    }
+
+    // Scoped to the caller's own istid inside SQL, not by a parameter — withdrawing someone
+    // else's signature is precisely how one person would end up holding both.
+    await withdrawApplicationApproval(applicationId, departmentName, session.user.istid);
     return NextResponse.json({ success: true });
   } catch (error) {
     try {
