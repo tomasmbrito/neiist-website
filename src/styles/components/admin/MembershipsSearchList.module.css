@@ -314,3 +314,16 @@
   color: var(--text-secondary);
   white-space: nowrap;
 }
+
+/* The reserved @neiist.pt address (#213). Deliberately prominent and deliberately not a success
+   colour: the address exists here but not yet in Workspace, and that distinction is the point. */
+.reservedEmail {
+  margin: 1rem 0 0;
+  padding: 0.75rem 1rem;
+  border-radius: 0.6rem;
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  color: #5d4037;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}

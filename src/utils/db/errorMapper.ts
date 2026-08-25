@@ -113,6 +113,20 @@ export function throwIfEventDbError(error: unknown): void {
   }
 }
 
+/** `@neiist.pt` address reservation (#213). */
+const EMAIL_SQLSTATE = { CANNOT_ASSIGN: "NEI18" } as const;
+
+/**
+ * A name that yields no usable address is the caller's problem to see, not something to swallow:
+ * whoever is adding the member needs to know before they tell someone their address.
+ */
+export function throwIfEmailDbError(error: unknown): void {
+  const dbError = error as { message?: string; code?: string };
+  if (dbError?.code === EMAIL_SQLSTATE.CANNOT_ASSIGN) {
+    throw new ValidationError(dbError.message ?? "Não foi possível gerar o endereço.");
+  }
+}
+
 /**
  * Postgres SQLSTATE `23505`, unique_violation.
  *

@@ -10,6 +10,8 @@ import { canForTeam, mayAssignAccess } from "@/lib/auth/permissions";
 import { serverCheckPermission } from "@/utils/permissionUtils";
 import type { Membership } from "@/types/memberships";
 import { handleApiError } from "@/lib/errors/apiErrorHandler";
+import { assignNeiistEmail } from "@/utils/db/memberEmails";
+import { throwIfEmailDbError } from "@/utils/db/errorMapper";
 import { ValidationError } from "@/lib/errors";
 
 /**
@@ -93,11 +95,37 @@ export async function POST(request: NextRequest) {
     }
 
     const success = await addTeamMember(istid, departmentName, roleName);
-    if (success) {
-      return NextResponse.json({ success: true });
-    } else {
+    if (!success) {
       return NextResponse.json({ error: "Failed to add team member" }, { status: 500 });
     }
+
+    // Reserve the @neiist.pt address (#213), and return it so whoever is adding the member can
+    // go and create the mailbox in Google Workspace.
+    //
+    // AFTER the membership, and non-fatally: the membership is the thing that matters, and an
+    // address that could not be derived (an unusual name, a collision run) must not undo it. The
+    // failure is reported instead of swallowed — `neiistEmail: null` with `emailError` tells the
+    // UI to say so, rather than showing a blank where an address should be.
+    //
+    // Idempotent, so re-adding someone to a second team does not change an address they already
+    // have — silently changing an email address is the thing this must never do.
+    let neiistEmail: string | null = null;
+    let emailError: string | null = null;
+    try {
+      neiistEmail = await assignNeiistEmail(istid);
+    } catch (error) {
+      try {
+        throwIfEmailDbError(error);
+      } catch (mapped) {
+        emailError = (mapped as Error).message;
+      }
+      if (!emailError) {
+        console.error("Failed to reserve a @neiist.pt address:", error);
+        emailError = "Não foi possível gerar o endereço @neiist.pt.";
+      }
+    }
+
+    return NextResponse.json({ success: true, neiistEmail, emailError });
   } catch (error) {
     return handleApiError(error);
   }
