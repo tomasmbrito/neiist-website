@@ -10,8 +10,10 @@ import {
 } from "@/utils/db/userQueries";
 import { groupMembershipsByMember } from "@/types/memberships";
 import { getTeamInternalEvents } from "@/utils/db/eventQueries";
+import { getTeamTasks } from "@/utils/db/taskQueries";
 import TeamAccessGrants from "@/components/workspace/TeamAccessGrants";
 import TeamEvents from "@/components/workspace/TeamEvents";
+import TeamTasks from "@/components/workspace/TeamTasks";
 import { UserRole } from "@/types/user";
 import styles from "@/styles/pages/Workspace.module.css";
 
@@ -51,7 +53,27 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
   // Fetched only after `requireTeamWorkspace` above — a team's internal meetings are exactly what
   // someone outside it must not receive, so this must never move before the guard.
   const events = await getTeamInternalEvents(team);
-  const canGrant = session.roles.includes(UserRole._ADMIN);
+  const tasks = await getTeamTasks(team);
+
+  // The roster, for the assignee picker. Grouped so someone holding two roles appears once (#8).
+  const roster = groupMembershipsByMember(
+    memberships.filter((membership) => membership.departmentName === team && membership.isActive)
+  ).map((member) => ({ istid: member.userNumber, name: member.userName }));
+  // "Is this person the board" — derived the SAME way SQL derives it (#184 invariant 1):
+  // `admin` access held through a department that is NOT a team.
+  //
+  // It used to be `session.roles.includes(_ADMIN)`, which stopped agreeing with SQL when #189
+  // left `Dev-Team / Coordenador` seeded as `admin`. That divergence broke the exact scenario
+  // #184 was built for: the Dev-Team coordinator saw the board's grant form, submitted, and got
+  // NEI08 — and because `delegatable` was computed only when `!canGrant`, they were never
+  // offered the delegation form either. The one person requirement 6 names could neither grant
+  // nor delegate through the UI.
+  const canGrant = session.scopes.some(
+    (scope) =>
+      scope.source === "membership" &&
+      scope.access === UserRole._ADMIN &&
+      scope.departmentType !== "team"
+  );
   // The receiving team's own coordinator may revoke anyone's grant on it — by MEMBERSHIP, so a
   // grantee holding coordinator-level borrowed access cannot revoke the people around them.
   const canRevokeAny =
@@ -62,12 +84,13 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
         scope.source === "membership" &&
         accessRank(scope.access) >= accessRank(UserRole._COORDINATOR)
     );
-  const delegatable = canGrant
-    ? null
-    : ((await getUserActiveGrants(session.user!.istid)).find(
-        // Only a root grant may be delegated: the chain is capped at one hop.
-        (grant) => grant.departmentName === team && grant.parentGrantId === null
-      ) ?? null);
+  // Computed unconditionally: someone can be both board and a grantee, and more importantly a
+  // non-board coordinator must always be offered delegation when they hold a root grant.
+  const delegatable =
+    (await getUserActiveGrants(session.user!.istid)).find(
+      // Only a root grant may be delegated: the chain is capped at one hop.
+      (grant) => grant.departmentName === team && grant.parentGrantId === null
+    ) ?? null;
 
   return (
     <>
@@ -104,6 +127,15 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
         maxAccess={delegatable?.access ?? null}
         canRevokeAny={canRevokeAny}
         viewerIstid={session.user!.istid}
+      />
+
+      <TeamTasks
+        team={team}
+        initialTasks={tasks}
+        roster={roster}
+        events={events.map((event) => ({ id: event.id, name: event.name }))}
+        canManage={canForTeam(session.roles, session.scopes, "team.tasks.manage", team)}
+        canDelete={canForTeam(session.roles, session.scopes, "team.tasks.delete", team)}
       />
 
       <TeamEvents

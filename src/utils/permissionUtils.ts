@@ -107,7 +107,9 @@ export async function requirePermission(permission: Permission) {
  * redirecting (pages) and a 401 (routes).
  */
 export async function getWorkspaceSession(): Promise<{
-  user: Awaited<ReturnType<typeof getUser>>;
+  // NonNullable: the function returns early when `!user`, so the null is already excluded. Saying
+  // so removes the `session.user!` assertions every caller would otherwise need.
+  user: NonNullable<Awaited<ReturnType<typeof getUser>>>;
   roles: UserRole[];
   scopes: TeamAccess[];
 } | null> {

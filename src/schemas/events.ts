@@ -61,3 +61,32 @@ export const eventDocumentSchema = z.object({
 export const relateEventSchema = z.object({
   relatedEventId: z.number().int().positive(),
 });
+
+/** Tasks (#130). */
+export const taskStatusSchema = z.enum(["not_started", "in_progress", "done"]);
+
+export const createTaskSchema = z.object({
+  title: z.string().trim().min(1, "O título é obrigatório.").max(200),
+  description: z.string().trim().max(5000).optional(),
+  departmentName: z.string().trim().min(1, "Indique a equipa."),
+  status: taskStatusSchema.default("not_started"),
+  dueAt: z.iso.datetime({ offset: true }).nullable().optional(),
+  /** Optional link to an event; the SQL refuses one belonging to another team. */
+  eventId: z.number().int().positive().nullable().optional(),
+  assignees: z.array(z.string().trim().min(1).max(50)).max(50).default([]),
+});
+
+export const updateTaskSchema = z.object({
+  taskId: z.number().int().positive(),
+  status: taskStatusSchema,
+});
+
+export const taskAssigneeSchema = z.object({
+  taskId: z.number().int().positive(),
+  istid: z.string().trim().min(1).max(50),
+  assign: z.boolean(),
+});
+
+export const deleteTaskSchema = z.object({
+  taskId: z.number().int().positive(),
+});
