@@ -113,6 +113,27 @@ export function throwIfEventDbError(error: unknown): void {
   }
 }
 
+/** Recruitment (#134). */
+const RECRUITMENT_SQLSTATE = {
+  /** The submitted application is malformed — blank name, no teams, bad decision value. */
+  INVALID: "NEI19",
+  /** Applications are closed, the team does not exist, or it is not on this application. */
+  UNAVAILABLE: "NEI20",
+} as const;
+
+/**
+ * Both are 400 with their own message. "As candidaturas estão fechadas de momento" in particular
+ * is the whole answer a candidate needs, and a generic 500 would tell them nothing.
+ */
+export function throwIfRecruitmentDbError(error: unknown): void {
+  const dbError = error as { message?: string; code?: string };
+  switch (dbError?.code) {
+    case RECRUITMENT_SQLSTATE.INVALID:
+    case RECRUITMENT_SQLSTATE.UNAVAILABLE:
+      throw new ValidationError(dbError.message ?? "Pedido inválido.");
+  }
+}
+
 /**
  * Postgres SQLSTATE `23505`, unique_violation.
  *

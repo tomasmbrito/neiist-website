@@ -14,6 +14,14 @@ const publicRoutes = [
   "/shop",
   "/activities",
   "/dinner",
+  // The application form (#134). Public because asking someone to authenticate to a system they
+  // have no relationship with, in order to apply for one, is the wrong order.
+  //
+  // It MUST be listed here, and the reason is the mirror image of #97/#117: `canAccess` is only
+  // consulted for an AUTHENTICATED request, and an unlisted path falls through to the final
+  // `return false` — so an unlisted public page works fine logged out and redirects logged-IN
+  // visitors to /unauthorized. Members applying on behalf of a friend would hit exactly that.
+  "/candidatura",
 ];
 const guestRoutes = ["/profile", "/my-orders", "/shop/cart", "/shop/checkout", "/voting"];
 // The members-only workspace (#183). Listed here so an unauthenticated request is redirected to

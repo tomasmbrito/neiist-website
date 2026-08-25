@@ -10,8 +10,10 @@ import {
 } from "@/utils/db/userQueries";
 import { groupMembershipsByMember } from "@/types/memberships";
 import { getTeamInternalEvents } from "@/utils/db/eventQueries";
+import { getTeamApplications } from "@/utils/db/recruitmentQueries";
 import TeamAccessGrants from "@/components/workspace/TeamAccessGrants";
 import TeamEvents from "@/components/workspace/TeamEvents";
+import TeamApplications from "@/components/workspace/TeamApplications";
 import { UserRole } from "@/types/user";
 import styles from "@/styles/pages/Workspace.module.css";
 
@@ -51,6 +53,19 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
   // Fetched only after `requireTeamWorkspace` above — a team's internal meetings are exactly what
   // someone outside it must not receive, so this must never move before the guard.
   const events = await getTeamInternalEvents(team);
+
+  // Applications are fetched ONLY when the caller may see them (#134). Every other panel on this
+  // page is gated on `team.workspace.view`, which any member of the team holds — but these rows
+  // hold names, phones, emails and motivations belonging to people who may never join NEIIST, so
+  // they need their own permission, and the data must not enter the response for someone who
+  // lacks it. Authorized before fetching, not filtered after (#127).
+  const canReviewApplications = canForTeam(
+    session.roles,
+    session.scopes,
+    "team.recruitment.decide",
+    team
+  );
+  const applications = canReviewApplications ? await getTeamApplications(team) : [];
   const canGrant = session.roles.includes(UserRole._ADMIN);
   // The receiving team's own coordinator may revoke anyone's grant on it — by MEMBERSHIP, so a
   // grantee holding coordinator-level borrowed access cannot revoke the people around them.
@@ -105,6 +120,10 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
         canRevokeAny={canRevokeAny}
         viewerIstid={session.user!.istid}
       />
+
+      {canReviewApplications ? (
+        <TeamApplications team={team} initialApplications={applications} />
+      ) : null}
 
       <TeamEvents
         team={team}

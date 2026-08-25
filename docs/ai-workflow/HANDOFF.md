@@ -181,7 +181,7 @@ rather than extending it. Four things to know before you touch it:
 | #132 | Phase 4 — forms engine for C&Q inscrições | ⬜ not started |
 | #138 | Phase 5 — sponsorship outreach | ⬜ not started |
 | #133 | Phase 6 — event finance ledger | ⬜ not started |
-| #134 | Phase 7 — recruitment pipeline | ⬜ not started |
+| #134 | Phase 7 — recruitment pipeline | 🔵 **slice A in review** |
 | #135 | Phase 8 — venue scouting | ⬜ not started |
 | #136 | Phase 9 — fold Sweats Verdes into the shop | ⬜ not started |
 | #137 | Phase 10 — retire Notion | ⬜ last |
