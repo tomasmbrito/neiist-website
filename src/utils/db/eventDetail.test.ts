@@ -51,6 +51,18 @@ beforeAll(async () => {
       [istid, name, `${istid}@tecnico.ulisboa.pt`]
     );
   }
+
+  // Both need a real membership since #208: `set_event_attendance` now refuses to invite anyone
+  // who is not a current NEIIST member, which is what stops the endpoint being a directory
+  // oracle over every account the site has. These fixtures had no membership at all.
+  await owner.query("SELECT neiist.add_team_member($1::VARCHAR(50), $2, 'Membro')", [
+    AUTHOR,
+    TEAM_A,
+  ]);
+  await owner.query("SELECT neiist.add_team_member($1::VARCHAR(50), $2, 'Membro')", [
+    GUEST,
+    TEAM_B,
+  ]);
 });
 
 afterEach(async () => {
@@ -58,6 +70,7 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
+  await owner.query("DELETE FROM neiist.membership WHERE user_istid = ANY($1)", [[AUTHOR, GUEST]]);
   await owner.query("DELETE FROM neiist.users WHERE istid = ANY($1)", [[AUTHOR, GUEST]]);
   await owner.end();
 });
@@ -150,6 +163,34 @@ describe("attendance", () => {
     await expect(setEventAttendance(id, "ist0000000", "invited")).rejects.toMatchObject({
       code: "NEI15",
     });
+  });
+
+  it("refuses someone who exists but is not a NEIIST member (#208)", async () => {
+    // The directory oracle. Before this, ANY existing istid was accepted — so a coordinator, or
+    // a temporary grantee, could POST candidate istids against their own event and read the
+    // answer off the status code, then GET the person's real name from `attendees[].userName`.
+    // Every shop customer who ever logged in was enumerable that way.
+    const OUTSIDER = "ist9996003";
+    await owner.query(
+      `SELECT neiist.add_user($1::VARCHAR(50), 'Shop Customer', $2)
+       WHERE NOT EXISTS (SELECT 1 FROM neiist.users WHERE istid = $1)`,
+      [OUTSIDER, `${OUTSIDER}@tecnico.ulisboa.pt`]
+    );
+
+    const id = await makeIn(TEAM_A);
+    await expect(setEventAttendance(id, OUTSIDER, "invited")).rejects.toMatchObject({
+      code: "NEI15",
+    });
+
+    await owner.query("DELETE FROM neiist.users WHERE istid = $1", [OUTSIDER]);
+  });
+
+  it("still allows inviting a member of ANOTHER team", async () => {
+    // Deliberately not restricted to the event's own team: a Dev-Team member at a Divulgação
+    // planning meeting is normal, and the requirement never said otherwise. The boundary is
+    // "member of the núcleo", not "member of this team".
+    const id = await makeIn(TEAM_A);
+    await expect(setEventAttendance(id, GUEST, "invited")).resolves.toBeUndefined();
   });
 
   it("removes an attendee", async () => {

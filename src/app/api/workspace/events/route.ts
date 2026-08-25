@@ -106,9 +106,11 @@ export async function DELETE(request: NextRequest) {
     const owner = await getInternalEventOwner(parsed.data.eventId);
     if (!owner) return NextResponse.json({ error: "Evento não encontrado." }, { status: 404 });
 
-    // Deletion needs the stricter of the two permissions regardless of kind: removing a meeting
-    // erases its record for everyone, which is not the same act as calling one.
-    if (!canForTeam(session.roles, session.scopes, "team.events.manage", owner)) {
+    // `team.events.delete`, not `team.events.manage` (#208). Deletion is irreversible and
+    // cascades to attendees, locations, documents and the minutes — so it is the one event
+    // permission a temporary grant cannot satisfy, unlike publishing which was accepted as
+    // outliving a grant.
+    if (!canForTeam(session.roles, session.scopes, "team.events.delete", owner)) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
