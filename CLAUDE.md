@@ -256,7 +256,10 @@ enforcement hooks in `.claude/hooks/`.
 
 ## 7. Project memory
 
-**Start here for current state: [`docs/ai-workflow/HANDOFF.md`](docs/ai-workflow/HANDOFF.md)**
+**Start here for current state: [`docs/ai-workflow/HANDOFF.md`](docs/ai-workflow/HANDOFF.md)**,
+and read [`docs/ai-workflow/how-neiist-works.md`](docs/ai-workflow/how-neiist-works.md) before
+designing anything in the workspace — it records how the núcleo actually operates, straight from
+the product owner, and the code contradicts it in three known places.
 — the project, the workspace access requirements, what has shipped, what is open, which decisions
 are waiting on a human, and what to do next. `project-status.md` is the older, longer companion
 and is kept for the history it records.
