@@ -52,8 +52,10 @@ beforeAll(async () => {
     );
   }
 
-  // Memberships, because attendance now requires them on BOTH write paths (#208, extended to
-  // create here). These fixtures had none — they were inviting non-members.
+  // Both need a real membership since #208, and since #130 that applies to BOTH write paths:
+  // `set_event_attendance` and `create_internal_event` each refuse anyone who is not a current
+  // NEIIST member, which is what stops the endpoints being a directory oracle over every account
+  // the site has. These fixtures had none — they were inviting non-members.
   await owner.query("SELECT neiist.add_team_member($1::VARCHAR(50), $2, 'Membro')", [
     AUTHOR,
     TEAM_A,
@@ -162,6 +164,34 @@ describe("attendance", () => {
     await expect(setEventAttendance(id, "ist0000000", "invited")).rejects.toMatchObject({
       code: "NEI15",
     });
+  });
+
+  it("refuses someone who exists but is not a NEIIST member (#208)", async () => {
+    // The directory oracle. Before this, ANY existing istid was accepted — so a coordinator, or
+    // a temporary grantee, could POST candidate istids against their own event and read the
+    // answer off the status code, then GET the person's real name from `attendees[].userName`.
+    // Every shop customer who ever logged in was enumerable that way.
+    const OUTSIDER = "ist9996003";
+    await owner.query(
+      `SELECT neiist.add_user($1::VARCHAR(50), 'Shop Customer', $2)
+       WHERE NOT EXISTS (SELECT 1 FROM neiist.users WHERE istid = $1)`,
+      [OUTSIDER, `${OUTSIDER}@tecnico.ulisboa.pt`]
+    );
+
+    const id = await makeIn(TEAM_A);
+    await expect(setEventAttendance(id, OUTSIDER, "invited")).rejects.toMatchObject({
+      code: "NEI15",
+    });
+
+    await owner.query("DELETE FROM neiist.users WHERE istid = $1", [OUTSIDER]);
+  });
+
+  it("still allows inviting a member of ANOTHER team", async () => {
+    // Deliberately not restricted to the event's own team: a Dev-Team member at a Divulgação
+    // planning meeting is normal, and the requirement never said otherwise. The boundary is
+    // "member of the núcleo", not "member of this team".
+    const id = await makeIn(TEAM_A);
+    await expect(setEventAttendance(id, GUEST, "invited")).resolves.toBeUndefined();
   });
 
   it("removes an attendee", async () => {

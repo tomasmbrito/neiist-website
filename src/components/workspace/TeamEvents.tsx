@@ -38,12 +38,15 @@ export default function TeamEvents({
   canCreateMeeting,
   canCreateEvent,
   canPublish,
+  canDelete,
 }: {
   team: string;
   initialEvents: InternalEvent[];
   canCreateMeeting: boolean;
   canCreateEvent: boolean;
   canPublish: boolean;
+  /** Deletion is not grantable (#208), so it is decided separately from `canCreateEvent`. */
+  canDelete: boolean;
 }) {
   const [events, setEvents] = useState(initialEvents);
   const [kind, setKind] = useState<"meeting" | "event">(canCreateEvent ? "event" : "meeting");
@@ -157,7 +160,7 @@ export default function TeamEvents({
               <span className={styles.memberRoles}>
                 {formatWhen(item.startsAt, item.endsAt)}
                 {item.locations.length > 0 ? ` · ${item.locations.join(", ")}` : ""}
-                {canCreateEvent ? (
+                {canDelete ? (
                   <button
                     type="button"
                     className={styles.revokeBtn}

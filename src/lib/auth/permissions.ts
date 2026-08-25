@@ -238,6 +238,16 @@ export const TEAM_PERMISSION_ROLES = {
    */
   "team.events.manage": [UserRole._ADMIN, UserRole._COORDINATOR],
   /**
+   * Delete a team's events and meetings **permanently**, minutes and all.
+   *
+   * Separate from `team.events.manage`, and deliberately NOT grantable (#208). Publishing an
+   * event is additive and was accepted knowingly as something that outlives a grant; deleting one
+   * is irreversible destruction of the record #126 intends to make authoritative — the ata of a
+   * meeting, cascaded away with its attendees, documents and relations. A two-week loan must not
+   * be able to erase a year of minutes.
+   */
+  "team.events.delete": [UserRole._ADMIN, UserRole._COORDINATOR],
+  /**
    * Create, assign and edit a team's tasks (#130).
    *
    * Every access level, like meetings: keeping track of who is doing what is ordinary team
