@@ -172,28 +172,82 @@ describe("the is_public boundary", () => {
   });
 
   it("has no reader that can return internal events without naming a team", async () => {
-    // Structural, not behavioural, and the most important test here.
+    // Structural, and the most important test here — but the FIRST version of it was theatre.
     //
-    // The rule is that internal material cannot leak by *omission* — someone adding a
-    // `get_all_events()` for a dashboard, forgetting `is_public`, and shipping every team's
-    // meetings to anyone. That mistake passes every behavioural test written today, because the
-    // function would be new. So this asserts the invariant over the whole schema instead: any
-    // function whose body reads internal_events must either take a department parameter or
-    // mention is_public.
+    // A security review wrote six leaky functions against the original predicate
+    // (`proretset AND prosrc LIKE '%internal_events%' AND prosrc NOT LIKE '%is_public%' AND args
+    // NOT LIKE '%character varying%'`) and it caught **none** of them: a JSONB return is not
+    // `proretset`; an unused `VARCHAR(10)` argument satisfies the varchar test without being a
+    // department; SELECTing `is_public` is indistinguishable from filtering on it; and `prosrc`
+    // is **empty** for PG14+ `BEGIN ATOMIC` bodies, so it was blind to the modern syntax for
+    // exactly the functions it policed. Verified all four against the live database.
+    //
+    // So this no longer tries to recognise a leak. It **enumerates every function that touches
+    // the table** — through `pg_depend`, which sees `BEGIN ATOMIC` and views, unioned with the
+    // source text, which sees quoted bodies; neither alone is sufficient — and asserts the set
+    // equals a written-down list. A new reader fails here by name until someone adds it on
+    // purpose, whatever shape it takes.
+    const ALLOWED = [
+      // Department-scoped: structurally cannot return another team's events.
+      "get_team_internal_events",
+      "get_internal_event_detail",
+      "get_event_attendees",
+      "get_event_documents",
+      "get_event_relations",
+      "get_member_internal_events",
+      // The ONE unscoped reader, and it filters `WHERE is_public AND kind = 'event'`. Adding a
+      // second name to this half of the list is a security decision, not a refactor.
+      "get_public_internal_events",
+      // Writers and scalar helpers: they touch the table but do not return event rows.
+      "create_internal_event",
+      "delete_internal_event",
+      "get_internal_event_owner",
+      "update_event_notes",
+      "set_event_attendance",
+      "relate_events",
+    ].sort();
+
     const { rows } = await owner.query<{ proname: string }>(
-      `SELECT p.proname
-       FROM pg_proc p
-       JOIN pg_namespace n ON n.oid = p.pronamespace
-       WHERE n.nspname = 'neiist'
-         AND p.prosrc LIKE '%internal_events%'
-         -- Set-returning only: these are the functions that emit event ROWS. A scalar helper
-         -- like get_internal_event_owner (which returns just a department name, and exists
-         -- precisely so mutations authorize against the row rather than the request) and a
-         -- void delete are not readers and are correctly not caught here.
-         AND p.proretset
-         AND p.prosrc NOT LIKE '%is_public%'
-         AND pg_get_function_identity_arguments(p.oid) NOT LIKE '%character varying%'`
+      `SELECT DISTINCT proname FROM (
+         -- pg_depend: sees BEGIN ATOMIC bodies and view dependencies, where prosrc is empty.
+         SELECT p.proname
+         FROM pg_proc p
+         JOIN pg_depend d ON d.objid = p.oid AND d.classid = 'pg_proc'::regclass
+         WHERE d.refobjid = 'neiist.internal_events'::regclass
+         UNION
+         -- Source text: sees quoted bodies, which pg_depend does not record.
+         SELECT p.proname
+         FROM pg_proc p
+         JOIN pg_namespace n ON n.oid = p.pronamespace
+         -- prokind = 'f': pg_get_functiondef raises on aggregates, and an aggregate cannot be
+         -- an unscoped reader anyway.
+         WHERE n.nspname = 'neiist'
+           AND p.prokind = 'f'
+           AND coalesce(p.prosrc, '') || coalesce(pg_get_functiondef(p.oid), '')
+               LIKE '%internal_events%'
+       ) touching
+       ORDER BY proname`
     );
-    expect(rows.map((r) => r.proname)).toEqual([]);
+
+    expect(rows.map((row) => row.proname)).toEqual(ALLOWED);
+  });
+
+  it("exposes no VIEW over internal_events that could be read unscoped", async () => {
+    // The one evasion the function-level check above cannot see: a function reading a view that
+    // reads the table mentions neither, so it is invisible to both halves. There are no views
+    // over this table, and the app role has no direct SELECT either — asserted rather than
+    // assumed, because a GRANTed view would be reachable and completely unguarded.
+    const views = await owner.query<{ relname: string }>(
+      `SELECT c.relname
+       FROM pg_class c
+       JOIN pg_depend d ON d.objid = c.oid
+       WHERE c.relkind = 'v' AND d.refobjid = 'neiist.internal_events'::regclass`
+    );
+    expect(views.rows).toEqual([]);
+
+    const direct = await owner.query<{ has: boolean }>(
+      `SELECT has_table_privilege('neiist_app_user', 'neiist.internal_events', 'SELECT') AS has`
+    );
+    expect(direct.rows[0].has).toBe(false);
   });
 });

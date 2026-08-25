@@ -375,6 +375,9 @@ const EXPECTED_TEAM_POLICY: Record<TeamPermission, UserRole[]> = {
     UserRole._SHOP_MANAGER,
   ],
   "team.events.manage": [UserRole._ADMIN, UserRole._COORDINATOR],
+  // #208. Same roles as manage, but absent from GRANTABLE_TEAM_PERMISSIONS — the distinction is
+  // grantability, not which role holds it.
+  "team.events.delete": [UserRole._ADMIN, UserRole._COORDINATOR],
   "team.events.publish": [UserRole._ADMIN, UserRole._COORDINATOR],
 };
 
@@ -406,6 +409,12 @@ describe("team permission policy", () => {
 
   it("grants exactly the permissions a borrowed scope is meant to satisfy", () => {
     expect([...GRANTABLE_TEAM_PERMISSIONS].sort()).toEqual([...EXPECTED_GRANTABLE].sort());
+  });
+
+  it("never lets a grant DELETE a team's events", () => {
+    // #208. Publishing outliving a grant was accepted knowingly; erasing the minutes archive was
+    // not. A two-week loan must not be able to destroy a year of atas.
+    expect(GRANTABLE_TEAM_PERMISSIONS).not.toContain("team.events.delete");
   });
 
   it("never lets a grant manage a team's membership", () => {
