@@ -113,6 +113,24 @@ export function throwIfEventDbError(error: unknown): void {
   }
 }
 
+/** Tasks (#130). */
+const TASK_SQLSTATE = {
+  /** The task itself is malformed — blank title, unknown status. */
+  INVALID_TASK: "NEI16",
+  /** The team or the linked event does not exist, or the event belongs to another team. */
+  UNKNOWN_TARGET: "NEI17",
+} as const;
+
+/** Both are the caller asking for something incoherent, so both are 400 with their own message. */
+export function throwIfTaskDbError(error: unknown): void {
+  const dbError = error as { message?: string; code?: string };
+  switch (dbError?.code) {
+    case TASK_SQLSTATE.INVALID_TASK:
+    case TASK_SQLSTATE.UNKNOWN_TARGET:
+      throw new ValidationError(dbError.message ?? "Pedido inválido.");
+  }
+}
+
 /**
  * Postgres SQLSTATE `23505`, unique_violation.
  *
