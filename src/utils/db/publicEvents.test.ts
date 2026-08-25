@@ -112,6 +112,7 @@ describe("the calendar adapter", () => {
       description: null,
       startsAt: "2026-09-01T10:00:00.000Z",
       endsAt: null,
+      updatedAt: "2026-08-24T09:00:00.000Z",
       locations: [],
     });
     expect(event.id).toBe("workspace-42");
@@ -124,6 +125,7 @@ describe("the calendar adapter", () => {
       description: null,
       startsAt: "2026-09-01T10:00:00.000Z",
       endsAt: null,
+      updatedAt: "2026-08-24T09:00:00.000Z",
       locations: [],
     });
     expect(event.end.dateTime).toBe(event.start.dateTime);
@@ -178,5 +180,67 @@ describe("the member's internal view", () => {
     expect((await getMemberInternalEvents(MEMBER_A)).some((event) => event.id === past)).toBe(
       false
     );
+  });
+});
+
+describe("the Google Calendar adapter (#129 slice D)", () => {
+  const sample = {
+    id: 42,
+    name: "Semana Informática",
+    description: "Talks",
+    startsAt: "2026-09-01T10:00:00.000Z",
+    endsAt: "2026-09-05T18:00:00.000Z",
+    updatedAt: "2026-08-24T09:00:00.000Z",
+    locations: ["Alameda", "Online"],
+  };
+
+  it("marks the event public, so the sink's own filter passes it", async () => {
+    // syncEventsToCalendarBatched drops anything not `public` (#202). These come from
+    // getPublicInternalEvents, which filters WHERE is_public in SQL — but the flag is set
+    // explicitly rather than left to a default, so the sink has a value to act on.
+    const { publicEventToNotionShape } = await import("@/utils/db/eventQueries");
+    expect(publicEventToNotionShape(sample).public).toBe(true);
+  });
+
+  it("carries updated_at, so an edited event actually refreshes the calendar entry", async () => {
+    // The sync compares this against what it stored last time. Without it, editing an event in
+    // the workspace would leave a stale entry on every member's calendar forever.
+    const { publicEventToNotionShape } = await import("@/utils/db/eventQueries");
+    expect(publicEventToNotionShape(sample).lastEditedTime).toBe(sample.updatedAt);
+  });
+
+  it("is typed Event, never Meeting", async () => {
+    // syncEventToCalendar only includes a Meeting when the user is one of its attendees. A public
+    // event typed as a meeting would silently reach nobody's calendar.
+    const { publicEventToNotionShape } = await import("@/utils/db/eventQueries");
+    expect(publicEventToNotionShape(sample).type).toBe("Event");
+  });
+
+  it("prefixes the id so it cannot collide with a Notion page id", async () => {
+    const { publicEventToNotionShape } = await import("@/utils/db/eventQueries");
+    expect(publicEventToNotionShape(sample).id).toBe("workspace-42");
+  });
+
+  it("keeps the real updated_at from the database, not a fabricated one", async () => {
+    // End to end: create, read back through the public reader, adapt. If updated_at were dropped
+    // anywhere in that chain this would fall back to startsAt and the staleness bug returns.
+    const id = await make({ name: "Para o calendário", isPublic: true });
+    const { publicEventToNotionShape } = await import("@/utils/db/eventQueries");
+    const row = (await getPublicInternalEvents()).find((event) => event.id === id);
+    expect(row).toBeDefined();
+    expect(publicEventToNotionShape(row!).lastEditedTime).toBe(row!.updatedAt);
+    expect(new Date(row!.updatedAt).getTime()).toBeGreaterThan(0);
+  });
+
+  it("moves updated_at when the event is edited, via the trigger", async () => {
+    // update_event_notes was the only thing setting updated_at, so renaming an event or changing
+    // its date left the calendar entry stale. A BEFORE UPDATE trigger now covers every column.
+    const id = await make({ name: "Antes", isPublic: true });
+    const before = (await getPublicInternalEvents()).find((event) => event.id === id)!.updatedAt;
+
+    await owner.query("UPDATE neiist.internal_events SET name = 'Depois' WHERE id = $1", [id]);
+
+    const after = (await getPublicInternalEvents()).find((event) => event.id === id)!.updatedAt;
+    expect(new Date(after).getTime()).toBeGreaterThan(new Date(before).getTime());
   });
 });

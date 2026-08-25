@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getUser, getUserTeamScopes } from "@/utils/db/userQueries";
+import { getPublicInternalEvents, publicEventToNotionShape } from "@/utils/db/eventQueries";
 import { isNeiistMember } from "@/lib/auth/permissions";
 import {
   getOrCreateUserCalendar,
@@ -83,7 +84,18 @@ export async function GET(
       alternativeEmail
     );
 
-    const events = await fetchAllNotionEvents();
+    // Two sources, the same as /activities (#129 slice C): Notion, which still holds every event
+    // created before the migration, and public events created in the workspace. Merged here so a
+    // member's calendar shows both while the migration is in progress.
+    //
+    // Public events ONLY. `getPublicInternalEvents()` filters `WHERE is_public` in SQL, and
+    // `syncEventsToCalendarBatched` filters again at the sink (#202) — these calendars are
+    // world-readable, so an internal meeting reaching one is the leak that fix exists to stop.
+    const [notionEvents, workspaceEvents] = await Promise.all([
+      fetchAllNotionEvents(),
+      getPublicInternalEvents(),
+    ]);
+    const events = [...notionEvents, ...workspaceEvents.map(publicEventToNotionShape)];
     const synced = await syncEventsToCalendarBatched(
       calendarId,
       events,

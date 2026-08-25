@@ -5,6 +5,7 @@ import {
   mapDbRowToCalendarEvent,
   ActivityProperties,
   ActivityEvent,
+  NotionEvent,
 } from "@/types/events";
 import { db_query, type Querier } from "@/utils/db/dbClient";
 
@@ -396,6 +397,8 @@ export type PublicInternalEvent = {
   description: string | null;
   startsAt: string;
   endsAt: string | null;
+  /** Last change, so the calendar sync can tell an edited event from an unchanged one (#129 D). */
+  updatedAt: string;
   locations: string[];
 };
 
@@ -426,6 +429,7 @@ export const getPublicInternalEvents = async (): Promise<PublicInternalEvent[]> 
     description: string | null;
     starts_at: string;
     ends_at: string | null;
+    updated_at: string;
     locations: string[];
   }>("SELECT * FROM neiist.get_public_internal_events()");
 
@@ -435,6 +439,7 @@ export const getPublicInternalEvents = async (): Promise<PublicInternalEvent[]> 
     description: row.description,
     startsAt: row.starts_at,
     endsAt: row.ends_at,
+    updatedAt: row.updated_at,
     locations: row.locations,
   }));
 };
@@ -488,4 +493,39 @@ export const publicEventToCalendarEvent = (event: PublicInternalEvent): Calendar
   location: event.locations.join(", ") || undefined,
   start: { dateTime: event.startsAt },
   end: { dateTime: event.endsAt ?? event.startsAt },
+});
+
+/**
+ * A public workspace event in the shape the Google Calendar sync already speaks (#129 slice D).
+ *
+ * Adapting to `NotionEvent` rather than teaching `syncEventToCalendar` a second type. That
+ * function carries real logic — date handling, the meeting/attendee rule, the stable Google id,
+ * update-versus-insert against what is already on the calendar — and a parallel implementation
+ * for workspace events would be a second place for all of it to drift. The Notion shape is that
+ * sync's de facto interface, so this converts to it and the sync stays one path.
+ *
+ * `lastEditedTime` carries `updated_at`, which the sync stores and compares to decide whether an
+ * existing entry needs rewriting. Without it, editing an event in the workspace would leave a
+ * stale entry on every member's calendar forever.
+ *
+ * `public: true` is safe *because of where these come from*: `getPublicInternalEvents()` filters
+ * `WHERE is_public` in SQL and is the only unscoped reader. It is set explicitly rather than left
+ * to a default so the sink's own filter (#202) still has a value to act on.
+ */
+export const publicEventToNotionShape = (event: PublicInternalEvent): NotionEvent => ({
+  // Prefixed: `neiist.activities` ids are Notion page ids and both sources reach the same
+  // calendar, so a bare integer could collide with one.
+  id: `workspace-${event.id}`,
+  title: event.name,
+  date: event.startsAt,
+  end: event.endsAt,
+  url: "",
+  location: event.locations,
+  // "Event", never "Meeting": syncEventToCalendar only includes a Meeting when the user is one of
+  // its attendees, and these are public events that belong on every member's calendar.
+  type: "Event",
+  teams: [],
+  attendees: [],
+  lastEditedTime: event.updatedAt,
+  public: true,
 });
