@@ -34,6 +34,13 @@ export default function MembershipsSearchList({
   const [search, setSearch] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [adding, setAdding] = useState(false);
+  /**
+   * The address just reserved for the member who was added (#213).
+   *
+   * Kept on screen as well as in the toast: a toast disappears, and this is the one thing the
+   * person now has to carry over to Google Workspace by hand.
+   */
+  const [reservedEmail, setReservedEmail] = useState<string | null>(null);
   const [newMembership, setNewMembership] = useState({
     userNumber: "",
     departmentName: "",
@@ -135,6 +142,7 @@ export default function MembershipsSearchList({
         }),
       });
       if (response.ok) {
+        const body = await response.json().catch(() => ({}));
         const refreshed = await fetch("/api/admin/memberships");
         if (refreshed.ok) {
           const data = await refreshed.json();
@@ -142,7 +150,28 @@ export default function MembershipsSearchList({
         }
         setNewMembership({ userNumber: "", departmentName: "", roleName: "" });
         setRoles([]);
-        toast.success("Operação concluída com sucesso.", { closeButton: true });
+
+        // Show the reserved @neiist.pt address, and say plainly that it is NOT yet a mailbox
+        // (#213). Those are different states, and conflating them is how a new member gets told
+        // an address that does not work for days.
+        //
+        // A long duration on purpose: this is the one moment anybody sees the address, and it is
+        // the thing they now have to go and create in Workspace.
+        if (body.neiistEmail) {
+          setReservedEmail(body.neiistEmail);
+          toast.success(`Membro adicionado. Endereço reservado: ${body.neiistEmail}`, {
+            closeButton: true,
+            duration: 15000,
+          });
+        } else if (body.emailError) {
+          setReservedEmail(null);
+          toast.warning(`Membro adicionado, mas ${body.emailError}`, {
+            closeButton: true,
+            duration: 15000,
+          });
+        } else {
+          toast.success("Operação concluída com sucesso.", { closeButton: true });
+        }
       } else {
         const error = await response.json();
         toast.error(error.error || "Erro ao adicionar membro", { closeButton: true });
@@ -303,6 +332,13 @@ export default function MembershipsSearchList({
             {adding ? "A adicionar..." : "Adicionar Membro"}
           </button>
         </div>
+
+        {reservedEmail ? (
+          <p className={styles.reservedEmail}>
+            Endereço reservado: <strong>{reservedEmail}</strong> — ainda <strong>não existe</strong>{" "}
+            no Google Workspace. É preciso criá-lo lá; pode demorar alguns dias até ficar ativo.
+          </p>
+        ) : null}
       </section>
 
       <section className={styles.section}>
