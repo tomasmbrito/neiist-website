@@ -15,6 +15,8 @@ import TeamAccessGrants from "@/components/workspace/TeamAccessGrants";
 import TeamEvents from "@/components/workspace/TeamEvents";
 import TeamTasks from "@/components/workspace/TeamTasks";
 import { getApprovalSides, getTeamApplications } from "@/utils/db/recruitmentQueries";
+import { getTeamInterviewSlots } from "@/utils/db/interviewQueries";
+import TeamInterviewSlots from "@/components/workspace/TeamInterviewSlots";
 import { getPendingOnboarding, getTeamLink } from "@/utils/db/onboardingQueries";
 import TeamOnboarding from "@/components/workspace/TeamOnboarding";
 import TeamApplications from "@/components/workspace/TeamApplications";
@@ -95,6 +97,9 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
   // signature. Used only to choose which button to render; SQL decides again on the write.
   const approvalSides =
     canReviewApplications && session.user ? await getApprovalSides(session.user.istid, team) : [];
+  // #218. Same guard as the applications panel: who is being interviewed, and when, is
+  // information about candidates.
+  const interviewSlots = canReviewApplications ? await getTeamInterviewSlots(team) : [];
   // #224/#225. Same guard as the applications panel — the queue holds names, phone numbers and
   // addresses of people who were just accepted, which is the same category of data.
   const pendingOnboarding = canReviewApplications ? await getPendingOnboarding(team) : [];
@@ -170,6 +175,8 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
             mySides={approvalSides}
             viewerIstid={session.user!.istid}
           />
+          {/* In pipeline order: decide, then interview, then onboard. */}
+          <TeamInterviewSlots team={team} initialSlots={interviewSlots} />
           <TeamOnboarding
             team={team}
             initialPending={pendingOnboarding}
