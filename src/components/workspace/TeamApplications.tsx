@@ -119,6 +119,33 @@ export default function TeamApplications({
     }
   };
 
+  /** Invite this candidate to pick an interview slot (#218). Emails them the booking link. */
+  const invite = async (applicationId: number) => {
+    setBusy(true);
+    try {
+      const response = await fetch("/api/workspace/interviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "invite", applicationId, departmentName: team }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (response.ok) {
+        toast.success(
+          body.emailed
+            ? "Convite enviado. O candidato escolhe o horário."
+            : "Convite criado, mas o email falhou. Verifica a configuração de SMTP.",
+          { closeButton: true }
+        );
+        return;
+      }
+      toast.error(body.error || "Não foi possível convidar.", { closeButton: true });
+    } catch {
+      toast.error("Não foi possível convidar.", { closeButton: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   /** Take back your own signature. Reopens the decision. */
   const withdraw = async (applicationId: number) => {
     setBusy(true);
@@ -184,6 +211,23 @@ export default function TeamApplications({
                 </span>
                 <span className={styles.memberRoles}>
                   {OUTCOME_LABELS[application.outcome]} · {formatSubmitted(application.submittedAt)}
+                  {/* #218. Inviting to interview is not a decision — it is the step before one,
+                    so it sits alongside the signatures rather than replacing them, and stays
+                    available while the application is still pending. */}
+                  {application.outcome === "pending" ? (
+                    <button
+                      type="button"
+                      className={styles.grantBtn}
+                      style={{
+                        marginRight: "0.6rem",
+                        padding: "0.2rem 0.7rem",
+                        fontSize: "0.75rem",
+                      }}
+                      disabled={busy}
+                      onClick={() => invite(application.id)}>
+                      Convidar para entrevista
+                    </button>
+                  ) : null}
                   {mySignature(application) ? (
                     <button
                       type="button"

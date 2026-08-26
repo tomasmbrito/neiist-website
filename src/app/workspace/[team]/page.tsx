@@ -15,6 +15,8 @@ import TeamAccessGrants from "@/components/workspace/TeamAccessGrants";
 import TeamEvents from "@/components/workspace/TeamEvents";
 import TeamTasks from "@/components/workspace/TeamTasks";
 import { getApprovalSides, getTeamApplications } from "@/utils/db/recruitmentQueries";
+import { getTeamInterviewSlots } from "@/utils/db/interviewQueries";
+import TeamInterviewSlots from "@/components/workspace/TeamInterviewSlots";
 import TeamApplications from "@/components/workspace/TeamApplications";
 import { UserRole } from "@/types/user";
 import styles from "@/styles/pages/Workspace.module.css";
@@ -93,6 +95,9 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
   // signature. Used only to choose which button to render; SQL decides again on the write.
   const approvalSides =
     canReviewApplications && session.user ? await getApprovalSides(session.user.istid, team) : [];
+  // #218. Same guard as the applications panel: who is being interviewed, and when, is
+  // information about candidates.
+  const interviewSlots = canReviewApplications ? await getTeamInterviewSlots(team) : [];
   // The receiving team's own coordinator may revoke anyone's grant on it — by MEMBERSHIP, so a
   // grantee holding coordinator-level borrowed access cannot revoke the people around them.
   const canRevokeAny =
@@ -157,12 +162,15 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
         canDelete={canForTeam(session.roles, session.scopes, "team.tasks.delete", team)}
       />
       {canReviewApplications ? (
-        <TeamApplications
-          team={team}
-          initialApplications={applications}
-          mySides={approvalSides}
-          viewerIstid={session.user!.istid}
-        />
+        <>
+          <TeamApplications
+            team={team}
+            initialApplications={applications}
+            mySides={approvalSides}
+            viewerIstid={session.user!.istid}
+          />
+          <TeamInterviewSlots team={team} initialSlots={interviewSlots} />
+        </>
       ) : null}
 
       <TeamEvents
