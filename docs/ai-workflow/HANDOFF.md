@@ -249,18 +249,18 @@ independent of each other.
 | slice | what | state |
 |---|---|---|
 | A | public application form, per-team review in the workspace | 🔵 PR #215 |
-| — | #217 dual approval — **blocks C**, because C is what sends the email | 🔵 PR #222 |
-| B | #213 `@neiist.pt` address generation | 🔵 PR #214 |
-| C | acceptance / rejection emails, with a one-time onboarding token | ⬜ **unblocked once #222 merges** |
-| D | the onboarding page the token leads to | ⬜ after C |
-| E | WhatsApp group links per team, handed out on onboarding | ⬜ after D |
+| — | #217 dual approval + board membership as data — **blocks C**, because C is what sends the email | 🔵 in PR #215 |
+| B | #213 `@neiist.pt` address generation | ✅ merged (#214) |
+| C | #223 — acceptance / rejection emails, with a one-time onboarding token | ⬜ **unblocked once #215 merges** |
+| D | #224 — the onboarding page the token leads to | ⬜ after C |
+| E | #225 — WhatsApp group links per team, handed out on onboarding | ⬜ after D |
 | #218 | Crabfit-style availability scheduling for interviews | ⬜ **unblocked now** — see below |
 
 **#218 does not depend on #217 or on slices C–E.** It is coordinator availability plus slot
 booking, and it touches `recruitment_applications` only to mark `status = 'interviewing'`, which
 already exists from slice A. It can start as soon as **#215 is merged**, in parallel with C.
 
-**Slices C–E can start as soon as #222 is merged.** C is the one that must not jump the queue:
+**Slices C–E can start as soon as #215 is merged.** C is the one that must not jump the queue:
 until the two signatures exist, one click would email a candidate.
 
 ### Waiting on a human
