@@ -15,6 +15,8 @@ import TeamAccessGrants from "@/components/workspace/TeamAccessGrants";
 import TeamEvents from "@/components/workspace/TeamEvents";
 import TeamTasks from "@/components/workspace/TeamTasks";
 import { getApprovalSides, getTeamApplications } from "@/utils/db/recruitmentQueries";
+import { getPendingOnboarding, getTeamLink } from "@/utils/db/onboardingQueries";
+import TeamOnboarding from "@/components/workspace/TeamOnboarding";
 import TeamApplications from "@/components/workspace/TeamApplications";
 import { UserRole } from "@/types/user";
 import styles from "@/styles/pages/Workspace.module.css";
@@ -93,6 +95,10 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
   // signature. Used only to choose which button to render; SQL decides again on the write.
   const approvalSides =
     canReviewApplications && session.user ? await getApprovalSides(session.user.istid, team) : [];
+  // #224/#225. Same guard as the applications panel — the queue holds names, phone numbers and
+  // addresses of people who were just accepted, which is the same category of data.
+  const pendingOnboarding = canReviewApplications ? await getPendingOnboarding(team) : [];
+  const teamLink = canReviewApplications ? await getTeamLink(team) : null;
   // The receiving team's own coordinator may revoke anyone's grant on it — by MEMBERSHIP, so a
   // grantee holding coordinator-level borrowed access cannot revoke the people around them.
   const canRevokeAny =
@@ -157,12 +163,19 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
         canDelete={canForTeam(session.roles, session.scopes, "team.tasks.delete", team)}
       />
       {canReviewApplications ? (
-        <TeamApplications
-          team={team}
-          initialApplications={applications}
-          mySides={approvalSides}
-          viewerIstid={session.user!.istid}
-        />
+        <>
+          <TeamApplications
+            team={team}
+            initialApplications={applications}
+            mySides={approvalSides}
+            viewerIstid={session.user!.istid}
+          />
+          <TeamOnboarding
+            team={team}
+            initialPending={pendingOnboarding}
+            initialLink={teamLink?.whatsappUrl ?? null}
+          />
+        </>
       ) : null}
 
       <TeamEvents
