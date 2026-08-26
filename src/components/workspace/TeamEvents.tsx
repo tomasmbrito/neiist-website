@@ -3,12 +3,11 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import ConfirmDialog from "@/components/layout/ConfirmDialog";
-import {
-  EVENT_VISIBILITY,
-  VISIBILITY_LABELS,
-  type EventVisibility,
-  type InternalEvent,
-} from "@/utils/db/eventQueries";
+// VALUES come from the client-safe module; only the TYPE comes from the data layer, and a type
+// import is erased at compile time. Importing EVENT_VISIBILITY from eventQueries pulled `pg` into
+// this bundle and broke `yarn build` — see src/types/eventVisibility.ts.
+import { EVENT_VISIBILITY, VISIBILITY_LABELS, type EventVisibility } from "@/types/eventVisibility";
+import type { InternalEvent } from "@/utils/db/eventQueries";
 import styles from "@/styles/pages/Workspace.module.css";
 
 /**
