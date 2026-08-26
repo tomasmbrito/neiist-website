@@ -6,6 +6,11 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // #210. `scripts/import-notion-events.mts` imports the mapping from `src/` so it can be unit
+    // tested without a live Notion API. Node's type stripping requires the explicit `.ts`
+    // extension on a relative import; tsc rejects that unless this is on. Safe because `noEmit`
+    // is true — this option is only unsound when tsc actually emits.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
