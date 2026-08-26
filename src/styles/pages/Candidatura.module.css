@@ -109,3 +109,42 @@
   color: var(--foreground-colour);
   line-height: 1.6;
 }
+
+/* Interview slot picking (#218). Sits inside .done, which is already the panel style here. */
+.slotList {
+  list-style: none;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.slot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border, #e0e0e6);
+  border-radius: 0.5rem;
+  background: var(--surface, #fff);
+}
+
+.slotMeta {
+  color: var(--text-secondary, #666);
+  font-size: 0.88rem;
+}
+
+.slot .submit {
+  margin: 0;
+  width: auto;
+  padding: 0.45rem 1.2rem;
+  font-size: 0.9rem;
+}
+
+.empty {
+  margin-top: 1rem;
+  color: var(--text-secondary, #666);
+}
