@@ -6,6 +6,7 @@ import {
   withdrawApplicationApproval,
 } from "@/utils/db/recruitmentQueries";
 import { getWorkspaceSession } from "@/utils/permissionUtils";
+import { dispatchDecisionEmails } from "@/utils/recruitment/decisionEmails";
 import { canForTeam } from "@/lib/auth/permissions";
 import { decideApplicationSchema, withdrawApprovalSchema } from "@/schemas/recruitment";
 import { throwIfRecruitmentDbError } from "@/utils/db/errorMapper";
@@ -74,7 +75,17 @@ export async function PATCH(request: NextRequest) {
       side ?? null,
       note ?? null
     );
-    return NextResponse.json({ success: true, side: signedAs });
+    // Drain the outbox AFTER the write has committed, never inside it (CLAUDE.md §8): this makes
+    // a network call, and no rollback can unsend an email. If the pair did not complete, the
+    // queue is empty and this is a no-op; if it did, the candidate hears back now rather than
+    // whenever something else happens to call it.
+    //
+    // Deliberately awaited and deliberately not allowed to fail the request: the decision is
+    // already recorded and must stand even if SMTP is down. `dispatchDecisionEmails` never
+    // throws, and records the failure where the reviewing team can see it.
+    const dispatch = await dispatchDecisionEmails();
+
+    return NextResponse.json({ success: true, side: signedAs, ...dispatch });
   } catch (error) {
     try {
       throwIfRecruitmentDbError(error);
