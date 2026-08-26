@@ -236,14 +236,13 @@ is the recruitment pipeline and the events model that the Notion import waits on
 
 | PR | What | Targets | State |
 |---|---|---|---|
-| #220 | `how-neiist-works.md` — the product owner's own description of how NEIIST runs | `main` | mergeable |
-| #221 | #219 — collaborating teams + per-event visibility | `main` | mergeable |
-| #214 | #213 — generate unique `@neiist.pt` addresses | `main` | mergeable |
-| #215 | #134 slice A — public application form + per-team review | `main` | mergeable |
-| #222 | #217 — two signatures before any decision reaches a candidate | **#215** | mergeable |
+| #221 | #219 — collaborating teams + per-event visibility | `main` | ✅ mergeable |
+| #215 | #134 slice A + #217 dual approval + board membership as data | `main` | ✅ mergeable |
 
-**Merge order matters once**: #222 sits on #215 because it changes the schema #215 introduces.
-Merge #215 first and #222 retargets to `main` cleanly. The other four are independent.
+#220 (`how-neiist-works.md`), #214 (`@neiist.pt` addresses) and #222 (dual approval) are merged.
+#222 went into `feat/recruitment-applications`, so **#215 now carries three things**: slice A, the
+two-signature approval, and the `board_member` correction that depends on it. The two open PRs are
+independent of each other.
 
 ### #134 — the recruitment pipeline, sliced
 
@@ -271,7 +270,7 @@ until the two signatures exist, one click would email a candidate.
 | #202 | The personal calendar sync publishes internal meetings to a **world-readable** calendar | The leak is fixed; the ACL decision (public calendar vs. login-gated) is a product call |
 | #141 | Rotate the exposed shared account credential | Needs a person with the account |
 | #152 | Measure production schema drift | Needs production access; do it before migrations touch the order functions |
-| — | Should the **Diretores de Atividades** be able to give the board signature on a recruitment decision? | They are graded `coordinator`, so today they cannot. It is a one-row data change, not code. See #222. |
+| — | Should **Tesoureiro** and **Diretora SINFO** be on the board for recruitment sign-off? | Both sit on the Direção formally and both are graded `member` on purpose (#185). Not seeded — one checkbox in Gestão de Cargos either way. |
 
 ### Supporting, deliberately deferred
 
