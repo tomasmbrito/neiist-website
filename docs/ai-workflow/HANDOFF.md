@@ -234,34 +234,29 @@ is the recruitment pipeline and the events model that the Notion import waits on
 
 ### Open PRs
 
-| PR | What | Targets | State |
-|---|---|---|---|
-| #221 | #219 — collaborating teams + per-event visibility | `main` | ✅ mergeable |
-| #215 | #134 slice A + #217 dual approval + board membership as data | `main` | ✅ mergeable |
+| PR | What | Migration |
+|---|---|---|
+| **#228** | **`main` does not build** — a client component pulls in `pg`. Merge first. | — |
+| #227 | #218 — interview availability and slot booking | 024 |
+| #229 | #210 — the Notion events import | 025 |
+| #230 | #224 + #225 — onboarding page and per-team WhatsApp links | 026 |
 
-#220 (`how-neiist-works.md`), #214 (`@neiist.pt` addresses) and #222 (dual approval) are merged.
-#222 went into `feat/recruitment-applications`, so **#215 now carries three things**: slice A, the
-two-signature approval, and the `board_member` correction that depends on it. The two open PRs are
-independent of each other.
+**#228 first**, then the rest in any order. #229 and #230 each carry #228 already, so
+merging #228 first makes them smaller rather than conflicting.
 
-### #134 — the recruitment pipeline, sliced
+### #134 — the recruitment pipeline
+
+**Complete, pending merges.**
 
 | slice | what | state |
 |---|---|---|
-| A | public application form, per-team review in the workspace | 🔵 PR #215 |
-| — | #217 dual approval + board membership as data — **blocks C**, because C is what sends the email | 🔵 in PR #215 |
+| A | public application form, per-team review | ✅ merged (#215) |
+| — | #217 dual approval + board membership as data | ✅ merged (#215) |
 | B | #213 `@neiist.pt` address generation | ✅ merged (#214) |
-| C | #223 — acceptance / rejection emails, with a one-time onboarding token | ⬜ **unblocked once #215 merges** |
-| D | #224 — the onboarding page the token leads to | ⬜ after C |
-| E | #225 — WhatsApp group links per team, handed out on onboarding | ⬜ after D |
-| #218 | Crabfit-style availability scheduling for interviews | ⬜ **unblocked now** — see below |
-
-**#218 does not depend on #217 or on slices C–E.** It is coordinator availability plus slot
-booking, and it touches `recruitment_applications` only to mark `status = 'interviewing'`, which
-already exists from slice A. It can start as soon as **#215 is merged**, in parallel with C.
-
-**Slices C–E can start as soon as #215 is merged.** C is the one that must not jump the queue:
-until the two signatures exist, one click would email a candidate.
+| C | #223 acceptance / rejection emails, exactly once | ✅ merged (#226) |
+| — | #218 interview availability and booking | 🔵 PR #227 |
+| D | #224 the onboarding page | 🔵 PR #230 |
+| E | #225 per-team WhatsApp links | 🔵 PR #230 |
 
 ### Waiting on a human
 
