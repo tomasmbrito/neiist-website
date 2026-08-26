@@ -205,3 +205,33 @@ import: the test fails.
 **Lesson.** A rule in CLAUDE.md would not have caught this, because the shape that causes it reads
 exactly like the shape that does not. Build failures that name only `node_modules` files are almost
 always a bundling boundary being crossed — read the one `./src/...` line in the list first.
+
+## A mutation that did not compile read as a surviving mutant (2026-08-27)
+
+**Symptom.** Two mutations against migration 027 reported SURVIVED — the tests passed with the
+guard removed — which would normally mean the tests are worthless. One of them was real. The other
+was not.
+
+**Root cause.** The mutation harness pipes the mutated migration into `psql -q -f` and then runs
+the suite. It did not check whether the mutant *applied*. The M3 mutation deleted a CTE and left a
+trailing comma before `SELECT`, so the migration failed with a syntax error, the function was never
+replaced, and the suite ran against the **original**. Every test passed, and the report said the
+guard was untested.
+
+**Why this is worse than a plain false negative.** A broken mutant is indistinguishable from a
+surviving one in the output, and it points the wrong way: it says "your test does not cover this",
+which invites weakening or deleting a guard that was fine. The failure mode of a verification tool
+is more dangerous than the failure mode of the thing it verifies.
+
+**Fix.** The harness now captures psql's stderr and reports `MUTANT DID NOT APPLY` instead of a
+test result when the mutated SQL errors. With the mutation rewritten to be syntactically valid, M3
+died immediately.
+
+**The genuine survivor it was hiding alongside.** M2 — dropping `AND e.visibility = 'members'` from
+the promote — was real, and mattered: `members` is not just any visibility there, it is the specific
+downgrade #210 applies to a page that was public in Notion. An event marked `teams` is internal on
+purpose, and promoting it because a stale `activities` row shares its Notion id publishes an
+internal event to every student.
+
+**Lesson.** Verify the verifier. A mutation result is only evidence if the mutant actually ran —
+check that the mutated code loaded before believing that a test failed to catch it.
