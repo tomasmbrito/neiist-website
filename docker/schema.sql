@@ -114,7 +114,14 @@ CREATE TABLE neiist.valid_department_roles (
   role_name VARCHAR(40) NOT NULL,
   PRIMARY KEY (department_name, role_name),
   access neiist.user_access_enum NOT NULL DEFAULT 'member',
-  active BOOLEAN NOT NULL DEFAULT TRUE
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  -- Does holding this role make someone a member of the Direção? (#217)
+  --
+  -- Orthogonal to `access` on purpose: it says who they ARE, not how much of the workspace their
+  -- role opens. A Diretor de Atividades is on the board and is a `coordinator`; the Tesoureiro is
+  -- on the board and is a `member`. Collapsing the two facts into one is what made the board
+  -- signature miss the Diretores de Atividades in the first place.
+  board_member BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 -- MEMBERSHIP TABLE
@@ -662,7 +669,8 @@ CREATE OR REPLACE FUNCTION neiist.get_department_roles(u_department_name VARCHAR
 RETURNS TABLE (
   role_name VARCHAR(40),
   access neiist.user_access_enum,
-  active BOOLEAN
+  active BOOLEAN,
+  board_member BOOLEAN
 ) AS $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM neiist.departments WHERE name = u_department_name) THEN
@@ -670,7 +678,7 @@ BEGIN
   END IF;
 
   RETURN QUERY
-  SELECT vdr.role_name, vdr.access, vdr.active
+  SELECT vdr.role_name, vdr.access, vdr.active, vdr.board_member
   FROM neiist.valid_department_roles vdr
   WHERE vdr.department_name = u_department_name
   ORDER BY vdr.access DESC, vdr.role_name;
@@ -5320,6 +5328,613 @@ RETURNS TEXT LANGUAGE sql STABLE SECURITY DEFINER AS $$
 $$;
 
 GRANT EXECUTE ON FUNCTION neiist.preview_neiist_email(TEXT) TO neiist_app_user;
+
+-- 019: recruitment applications (#134, slice A).
+--
+-- Replaces a "Candidata-te" button that pointed at https://google.com.
+--
+-- The modelling problem is that **one application has an independent outcome per team**. Someone
+-- who applies to Dev-Team, Visuais and Fotografia may be accepted into one, two, all three, or
+-- none — so the outcome cannot be a column on the application. It is a row per (application,
+-- team), which is also what lets `canForTeam` authorize each decision separately.
+
+-- A recruitment round. Applications belong to one, so "this year's candidates" is a filter rather
+-- than a date range someone has to remember, and closing a round is one flag rather than a
+-- convention.
+CREATE TABLE IF NOT EXISTS neiist.recruitment_editions (
+  id         SERIAL PRIMARY KEY,
+  name       TEXT NOT NULL CHECK (btrim(name) <> ''),
+  opens_at   TIMESTAMPTZ NOT NULL,
+  closes_at  TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT recruitment_editions_closes_after_opens CHECK (closes_at > opens_at)
+);
+
+-- Only one round may accept applications at a time: two open rounds means an applicant cannot
+-- tell which they are applying to, and neither can the person reviewing.
+--
+-- NOT a partial unique index — `NOW()` is STABLE, not IMMUTABLE, and Postgres refuses it in an
+-- index predicate. Correctly: an index whose membership changes with the clock is not an index.
+-- The rule is enforced by this trigger instead, which is the right place for a constraint that
+-- depends on time.
+CREATE OR REPLACE FUNCTION neiist.check_one_open_edition() RETURNS TRIGGER AS $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM neiist.recruitment_editions e
+    WHERE e.id <> coalesce(NEW.id, -1)
+      AND tstzrange(e.opens_at, e.closes_at) && tstzrange(NEW.opens_at, NEW.closes_at)
+  ) THEN
+    RAISE EXCEPTION 'Já existe uma edição de recrutamento neste período.' USING ERRCODE = 'NEI20';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_recruitment_editions_no_overlap ON neiist.recruitment_editions;
+CREATE TRIGGER trg_recruitment_editions_no_overlap
+  BEFORE INSERT OR UPDATE ON neiist.recruitment_editions
+  FOR EACH ROW EXECUTE FUNCTION neiist.check_one_open_edition();
+
+-- The application itself.
+--
+-- `istid` is NOT a foreign key to `neiist.users` on purpose: someone can apply before they have
+-- ever logged in, and requiring an account first would put a Fenix login in front of a form that
+-- should be open. It is captured so the acceptance flow can match them later.
+--
+-- Personal data lives here, and it belongs to people who may never become members. The retention
+-- rule (6 months after rejection, decided 2026-08-25) is enforced by `purge_old_applications`
+-- below rather than by anyone remembering.
+CREATE TABLE IF NOT EXISTS neiist.recruitment_applications (
+  id           SERIAL PRIMARY KEY,
+  edition_id   INT NOT NULL REFERENCES neiist.recruitment_editions(id) ON DELETE CASCADE,
+  full_name    TEXT NOT NULL CHECK (btrim(full_name) <> ''),
+  istid        VARCHAR(50) NOT NULL CHECK (btrim(istid) <> ''),
+  email        TEXT NOT NULL CHECK (email ~* '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'),
+  phone        TEXT,
+  course       TEXT,
+  year         INT CHECK (year IS NULL OR year BETWEEN 1 AND 10),
+  motivation   TEXT,
+  -- The application as a whole, distinct from the per-team outcomes below. `screened_out` is a
+  -- rejection before any team looks; `closed` means every team has decided.
+  status       TEXT NOT NULL DEFAULT 'submitted'
+               CHECK (status IN ('submitted', 'screened_out', 'interviewing', 'closed')),
+  submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  decided_at   TIMESTAMPTZ,
+
+  -- One application per person per round. A second attempt should edit the first, not create a
+  -- rival that some teams see and others do not.
+  CONSTRAINT recruitment_applications_one_per_edition UNIQUE (edition_id, istid)
+);
+
+CREATE INDEX IF NOT EXISTS idx_recruitment_applications_edition
+  ON neiist.recruitment_applications (edition_id, status);
+
+-- The per-team half, and the reason this is not a status column.
+--
+-- `department_name` is the same key `internal_events` and `tasks` use, so `canForTeam` authorizes
+-- these rows with no translation step — and a translation between the value authorized and the
+-- value written is how a check and its effect come apart (#180).
+CREATE TABLE IF NOT EXISTS neiist.recruitment_application_teams (
+  application_id  INT NOT NULL REFERENCES neiist.recruitment_applications(id) ON DELETE CASCADE,
+  department_name VARCHAR(30) NOT NULL REFERENCES neiist.departments(name) ON DELETE CASCADE,
+  outcome         TEXT NOT NULL DEFAULT 'pending'
+                  CHECK (outcome IN ('pending', 'accepted', 'rejected')),
+  decided_by_istid VARCHAR(50) REFERENCES neiist.users(istid),
+  decided_at      TIMESTAMPTZ,
+  note            TEXT,
+
+  PRIMARY KEY (application_id, department_name),
+
+  -- A decision must say who made it and when; `pending` must not pretend to.
+  CONSTRAINT recruitment_teams_decision_complete CHECK (
+    (outcome = 'pending' AND decided_by_istid IS NULL AND decided_at IS NULL)
+    OR (outcome <> 'pending' AND decided_by_istid IS NOT NULL AND decided_at IS NOT NULL)
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_recruitment_teams_by_department
+  ON neiist.recruitment_application_teams (department_name, outcome);
+
+-- Submit an application with its team choices, atomically. Same pattern as create_internal_event.
+--
+-- Callable by ANYONE — this is the one public write in the workspace family — so every rule that
+-- matters is here rather than in the route.
+CREATE OR REPLACE FUNCTION neiist.submit_application(
+  a_full_name  TEXT,
+  a_istid      VARCHAR(50),
+  a_email      TEXT,
+  a_phone      TEXT,
+  a_course     TEXT,
+  a_year       INT,
+  a_motivation TEXT,
+  a_teams      VARCHAR(30)[]
+) RETURNS INT AS $$
+DECLARE
+  v_edition INT;
+  v_id      INT;
+  v_teams   INT;
+BEGIN
+  IF a_full_name IS NULL OR btrim(a_full_name) = '' THEN
+    RAISE EXCEPTION 'O nome é obrigatório.' USING ERRCODE = 'NEI19';
+  END IF;
+  IF a_istid IS NULL OR btrim(a_istid) = '' THEN
+    RAISE EXCEPTION 'O número de aluno é obrigatório.' USING ERRCODE = 'NEI19';
+  END IF;
+
+  -- The open round. No open round means recruitment is closed, and saying so is better than
+  -- silently accepting an application nobody will ever read.
+  SELECT id INTO v_edition FROM neiist.recruitment_editions
+  WHERE NOW() BETWEEN opens_at AND closes_at
+  LIMIT 1;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'As candidaturas estão fechadas de momento.' USING ERRCODE = 'NEI20';
+  END IF;
+
+  IF a_teams IS NULL OR array_length(a_teams, 1) IS NULL THEN
+    RAISE EXCEPTION 'Escolhe pelo menos uma equipa.' USING ERRCODE = 'NEI19';
+  END IF;
+
+  -- Every chosen team must be a real, active team. An unknown name is a mistake worth showing,
+  -- not something to drop silently — the applicant would never learn their choice vanished.
+  SELECT count(*) INTO v_teams
+  FROM unnest(a_teams) AS t(name)
+  JOIN neiist.departments d ON d.name = t.name AND d.active AND d.department_type = 'team';
+
+  IF v_teams <> array_length(a_teams, 1) THEN
+    RAISE EXCEPTION 'Uma das equipas escolhidas não existe.' USING ERRCODE = 'NEI20';
+  END IF;
+
+  INSERT INTO neiist.recruitment_applications
+    (edition_id, full_name, istid, email, phone, course, year, motivation)
+  VALUES
+    (v_edition, btrim(a_full_name), btrim(a_istid), lower(btrim(a_email)),
+     NULLIF(btrim(coalesce(a_phone, '')), ''), NULLIF(btrim(coalesce(a_course, '')), ''),
+     a_year, NULLIF(btrim(coalesce(a_motivation, '')), ''))
+  RETURNING id INTO v_id;
+
+  INSERT INTO neiist.recruitment_application_teams (application_id, department_name)
+  SELECT v_id, t.name FROM unnest(a_teams) AS t(name)
+  ON CONFLICT DO NOTHING;
+
+  RETURN v_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION neiist.submit_application(
+  TEXT, VARCHAR(50), TEXT, TEXT, TEXT, INT, TEXT, VARCHAR(30)[]
+) TO neiist_app_user;
+
+-- The approvals themselves (#217).
+
+-- ---------------------------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS neiist.recruitment_application_approvals (
+  application_id  INT NOT NULL,
+  department_name VARCHAR(30) NOT NULL,
+  -- Which half of the pair this is. Not a claim the caller makes — `record_application_approval`
+  -- derives it from the actor's real memberships and refuses if they do not hold it.
+  side            TEXT NOT NULL CHECK (side IN ('team', 'board')),
+  decision        TEXT NOT NULL CHECK (decision IN ('accept', 'reject')),
+  actor_istid     VARCHAR(50) NOT NULL REFERENCES neiist.users(istid),
+  decided_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  note            TEXT,
+
+  PRIMARY KEY (application_id, department_name, side),
+
+  -- Cascades with the team row, which cascades with the application, which the 6-month retention
+  -- purge deletes. An approval is a record about a candidate and must not outlive them (#134).
+  FOREIGN KEY (application_id, department_name)
+    REFERENCES neiist.recruitment_application_teams(application_id, department_name)
+    ON DELETE CASCADE,
+
+  -- "Both" means two people. Someone who is a coordinator of the team AND on the board may fill
+  -- either slot, but not both: the point is a second pair of eyes, and one person holding two
+  -- hats is still one pair. Enforced here rather than in the UI because the UI is not a boundary.
+  CONSTRAINT recruitment_approval_two_people
+    UNIQUE (application_id, department_name, actor_istid)
+);
+
+-- The board's queue: everything waiting on a board signature, across all teams.
+CREATE INDEX IF NOT EXISTS idx_recruitment_approvals_by_side
+  ON neiist.recruitment_application_approvals (side, decided_at);
+
+-- ---------------------------------------------------------------------------------------------
+-- The outcome becomes derived.
+-- ---------------------------------------------------------------------------------------------
+
+-- Recompute one (application, team) outcome from its approvals, then re-derive the application's
+-- status the same way #215 did.
+--
+-- The rule, from the quotation above: NOTHING is settled until both sides have spoken. A single
+-- rejection does not settle it either — an email saying "no" is still an email, and Tomás asked
+-- for both signatures on rejections as explicitly as on acceptances. So:
+--
+--     both sides accepted            -> accepted
+--     both sides in, any rejection   -> rejected
+--     anything else                  -> pending
+--
+-- `decided_by_istid` records whoever COMPLETED the pair, because the CHECK from #215 wants one
+-- istid and the completing signature is the one that made it real. The full pair is in the
+-- approvals table; this column is a summary, and is read as one.
+CREATE OR REPLACE FUNCTION neiist.recompute_application_outcome() RETURNS TRIGGER AS $$
+DECLARE
+  v_app    INT;
+  v_dept   VARCHAR(30);
+  v_team   INT;
+  v_board  INT;
+  v_reject INT;
+BEGIN
+  v_app  := COALESCE(NEW.application_id, OLD.application_id);
+  v_dept := COALESCE(NEW.department_name, OLD.department_name);
+
+  SELECT count(*) FILTER (WHERE side = 'team'),
+         count(*) FILTER (WHERE side = 'board'),
+         count(*) FILTER (WHERE decision = 'reject')
+    INTO v_team, v_board, v_reject
+  FROM neiist.recruitment_application_approvals
+  WHERE application_id = v_app AND department_name = v_dept;
+
+  IF v_team = 0 OR v_board = 0 THEN
+    UPDATE neiist.recruitment_application_teams
+    SET outcome = 'pending', decided_by_istid = NULL, decided_at = NULL
+    WHERE application_id = v_app AND department_name = v_dept;
+  ELSE
+    UPDATE neiist.recruitment_application_teams t
+    SET outcome = CASE WHEN v_reject > 0 THEN 'rejected' ELSE 'accepted' END,
+        decided_by_istid = last.actor_istid,
+        decided_at = last.decided_at,
+        -- The team's note is the one about the candidate's fit; the board's is a sign-off. The
+        -- team's is what the summary carries, and both remain readable in the approvals table.
+        note = (
+          SELECT NULLIF(btrim(coalesce(a.note, '')), '')
+          FROM neiist.recruitment_application_approvals a
+          WHERE a.application_id = v_app AND a.department_name = v_dept AND a.side = 'team'
+        )
+    FROM (
+      SELECT a.actor_istid, a.decided_at
+      FROM neiist.recruitment_application_approvals a
+      WHERE a.application_id = v_app AND a.department_name = v_dept
+      ORDER BY a.decided_at DESC, a.side DESC
+      LIMIT 1
+    ) AS last
+    WHERE t.application_id = v_app AND t.department_name = v_dept;
+  END IF;
+
+  -- Derived exactly as in #215: closed once no team is still pending. Recomputed in BOTH
+  -- directions, because withdrawing an approval must reopen an application that had closed —
+  -- otherwise a withdrawal would leave a 'closed' application with a 'pending' team.
+  UPDATE neiist.recruitment_applications a
+  SET status = CASE
+        WHEN NOT EXISTS (
+          SELECT 1 FROM neiist.recruitment_application_teams t
+          WHERE t.application_id = a.id AND t.outcome = 'pending'
+        ) THEN 'closed'
+        -- Reopening restores 'submitted' ONLY from 'closed'. Writing it unconditionally would
+        -- erase 'interviewing' — someone withdrawing a signature would silently un-schedule the
+        -- interview the candidate had already been invited to.
+        WHEN a.status = 'closed' THEN 'submitted'
+        ELSE a.status END,
+      decided_at = CASE
+        WHEN EXISTS (
+          SELECT 1 FROM neiist.recruitment_application_teams t
+          WHERE t.application_id = a.id AND t.outcome = 'pending'
+        ) THEN NULL ELSE NOW() END
+  WHERE a.id = v_app AND a.status <> 'screened_out';
+
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trg_recompute_application_outcome
+  ON neiist.recruitment_application_approvals;
+
+CREATE TRIGGER trg_recompute_application_outcome
+AFTER INSERT OR UPDATE OR DELETE ON neiist.recruitment_application_approvals
+FOR EACH ROW EXECUTE FUNCTION neiist.recompute_application_outcome();
+
+-- ---------------------------------------------------------------------------------------------
+-- Recording an approval.
+-- ---------------------------------------------------------------------------------------------
+
+-- Which sides does this person actually hold, for this team?
+--
+-- 'board' is DATA, not a hardcoded list of names (#185): an active membership in a department
+-- whose type is not 'team', with a role graded `admin`. Against the real seed that is exactly
+-- Direção's Presidente, Vice-Presidente and Vogal — Conselho Fiscal and Mesa da Assembleia Geral
+-- top out at `coordinator`, which is the whole reason Mesa "only has what we give them", and
+-- Tesoureiro and Diretora SINFO are `member` on purpose. Change who signs off by editing
+-- `valid_department_roles`, not this function.
+--
+-- Reading `department_type` matters and is not decoration: `Dev-Team / Coordenador` is graded
+-- `admin` on purpose (#189), so a rule that checked only `access = 'admin'` would let one team's
+-- coordinator supply the BOARD half of every other team's recruitment. That is #180 again.
+CREATE OR REPLACE FUNCTION neiist.application_approval_sides(
+  s_actor      VARCHAR(50),
+  s_department VARCHAR(30)
+) RETURNS TABLE (side TEXT)
+LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT 'team'::TEXT
+  WHERE EXISTS (
+    SELECT 1
+    FROM neiist.membership m
+    JOIN neiist.valid_department_roles v
+      ON v.department_name = m.department_name AND v.role_name = m.role_name
+    WHERE m.user_istid = s_actor
+      AND m.department_name = s_department
+      AND (m.to_date IS NULL OR m.to_date > CURRENT_DATE)
+      AND v.active
+      AND v.access IN ('coordinator', 'admin')
+  )
+  UNION ALL
+  SELECT 'board'::TEXT
+  WHERE EXISTS (
+    SELECT 1
+    FROM neiist.membership m
+    JOIN neiist.valid_department_roles v
+      ON v.department_name = m.department_name AND v.role_name = m.role_name
+    WHERE m.user_istid = s_actor
+      AND (m.to_date IS NULL OR m.to_date > CURRENT_DATE)
+      AND v.active
+      AND v.board_member
+  );
+$$;
+
+GRANT EXECUTE ON FUNCTION neiist.application_approval_sides(VARCHAR, VARCHAR) TO neiist_app_user;
+
+-- Editable without a deploy, which is the whole #185 principle. Separate from
+-- `update_valid_department_role` on purpose: that one carries the last-admin lockout guard
+-- because it changes what a role can DO, and this changes who someone IS. Conflating them would
+-- put an irrelevant guard on one and hide a relevant one from the other.
+CREATE OR REPLACE FUNCTION neiist.set_role_board_membership(
+  b_department_name VARCHAR(30),
+  b_role_name       VARCHAR(40),
+  b_board_member    BOOLEAN
+) RETURNS VOID AS $$
+BEGIN
+  UPDATE neiist.valid_department_roles
+  SET board_member = b_board_member
+  WHERE department_name = b_department_name AND role_name = b_role_name;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'O cargo "%" não existe no departamento "%".', b_role_name, b_department_name
+      USING ERRCODE = 'NEI03';
+  END IF;
+
+  -- A team's role must never be board membership: that is the #180 shape exactly — a claim that
+  -- belongs to one team becoming authority over all of them. The board is an admin body.
+  IF b_board_member AND EXISTS (
+    SELECT 1 FROM neiist.departments
+    WHERE name = b_department_name AND department_type = 'team'
+  ) THEN
+    RAISE EXCEPTION 'Só os órgãos sociais podem ter cargos da direção.' USING ERRCODE = 'NEI03';
+  END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION neiist.set_role_board_membership(VARCHAR(30), VARCHAR(40), BOOLEAN)
+  TO neiist_app_user;
+
+-- Record one half of the pair.
+--
+-- `a_side` is a HINT, for the one person who holds both, not an instruction — it is checked
+-- against `application_approval_sides` and refused if they do not hold it. A route that passed
+-- 'board' for a team coordinator gets an error, not a board approval. This is the difference
+-- between a check and its effect that #180 was about.
+CREATE OR REPLACE FUNCTION neiist.record_application_approval(
+  a_application INT,
+  a_department  VARCHAR(30),
+  a_decision    TEXT,
+  a_actor       VARCHAR(50),
+  a_side        TEXT DEFAULT NULL,
+  a_note        TEXT DEFAULT NULL
+) RETURNS TEXT AS $$
+DECLARE
+  v_sides TEXT[];
+  v_side  TEXT;
+BEGIN
+  IF a_decision NOT IN ('accept', 'reject') THEN
+    RAISE EXCEPTION 'Decisão inválida.' USING ERRCODE = 'NEI19';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM neiist.recruitment_application_teams
+    WHERE application_id = a_application AND department_name = a_department
+  ) THEN
+    RAISE EXCEPTION 'Esta candidatura não inclui essa equipa.' USING ERRCODE = 'NEI20';
+  END IF;
+
+  SELECT array_agg(side) INTO v_sides
+  FROM neiist.application_approval_sides(a_actor, a_department);
+
+  IF v_sides IS NULL THEN
+    RAISE EXCEPTION 'Não tens autoridade para decidir sobre esta candidatura.'
+      USING ERRCODE = 'NEI21';
+  END IF;
+
+  IF a_side IS NOT NULL THEN
+    IF NOT (a_side = ANY(v_sides)) THEN
+      RAISE EXCEPTION 'Não podes assinar como %.', a_side USING ERRCODE = 'NEI21';
+    END IF;
+    v_side := a_side;
+  ELSIF array_length(v_sides, 1) = 1 THEN
+    v_side := v_sides[1];
+  ELSE
+    -- Holds both. Fill whichever half is still open; if both are open the caller must choose,
+    -- because picking for them would silently spend the signature they meant to give later.
+    SELECT s INTO v_side FROM unnest(v_sides) AS s
+    WHERE NOT EXISTS (
+      SELECT 1 FROM neiist.recruitment_application_approvals x
+      WHERE x.application_id = a_application AND x.department_name = a_department AND x.side = s
+    )
+    LIMIT 1;
+
+    IF v_side IS NULL OR (SELECT count(*) FROM unnest(v_sides) AS s
+                          WHERE NOT EXISTS (
+                            SELECT 1 FROM neiist.recruitment_application_approvals x
+                            WHERE x.application_id = a_application
+                              AND x.department_name = a_department AND x.side = s)) > 1 THEN
+      RAISE EXCEPTION 'Indica se assinas pela equipa ou pela direção.' USING ERRCODE = 'NEI21';
+    END IF;
+  END IF;
+
+  -- ON CONFLICT so someone may change their own mind; the UNIQUE on (application, team, actor)
+  -- is what stops them changing somebody else's. A conflict on the actor constraint means one
+  -- person is reaching for the second signature, and must fail loudly rather than overwrite.
+  BEGIN
+    INSERT INTO neiist.recruitment_application_approvals
+      (application_id, department_name, side, decision, actor_istid, note)
+    VALUES (a_application, a_department, v_side, a_decision, a_actor,
+            NULLIF(btrim(coalesce(a_note, '')), ''))
+    ON CONFLICT (application_id, department_name, side) DO UPDATE
+    SET decision = EXCLUDED.decision,
+        actor_istid = EXCLUDED.actor_istid,
+        decided_at = NOW(),
+        note = EXCLUDED.note;
+  EXCEPTION WHEN unique_violation THEN
+    RAISE EXCEPTION 'As duas aprovações têm de ser de pessoas diferentes.' USING ERRCODE = 'NEI22';
+  END;
+
+  RETURN v_side;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION neiist.record_application_approval(
+  INT, VARCHAR, TEXT, VARCHAR, TEXT, TEXT
+) TO neiist_app_user;
+
+-- Withdraw a signature. Deliberately allowed while the decision is still forming, and it
+-- reopens the application through the same trigger — a pair that can only be assembled and
+-- never taken apart makes an accidental click permanent.
+CREATE OR REPLACE FUNCTION neiist.withdraw_application_approval(
+  w_application INT,
+  w_department  VARCHAR(30),
+  w_actor       VARCHAR(50)
+) RETURNS VOID AS $$
+BEGIN
+  DELETE FROM neiist.recruitment_application_approvals
+  WHERE application_id = w_application
+    AND department_name = w_department
+    -- Only your own. Removing someone else's signature is how one person gets both halves.
+    AND actor_istid = w_actor;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Não tens nenhuma aprovação registada nesta candidatura.'
+      USING ERRCODE = 'NEI20';
+  END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION neiist.withdraw_application_approval(INT, VARCHAR, VARCHAR)
+  TO neiist_app_user;
+
+-- There is deliberately NO function that writes `outcome` directly (#217). The single-click path
+-- that #215 had does not exist here — it is derived from the two signatures above, and a caller
+-- that could set it could record a decision two people never made.
+
+-- ---------------------------------------------------------------------------------------------
+-- Reads: what is waiting on whom.
+-- ---------------------------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION neiist.get_team_applications(a_department VARCHAR(30))
+RETURNS TABLE (
+  id            INT,
+  full_name     TEXT,
+  istid         VARCHAR(50),
+  email         TEXT,
+  phone         TEXT,
+  course        TEXT,
+  year          INT,
+  motivation    TEXT,
+  status        TEXT,
+  submitted_at  TIMESTAMPTZ,
+  outcome       TEXT,
+  note          TEXT,
+  other_teams   TEXT[],
+  team_decision  TEXT,
+  team_actor     TEXT,
+  board_decision TEXT,
+  board_actor    TEXT
+) LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT a.id, a.full_name, a.istid, a.email, a.phone, a.course, a.year, a.motivation,
+         a.status, a.submitted_at, t.outcome, t.note,
+         -- The other teams they applied to, so a coordinator can see the person is also being
+         -- considered elsewhere. Names only — the other teams' decisions are theirs to make.
+         coalesce(
+           (SELECT array_agg(o.department_name ORDER BY o.department_name)
+            FROM neiist.recruitment_application_teams o
+            WHERE o.application_id = a.id AND o.department_name <> a_department),
+           ARRAY[]::TEXT[]),
+         tm.decision, tmu.name, bd.decision, bdu.name
+  FROM neiist.recruitment_applications a
+  JOIN neiist.recruitment_application_teams t
+    ON t.application_id = a.id AND t.department_name = a_department
+  LEFT JOIN neiist.recruitment_application_approvals tm
+    ON tm.application_id = a.id AND tm.department_name = a_department AND tm.side = 'team'
+  LEFT JOIN neiist.users tmu ON tmu.istid = tm.actor_istid
+  LEFT JOIN neiist.recruitment_application_approvals bd
+    ON bd.application_id = a.id AND bd.department_name = a_department AND bd.side = 'board'
+  LEFT JOIN neiist.users bdu ON bdu.istid = bd.actor_istid
+  ORDER BY (t.outcome <> 'pending'), a.submitted_at;
+$$;
+
+GRANT EXECUTE ON FUNCTION neiist.get_team_applications(VARCHAR(30)) TO neiist_app_user;
+
+-- The board's queue: every application across every team where the TEAM has signed and the board
+-- has not. Deliberately narrow — the board is not asked to review what the team has not looked at
+-- yet, which is the practical reason the two signatures are ordered in the first place.
+--
+-- No motivation, phone or course here: this is a work queue, not the application. The board opens
+-- the team's page for the detail, where the same authorization already applies. Handing over the
+-- full record of every applicant to build a list would be collecting more than the list needs.
+CREATE OR REPLACE FUNCTION neiist.get_board_pending_applications()
+RETURNS TABLE (
+  id              INT,
+  full_name       TEXT,
+  department_name VARCHAR(30),
+  submitted_at    TIMESTAMPTZ,
+  team_decision   TEXT,
+  team_actor      TEXT,
+  team_note       TEXT
+) LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT a.id, a.full_name, t.department_name, a.submitted_at, tm.decision, u.name, tm.note
+  FROM neiist.recruitment_applications a
+  JOIN neiist.recruitment_application_teams t ON t.application_id = a.id
+  JOIN neiist.recruitment_application_approvals tm
+    ON tm.application_id = a.id AND tm.department_name = t.department_name AND tm.side = 'team'
+  LEFT JOIN neiist.users u ON u.istid = tm.actor_istid
+  WHERE a.status <> 'screened_out'
+    AND NOT EXISTS (
+      SELECT 1 FROM neiist.recruitment_application_approvals bd
+      WHERE bd.application_id = a.id AND bd.department_name = t.department_name
+        AND bd.side = 'board'
+    )
+  ORDER BY tm.decided_at;
+$$;
+
+GRANT EXECUTE ON FUNCTION neiist.get_board_pending_applications() TO neiist_app_user;
+
+-- Retention: 6 months after the application was decided (#134, decided 2026-08-25).
+--
+-- These are people who may never have joined NEIIST, and the GDPR exposure in Notion is a stated
+-- motivation for the whole migration (#126) — importing that problem would defeat the point.
+--
+-- A function rather than a scheduled job because this database has no scheduler; calling it is
+-- the deploy's or an operator's job, and it is idempotent so calling it twice is harmless.
+CREATE OR REPLACE FUNCTION neiist.purge_old_applications()
+RETURNS INT AS $$
+DECLARE
+  v_deleted INT;
+BEGIN
+  DELETE FROM neiist.recruitment_applications
+  WHERE decided_at IS NOT NULL AND decided_at < NOW() - INTERVAL '6 months';
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+  RETURN v_deleted;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION neiist.purge_old_applications() TO neiist_app_user;
 
 -- 020: collaborating teams and per-event visibility (#219).
 --

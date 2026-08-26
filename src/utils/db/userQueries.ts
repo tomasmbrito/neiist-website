@@ -210,13 +210,18 @@ export const getUsersByAccess = async (access: string): Promise<User[]> => {
 
 export const getDepartmentRoles = async (
   departmentName: string
-): Promise<Array<{ role_name: string; access: string; active: boolean }>> => {
+): Promise<
+  Array<{ role_name: string; access: string; active: boolean; board_member: boolean }>
+> => {
   try {
     const { rows } = await db_query<{
       role_name: string;
       access: string;
       active: boolean;
-    }>("SELECT role_name, access, active FROM neiist.get_department_roles($1)", [departmentName]);
+      board_member: boolean;
+    }>("SELECT role_name, access, active, board_member FROM neiist.get_department_roles($1)", [
+      departmentName,
+    ]);
     return rows;
   } catch (error) {
     console.error("Error fetching department roles:", error);
@@ -442,6 +447,24 @@ export const removeValidDepartmentRole = async (
 };
 
 /** Change which access level a department role grants (#158). Errors propagate — see above. */
+/**
+ * Mark a (department, role) pair as sitting on the Direção, or not (#217).
+ *
+ * Separate from `updateValidDepartmentRole` on purpose: that one carries the last-admin lockout
+ * guard because it changes what a role can DO. This changes who someone IS. Conflating them
+ * would put an irrelevant guard on one and hide a relevant one from the other.
+ */
+export const setRoleBoardMembership = async (
+  departmentName: string,
+  roleName: string,
+  boardMember: boolean
+): Promise<void> => {
+  await db_query(
+    "SELECT neiist.set_role_board_membership($1::VARCHAR(30), $2::VARCHAR(40), $3::BOOLEAN)",
+    [departmentName, roleName, boardMember]
+  );
+};
+
 export const updateValidDepartmentRole = async (
   actorIstid: string,
   departmentName: string,

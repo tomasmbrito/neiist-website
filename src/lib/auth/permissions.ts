@@ -278,6 +278,18 @@ export const TEAM_PERMISSION_ROLES = {
    */
   "team.events.collaborators": [UserRole._ADMIN, UserRole._COORDINATOR],
   /**
+   * See and decide on applications to **this team** (#134).
+   *
+   * Its coordinators, and the board through `ORGANISATION_WIDE` — decided 2026-08-25: the
+   * coordinators know who they want and they rotate their own WhatsApp links, so making the
+   * Presidente a bottleneck for every per-team decision would be wrong.
+   *
+   * **Deliberately NOT grantable.** Applications hold names, phone numbers, emails and
+   * motivations belonging to people who may never join NEIIST, and a decision on one changes
+   * somebody's year. A two-week borrowed scope should not read that pile or make that call.
+   */
+  "team.recruitment.decide": [UserRole._ADMIN, UserRole._COORDINATOR],
+  /**
    * Mark an event public, putting it on the calendar students see.
    *
    * Separate from `team.events.manage` because publishing is the irreversible-ish half: slice C

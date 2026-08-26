@@ -131,6 +131,42 @@ export function throwIfTaskDbError(error: unknown): void {
   }
 }
 
+/** Recruitment (#134). */
+const RECRUITMENT_SQLSTATE = {
+  /** The submitted application is malformed — blank name, no teams, bad decision value. */
+  INVALID: "NEI19",
+  /** Applications are closed, the team does not exist, or it is not on this application. */
+  UNAVAILABLE: "NEI20",
+  /** The actor does not hold the side they are signing as (#217). */
+  NOT_YOUR_SIGNATURE: "NEI21",
+  /** One person reaching for both signatures (#217). */
+  SAME_PERSON_TWICE: "NEI22",
+} as const;
+
+/**
+ * Both are 400 with their own message. "As candidaturas estão fechadas de momento" in particular
+ * is the whole answer a candidate needs, and a generic 500 would tell them nothing.
+ */
+export function throwIfRecruitmentDbError(error: unknown): void {
+  const dbError = error as { message?: string; code?: string };
+  switch (dbError?.code) {
+    case RECRUITMENT_SQLSTATE.INVALID:
+    case RECRUITMENT_SQLSTATE.UNAVAILABLE:
+      throw new ValidationError(dbError.message ?? "Pedido inválido.");
+    // 403, not 400: the request was well formed, the person may simply not sign it. Mapping these
+    // to a validation error would tell a coordinator their input was malformed when what actually
+    // happened is that they tried to supply the board's signature.
+    case RECRUITMENT_SQLSTATE.NOT_YOUR_SIGNATURE:
+      throw new ForbiddenError(dbError.message ?? "Não podes assinar esta candidatura.");
+    // 409: the second signature exists, it is just theirs. A retry cannot fix it — a different
+    // person has to sign — which is what a conflict means and a 400 does not.
+    case RECRUITMENT_SQLSTATE.SAME_PERSON_TWICE:
+      throw new ConflictError(
+        dbError.message ?? "As duas aprovações têm de ser de pessoas diferentes."
+      );
+  }
+}
+
 /** `@neiist.pt` address reservation (#213). */
 const EMAIL_SQLSTATE = { CANNOT_ASSIGN: "NEI18" } as const;
 

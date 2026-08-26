@@ -389,6 +389,9 @@ const EXPECTED_TEAM_POLICY: Record<TeamPermission, UserRole[]> = {
     UserRole._SHOP_MANAGER,
   ],
   "team.tasks.delete": [UserRole._ADMIN, UserRole._COORDINATOR],
+  // #134. Coordinators of the team, plus the board. Absent from GRANTABLE — applications are
+  // other people's personal data and the decision changes somebody's year.
+  "team.recruitment.decide": [UserRole._ADMIN, UserRole._COORDINATOR],
 };
 
 /**
@@ -429,6 +432,12 @@ describe("team permission policy", () => {
     // #208. Publishing outliving a grant was accepted knowingly; erasing the minutes archive was
     // not. A two-week loan must not be able to destroy a year of atas.
     expect(GRANTABLE_TEAM_PERMISSIONS).not.toContain("team.events.delete");
+  });
+
+  it("never lets a grant read or decide recruitment applications", () => {
+    // #134. Applications hold names, phones, emails and motivations for people who may never
+    // join. A borrowed two-week scope must not open that, nor decide who gets in.
+    expect(GRANTABLE_TEAM_PERMISSIONS).not.toContain("team.recruitment.decide");
   });
 
   it("never lets a grant manage a team's membership", () => {

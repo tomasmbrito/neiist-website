@@ -12,6 +12,8 @@ interface Role {
   role_name: string;
   access: string;
   active: boolean;
+  /** Does this role sit on the Direção? (#217) Independent of `access` — see the toggle below. */
+  board_member?: boolean;
   department?: string;
   /** How many people currently hold this role. Returned by GET so a change can state its impact. */
   memberCount?: number;
@@ -81,6 +83,14 @@ export default function RolesSearchFilter({
         departmentName?: string;
         access: string;
         previousAccess: string;
+        memberCount: number;
+      }
+    | {
+        kind: "board";
+        roleName: string;
+        departmentName?: string;
+        access: string;
+        boardMember: boolean;
         memberCount: number;
       }
     | null
@@ -168,6 +178,25 @@ export default function RolesSearchFilter({
     setConfirmOpen(true);
   };
 
+  /**
+   * Toggle whether a role sits on the Direção (#217).
+   *
+   * Confirmed like an access change, and for the same reason: it takes effect immediately for
+   * everyone holding the role. It is a smaller power than `admin` — it opens no team's workspace —
+   * but it does let the holder co-sign a recruitment decision, so not a silent click either.
+   */
+  const handleBoardChange = (role: Role, boardMember: boolean) => {
+    setPendingAction({
+      kind: "board",
+      roleName: role.role_name,
+      departmentName: role.department,
+      access: role.access,
+      boardMember,
+      memberCount: role.memberCount ?? 0,
+    });
+    setConfirmOpen(true);
+  };
+
   const handleAccessChange = (role: Role, access: string) => {
     if (access === role.access) return;
     setPendingAction({
@@ -196,7 +225,11 @@ export default function RolesSearchFilter({
     if (!dept) return;
 
     const isRemove = pendingAction.kind === "remove";
-    const failureMessage = isRemove ? "Erro ao remover cargo" : "Erro ao alterar o nível de acesso";
+    const failureMessage = isRemove
+      ? "Erro ao remover cargo"
+      : pendingAction.kind === "board"
+        ? "Erro ao alterar a pertença à direção"
+        : "Erro ao alterar o nível de acesso";
 
     try {
       const response = await fetch("/api/admin/roles", {
@@ -208,7 +241,13 @@ export default function RolesSearchFilter({
             : {
                 departmentName: dept,
                 roleName: pendingAction.roleName,
+                // The access level is sent unchanged on a board toggle. `boardMember` is sent only
+                // when it is the thing being changed — the API reads `undefined` as "leave it
+                // alone", so an ordinary access edit cannot silently clear board membership.
                 access: pendingAction.access,
+                ...(pendingAction.kind === "board"
+                  ? { boardMember: pendingAction.boardMember }
+                  : {}),
               }
         ),
       });
@@ -239,6 +278,15 @@ export default function RolesSearchFilter({
     const dept = selectedDepartment === "" ? pendingAction.departmentName : selectedDepartment;
     if (pendingAction.kind === "remove") {
       return `Tem a certeza que quer remover o cargo "${pendingAction.roleName}" do departamento "${dept}"?`;
+    }
+    if (pendingAction.kind === "board") {
+      const people =
+        pendingAction.memberCount === 1
+          ? "1 membro tem este cargo"
+          : `${pendingAction.memberCount} membros têm este cargo`;
+      return pendingAction.boardMember
+        ? `Marcar "${pendingAction.roleName}" como cargo da direção? Passa a poder dar a segunda aprovação numa candidatura. ${people}. Não dá acesso ao espaço de trabalho de nenhuma equipa.`
+        : `Deixar "${pendingAction.roleName}" de ser um cargo da direção? Deixa de poder aprovar candidaturas. ${people}.`;
     }
     const from =
       ROLE_LABELS[pendingAction.previousAccess as UserRole] ?? pendingAction.previousAccess;
@@ -364,6 +412,26 @@ export default function RolesSearchFilter({
                       {ROLE_LABELS[role.access as UserRole] ?? role.access}
                     </span>
                   )}
+                  {/* #217. Board membership is deliberately NOT a fourth option in the access
+                      select above: it is a different fact. A Diretor de Atividades is on the board
+                      AND is a `coordinator`; the Tesoureiro is on the board AND is a `member`.
+                      Making it an access level would force that choice to be made wrongly.
+
+                      Shown only to someone who could actually set it — the API and SQL both
+                      re-check, so this exists to avoid offering a control that returns 403. */}
+                  {role.active && mayGrantAdmin ? (
+                    <label className={styles.boardToggle}>
+                      <input
+                        type="checkbox"
+                        checked={role.board_member ?? false}
+                        onChange={(inputEvent) =>
+                          handleBoardChange(role, inputEvent.target.checked)
+                        }
+                        aria-label={`${role.role_name} é um cargo da direção`}
+                      />{" "}
+                      Cargo da direção
+                    </label>
+                  ) : null}
                   <span className={`${styles.badge}${!role.active ? " " + styles.inactive : ""}`}>
                     {role.active ? "Ativo" : "Inativo"}
                   </span>
