@@ -224,6 +224,12 @@ describe("the is_public boundary", () => {
       // but cannot leak a name, a date or an attendee, which is what this list guards.
       "event_teams",
       "set_event_collaborator",
+      // #210. The Notion importer's upsert. A WRITER: it returns the new event's `id` and nothing
+      // else, takes the owning department as a required argument, and cannot be reached from a
+      // route — the import runs from `scripts/import-notion-events.mts` as the owner role. Added
+      // deliberately, which is the point of this list: it failed by name until someone justified
+      // it in writing.
+      "import_internal_event",
     ].sort();
 
     const { rows } = await owner.query<{ proname: string }>(
