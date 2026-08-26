@@ -6,7 +6,10 @@ import {
   getEventRelations,
   getInternalEventDetail,
   getInternalEventOwner,
+  getEventTeams,
   relateEvents,
+  setEventCollaborator,
+  setEventVisibility,
   removeEventAttendee,
   removeEventDocument,
   setEventAttendance,
@@ -19,6 +22,8 @@ import { throwIfEventDbError } from "@/utils/db/errorMapper";
 import { handleApiError } from "@/lib/errors/apiErrorHandler";
 import {
   attendanceSchema,
+  eventCollaboratorSchema,
+  eventVisibilitySchema,
   eventDocumentSchema,
   eventNotesSchema,
   relateEventSchema,
@@ -76,15 +81,16 @@ export async function GET(request: NextRequest, ctx: Ctx) {
   if ("error" in auth) return auth.error;
 
   const { eventId, team } = auth;
-  const [event, attendees, documents, related] = await Promise.all([
+  const [event, attendees, documents, related, teams] = await Promise.all([
     getInternalEventDetail(eventId, team),
     getEventAttendees(eventId, team),
     getEventDocuments(eventId, team),
     getEventRelations(eventId, team),
+    getEventTeams(eventId, team),
   ]);
   if (!event) return NextResponse.json({ error: "Evento não encontrado." }, { status: 404 });
 
-  return NextResponse.json({ event, attendees, documents, related });
+  return NextResponse.json({ event, attendees, documents, related, teams });
 }
 
 /** Agenda and minutes. */
@@ -172,6 +178,46 @@ export async function POST(request: NextRequest, ctx: Ctx) {
           return NextResponse.json({ error: "Documento não encontrado." }, { status: 404 });
         }
         await removeEventDocument(documentId);
+        return NextResponse.json({ success: true });
+      }
+      case "visibility": {
+        const parsed = eventVisibilitySchema.safeParse(body);
+        if (!parsed.success) {
+          return NextResponse.json({ error: "Pedido inválido" }, { status: 400 });
+        }
+        // Publishing is a separate, stricter permission than editing (#129): making an event
+        // visible to everyone is the núcleo speaking in public. Narrowing it is not — anyone who
+        // may edit the event may restrict who sees it.
+        if (
+          parsed.data.visibility === "public" &&
+          !canForTeam(auth.session.roles, auth.session.scopes, "team.events.publish", auth.team)
+        ) {
+          return NextResponse.json(
+            { error: "Não tens permissão para tornar este evento público." },
+            { status: 403 }
+          );
+        }
+        await setEventVisibility(auth.eventId, parsed.data.visibility);
+        return NextResponse.json({ success: true });
+      }
+      case "collaborator": {
+        const parsed = eventCollaboratorSchema.safeParse(body);
+        if (!parsed.success) {
+          return NextResponse.json({ error: "Pedido inválido" }, { status: 400 });
+        }
+        if (
+          !canForTeam(
+            auth.session.roles,
+            auth.session.scopes,
+            "team.events.collaborators",
+            auth.team
+          )
+        ) {
+          return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+        }
+        // Authorized against the OWNING team, not the team being added: bringing Visuais in is
+        // the owner's decision, and Visuais does not get a say in being volunteered.
+        await setEventCollaborator(auth.eventId, parsed.data.departmentName, parsed.data.add);
         return NextResponse.json({ success: true });
       }
       case "relate":

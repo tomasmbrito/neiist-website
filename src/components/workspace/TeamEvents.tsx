@@ -3,7 +3,12 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import ConfirmDialog from "@/components/layout/ConfirmDialog";
-import type { InternalEvent } from "@/utils/db/eventQueries";
+import {
+  EVENT_VISIBILITY,
+  VISIBILITY_LABELS,
+  type EventVisibility,
+  type InternalEvent,
+} from "@/utils/db/eventQueries";
 import styles from "@/styles/pages/Workspace.module.css";
 
 /**
@@ -39,6 +44,7 @@ export default function TeamEvents({
   canCreateEvent,
   canPublish,
   canDelete,
+  canSetVisibility,
 }: {
   team: string;
   initialEvents: InternalEvent[];
@@ -47,6 +53,8 @@ export default function TeamEvents({
   canPublish: boolean;
   /** Deletion is not grantable (#208), so it is decided separately from `canCreateEvent`. */
   canDelete: boolean;
+  /** #219 — may change who sees an event. Narrowing only; the route re-checks `publish`. */
+  canSetVisibility: boolean;
 }) {
   const [events, setEvents] = useState(initialEvents);
   const [kind, setKind] = useState<"meeting" | "event">(canCreateEvent ? "event" : "meeting");
@@ -59,6 +67,29 @@ export default function TeamEvents({
   const [pendingDelete, setPendingDelete] = useState<InternalEvent | null>(null);
 
   const mayCreate = canCreateMeeting || canCreateEvent;
+
+  /** Change who can see an event. The route re-checks, and publishing is stricter than editing. */
+  const changeVisibility = async (eventId: number, visibility: EventVisibility) => {
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/workspace/events/${eventId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "visibility", visibility }),
+      });
+      if (response.ok) {
+        await refresh();
+        toast.success("Visibilidade alterada.", { closeButton: true });
+        return;
+      }
+      const body = await response.json().catch(() => ({}));
+      toast.error(body.error || "Não foi possível alterar.", { closeButton: true });
+    } catch {
+      toast.error("Não foi possível alterar.", { closeButton: true });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const refresh = async () => {
     const response = await fetch(`/api/workspace/events?department=${encodeURIComponent(team)}`);
@@ -158,6 +189,25 @@ export default function TeamEvents({
                 </span>
               </span>
               <span className={styles.memberRoles}>
+                {/* A collaborator is told plainly that the event is not theirs — they can see it
+                    and work on it, but the owning team decides its fate. */}
+                {!item.isOwner ? <span className={styles.cardMeta}>a colaborar · </span> : null}
+                {canSetVisibility && item.isOwner ? (
+                  <select
+                    className={styles.inlineSelect}
+                    value={item.visibility}
+                    disabled={busy}
+                    aria-label={`Quem vê ${item.name}`}
+                    onChange={(inputEvent) =>
+                      changeVisibility(item.id, inputEvent.target.value as EventVisibility)
+                    }>
+                    {EVENT_VISIBILITY.map((level) => (
+                      <option key={level} value={level}>
+                        {VISIBILITY_LABELS[level]}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
                 {formatWhen(item.startsAt, item.endsAt)}
                 {item.locations.length > 0 ? ` · ${item.locations.join(", ")}` : ""}
                 {canDelete ? (

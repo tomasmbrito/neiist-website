@@ -90,3 +90,13 @@ export const taskAssigneeSchema = z.object({
 export const deleteTaskSchema = z.object({
   taskId: z.number().int().positive(),
 });
+
+/** #219 — who may see an event, and which teams are helping. */
+export const eventVisibilitySchema = z.object({
+  visibility: z.enum(["public", "members", "teams", "owner"]),
+});
+
+export const eventCollaboratorSchema = z.object({
+  departmentName: z.string().trim().min(1).max(30),
+  add: z.boolean(),
+});

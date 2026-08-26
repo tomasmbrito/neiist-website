@@ -379,6 +379,8 @@ const EXPECTED_TEAM_POLICY: Record<TeamPermission, UserRole[]> = {
   // grantability, not which role holds it.
   "team.events.delete": [UserRole._ADMIN, UserRole._COORDINATOR],
   "team.events.publish": [UserRole._ADMIN, UserRole._COORDINATOR],
+  // #219. Pulling Visuais in to make the poster is part of running the event.
+  "team.events.collaborators": [UserRole._ADMIN, UserRole._COORDINATOR],
   // #130. Members manage tasks (ordinary team business); only coordinators delete them.
   "team.tasks.manage": [
     UserRole._ADMIN,
@@ -405,6 +407,9 @@ const EXPECTED_GRANTABLE: TeamPermission[] = [
   // Decided 2026-08-23: grants are treated as membership for events, publishing included. The
   // accepted consequence is that a published event outlives the grant that created it.
   "team.events.publish",
+  // #219. A borrowed coordinator scope exists so someone can help run the team's events, and
+  // pulling in a collaborating team is part of that. Reversible, so nothing outlives the grant.
+  "team.events.collaborators",
 ];
 
 describe("team permission policy", () => {
