@@ -6972,7 +6972,6 @@ RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER AS $$
 $$;
 
 GRANT EXECUTE ON FUNCTION neiist.activity_exists(TEXT) TO neiist_app_user;
-
 -- Onboarding an accepted candidate, and the team's own links (#224, #225).
 -- Nothing here creates a membership: see docker/migrations/026 for why that is load-bearing.
 CREATE TABLE IF NOT EXISTS neiist.team_links (
