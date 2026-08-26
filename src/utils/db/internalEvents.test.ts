@@ -230,6 +230,20 @@ describe("the is_public boundary", () => {
       // deliberately, which is the point of this list: it failed by name until someone justified
       // it in writing.
       "import_internal_event",
+      // #137 first slice. `hand_over_public_calendar` is a writer returning a count.
+      //
+      // `public_calendar_handover_report` is the one that needed thinking about, because it DOES
+      // return event titles and dates with no department parameter — the exact shape this list
+      // exists to police. It earns its place the same way `get_public_internal_events` does:
+      // every row it can return is ALREADY on the public calendar. The `ready` branch INNER JOINs
+      // `activities`, so an event only appears there if the Notion sync is publishing its page to
+      // students right now; the `orphan_activity` branch reads `activities` alone, which is the
+      // public calendar table. It cannot reach an event that is not already public.
+      //
+      // It is also operator-run: no route calls it. That is a reason to keep watching it, not a
+      // reason to skip the check — a future route could.
+      "public_calendar_handover_report",
+      "hand_over_public_calendar",
     ].sort();
 
     const { rows } = await owner.query<{ proname: string }>(
