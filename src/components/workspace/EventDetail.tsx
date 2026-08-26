@@ -56,6 +56,9 @@ export default function EventDetail({
   roster,
   relatableEvents,
   canEdit,
+  initialCollaborators,
+  canSetCollaborators,
+  addableTeams,
 }: {
   team: string;
   event: InternalEventDetail;
@@ -65,10 +68,15 @@ export default function EventDetail({
   roster: Array<{ istid: string; name: string }>;
   relatableEvents: Array<{ id: number; name: string }>;
   canEdit: boolean;
+  /** #219 — teams pulled in to help. The owning team is not in this list; it owns the event. */
+  initialCollaborators: string[];
+  canSetCollaborators: boolean;
+  addableTeams: string[];
 }) {
   const [attendees, setAttendees] = useState(initialAttendees);
   const [documents, setDocuments] = useState(initialDocuments);
   const [related, setRelated] = useState(initialRelated);
+  const [collaborators, setCollaborators] = useState(initialCollaborators);
   const [agenda, setAgenda] = useState(event.agenda ?? "");
   const [minutes, setMinutes] = useState(event.minutes ?? "");
   const [notesDirty, setNotesDirty] = useState(false);
@@ -79,6 +87,7 @@ export default function EventDetail({
   const [docUrl, setDocUrl] = useState("");
   const [docKind, setDocKind] = useState<EventDocument["kind"]>("other");
   const [relateId, setRelateId] = useState("");
+  const [collaboratorName, setCollaboratorName] = useState("");
 
   const endpoint = `/api/workspace/events/${event.id}`;
 
@@ -89,6 +98,7 @@ export default function EventDetail({
     setAttendees(body.attendees);
     setDocuments(body.documents);
     setRelated(body.related);
+    setCollaborators(body.teams ?? []);
   };
 
   /** One place for the fetch/toast/refresh cycle, so eight actions do not repeat it eight times. */
@@ -339,6 +349,84 @@ export default function EventDetail({
                     setDocTitle("");
                     setDocUrl("");
                   }
+                )
+              }>
+              Adicionar
+            </button>
+          </div>
+        ) : null}
+      </section>
+
+      {/* #219. An event starts in Organização de Eventos (or with the Direção) and *grows*: a
+          poster brings in Visuais, a story brings in Divulgação. Those teams then see the event in
+          their own workspace, marked "a colaborar" — they can work on it, but the owning team
+          keeps it. Adding a team is the owner's call alone; a collaborator cannot add a third. */}
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Equipas a colaborar ({collaborators.length})</h2>
+        {collaborators.length === 0 ? (
+          <p className={styles.empty}>
+            Só a {team} por agora. Adiciona outra equipa se precisares de ajuda — cartaz, story,
+            logística.
+          </p>
+        ) : (
+          <ul className={styles.memberList}>
+            {collaborators.map((name) => (
+              <li key={name} className={styles.member}>
+                <span className={styles.memberName}>{name}</span>
+                {canSetCollaborators ? (
+                  <button
+                    type="button"
+                    className={styles.revokeBtn}
+                    disabled={busy}
+                    onClick={() =>
+                      act({
+                        method: "POST",
+                        body: JSON.stringify({
+                          action: "collaborator",
+                          departmentName: name,
+                          add: false,
+                        }),
+                      })
+                    }>
+                    Remover
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+        {canSetCollaborators ? (
+          <div className={styles.inlineForm}>
+            <select
+              className={styles.inlineSelect}
+              value={collaboratorName}
+              disabled={busy}
+              aria-label="Equipa a adicionar"
+              onChange={(inputEvent) => setCollaboratorName(inputEvent.target.value)}>
+              <option value="">Escolhe uma equipa…</option>
+              {addableTeams
+                .filter((name) => !collaborators.includes(name))
+                .map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+            </select>
+            <button
+              type="button"
+              className={styles.primaryBtn}
+              disabled={busy || collaboratorName === ""}
+              onClick={() =>
+                act(
+                  {
+                    method: "POST",
+                    body: JSON.stringify({
+                      action: "collaborator",
+                      departmentName: collaboratorName,
+                      add: true,
+                    }),
+                  },
+                  () => setCollaboratorName("")
                 )
               }>
               Adicionar

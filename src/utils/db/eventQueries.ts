@@ -97,7 +97,12 @@ export type InternalEvent = {
   description: string | null;
   startsAt: string;
   endsAt: string | null;
+  /** Kept in step with `visibility` by a trigger until #137 removes it. Prefer `visibility`. */
   isPublic: boolean;
+  /** Who can see it (#219). `is_public` was only ever two of these four. */
+  visibility: EventVisibility;
+  /** False when this team is a collaborator rather than the owner — it is not theirs to delete. */
+  isOwner: boolean;
   createdByIstid: string;
   createdByName: string;
   locations: string[];
@@ -168,6 +173,8 @@ export const getTeamInternalEvents = async (departmentName: string): Promise<Int
     starts_at: string;
     ends_at: string | null;
     is_public: boolean;
+    visibility: EventVisibility;
+    is_owner: boolean;
     created_by_istid: string;
     created_by_name: string;
     locations: string[];
@@ -182,6 +189,8 @@ export const getTeamInternalEvents = async (departmentName: string): Promise<Int
     startsAt: row.starts_at,
     endsAt: row.ends_at,
     isPublic: row.is_public,
+    visibility: row.visibility,
+    isOwner: row.is_owner,
     createdByIstid: row.created_by_istid,
     createdByName: row.created_by_name,
     locations: row.locations,
@@ -279,6 +288,11 @@ export const getInternalEventDetail = async (
     createdByIstid: row.created_by_istid,
     createdByName: row.created_by_name,
     locations: row.locations,
+    // The detail reader (013) predates #219 and does not select these. Sensible defaults rather
+    // than widening that function here: the detail page shows one event whose team is already
+    // known, so neither field changes what it renders. #219's follow-up can add them properly.
+    visibility: row.is_public ? "public" : "teams",
+    isOwner: true,
     // The detail page lists attendees individually, so the count is redundant there.
     attendeeCount: 0,
   };
@@ -529,3 +543,64 @@ export const publicEventToNotionShape = (event: PublicInternalEvent): NotionEven
   lastEditedTime: event.updatedAt,
   public: true,
 });
+
+/**
+ * Who can see an event (#219).
+ *
+ * Four levels, replacing the `is_public` boolean. The one that did not exist before is
+ * **`members`** — "every member should see the Jantar de Curso, but it is not for the public" —
+ * and several of NEIIST's real events are exactly that.
+ *
+ * Ordered widest to narrowest. Compare with `visibilityRank`, never by array index or enum
+ * ordinal: `user_access_enum` taught this repository what happens when ordering is implied
+ * rather than stated.
+ */
+export const EVENT_VISIBILITY = ["public", "members", "teams", "owner"] as const;
+export type EventVisibility = (typeof EVENT_VISIBILITY)[number];
+
+export const VISIBILITY_LABELS: Record<EventVisibility, string> = {
+  public: "Público — toda a gente, incluindo não-membros",
+  members: "Membros — qualquer membro do NEIIST",
+  teams: "Equipas — a equipa responsável e as que colaboram",
+  owner: "Só a equipa responsável",
+};
+
+/** 0 is widest. Stated rather than derived from the array, so reordering cannot change meaning. */
+export const visibilityRank = (visibility: EventVisibility): number =>
+  ({ public: 0, members: 1, teams: 2, owner: 3 })[visibility];
+
+/** Add or remove a collaborating team. Errors throw — a silent no-op would be worse than a 400. */
+export const setEventCollaborator = async (
+  eventId: number,
+  departmentName: string,
+  add: boolean
+): Promise<void> => {
+  await db_query("SELECT neiist.set_event_collaborator($1::INT, $2::VARCHAR(30), $3::BOOLEAN)", [
+    eventId,
+    departmentName,
+    add,
+  ]);
+};
+
+/** Every team that can see this event: the owner, plus collaborators. */
+export const getEventTeams = async (
+  eventId: number,
+  askingDepartment: string
+): Promise<string[]> => {
+  const { rows } = await db_query<{ department_name: string }>(
+    "SELECT * FROM neiist.event_teams($1::INT, $2::VARCHAR(50))",
+    [eventId, askingDepartment]
+  );
+  return rows.map((row) => row.department_name);
+};
+
+/** Set an event's visibility. The trigger keeps `is_public` in step until #137 removes it. */
+export const setEventVisibility = async (
+  eventId: number,
+  visibility: EventVisibility
+): Promise<void> => {
+  await db_query(
+    "UPDATE neiist.internal_events SET visibility = $2::neiist.event_visibility_enum WHERE id = $1",
+    [eventId, visibility]
+  );
+};

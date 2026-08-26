@@ -172,6 +172,7 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
         canCreateEvent={canForTeam(session.roles, session.scopes, "team.events.manage", team)}
         canPublish={canForTeam(session.roles, session.scopes, "team.events.publish", team)}
         canDelete={canForTeam(session.roles, session.scopes, "team.events.delete", team)}
+        canSetVisibility={canForTeam(session.roles, session.scopes, "team.events.manage", team)}
       />
     </>
   );

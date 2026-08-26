@@ -219,6 +219,11 @@ describe("the is_public boundary", () => {
       "create_task",
       "get_team_tasks",
       "get_user_tasks",
+      // #219. Neither returns event CONTENT: `event_teams` returns department names only (which
+      // team may see event N), and `set_event_collaborator` returns void. They touch the table
+      // but cannot leak a name, a date or an attendee, which is what this list guards.
+      "event_teams",
+      "set_event_collaborator",
     ].sort();
 
     const { rows } = await owner.query<{ proname: string }>(
