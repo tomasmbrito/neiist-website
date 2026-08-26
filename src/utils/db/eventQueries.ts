@@ -8,6 +8,7 @@ import {
   NotionEvent,
 } from "@/types/events";
 import { db_query, type Querier } from "@/utils/db/dbClient";
+import type { EventVisibility } from "@/types/eventVisibility";
 
 export const updateActivitiesEvent = async (
   activity: Partial<ActivityEvent> & { id: string }
@@ -545,29 +546,19 @@ export const publicEventToNotionShape = (event: PublicInternalEvent): NotionEven
 });
 
 /**
- * Who can see an event (#219).
+ * Re-exported so server code has one import for events (#219).
  *
- * Four levels, replacing the `is_public` boolean. The one that did not exist before is
- * **`members`** — "every member should see the Jantar de Curso, but it is not for the public" —
- * and several of NEIIST's real events are exactly that.
- *
- * Ordered widest to narrowest. Compare with `visibilityRank`, never by array index or enum
- * ordinal: `user_access_enum` taught this repository what happens when ordering is implied
- * rather than stated.
+ * The definitions live in `src/types/eventVisibility.ts` and MUST stay there: they are needed by
+ * `TeamEvents.tsx`, a `"use client"` component, and importing a *value* from this module drags
+ * `db_query` and therefore `pg` into the browser bundle. That broke `yarn build` with seven
+ * "Can't resolve 'dns'" errors pointing only at the component.
  */
-export const EVENT_VISIBILITY = ["public", "members", "teams", "owner"] as const;
-export type EventVisibility = (typeof EVENT_VISIBILITY)[number];
-
-export const VISIBILITY_LABELS: Record<EventVisibility, string> = {
-  public: "Público — toda a gente, incluindo não-membros",
-  members: "Membros — qualquer membro do NEIIST",
-  teams: "Equipas — a equipa responsável e as que colaboram",
-  owner: "Só a equipa responsável",
-};
-
-/** 0 is widest. Stated rather than derived from the array, so reordering cannot change meaning. */
-export const visibilityRank = (visibility: EventVisibility): number =>
-  ({ public: 0, members: 1, teams: 2, owner: 3 })[visibility];
+export {
+  EVENT_VISIBILITY,
+  VISIBILITY_LABELS,
+  visibilityRank,
+  type EventVisibility,
+} from "@/types/eventVisibility";
 
 /** Add or remove a collaborating team. Errors throw — a silent no-op would be worse than a 400. */
 export const setEventCollaborator = async (
