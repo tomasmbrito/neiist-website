@@ -22,7 +22,8 @@
     "db:migrate:status": "node ./scripts/migrate.mts --status",
     "db:migrate:check": "node ./scripts/migrate.mts --dry-run",
     "clean": "rm -rf .next out dist build",
-    "db:schema-diff": "node ./scripts/schema-diff.mts"
+    "db:schema-diff": "node ./scripts/schema-diff.mts",
+    "import:notion": "node ./scripts/import-notion-events.mts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
