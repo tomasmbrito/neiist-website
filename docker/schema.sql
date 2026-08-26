@@ -6972,7 +6972,6 @@ RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER AS $$
 $$;
 
 GRANT EXECUTE ON FUNCTION neiist.activity_exists(TEXT) TO neiist_app_user;
-
 -- Handing the public calendar from the Notion sync to the workspace (#137, first slice).
 -- Run deliberately, after the import, once somebody has looked at the events. See migration 027.
 -- Report first: what WOULD be promoted, and what would be left behind.
