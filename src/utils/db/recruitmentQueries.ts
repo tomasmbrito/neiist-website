@@ -37,6 +37,13 @@ export type TeamApplication = {
   teamActor: string | null;
   boardDecision: ApprovalDecision | null;
   boardActor: string | null;
+  /**
+   * When the candidate was actually told (#223). `null` with a settled outcome means the email is
+   * still queued or failed — which is exactly the state a coordinator waiting for a reply needs
+   * to see, and which a server log would never show them.
+   */
+  notifiedAt: string | null;
+  notifyError: string | null;
 };
 
 /** One row of the board's cross-team queue. Deliberately not the whole application (#217). */
@@ -106,6 +113,8 @@ export const getTeamApplications = async (departmentName: string): Promise<TeamA
     team_actor: string | null;
     board_decision: ApprovalDecision | null;
     board_actor: string | null;
+    notified_at: string | null;
+    notify_error: string | null;
   }>("SELECT * FROM neiist.get_team_applications($1::VARCHAR(30))", [departmentName]);
 
   return rows.map((row) => ({
@@ -126,6 +135,8 @@ export const getTeamApplications = async (departmentName: string): Promise<TeamA
     teamActor: row.team_actor,
     boardDecision: row.board_decision,
     boardActor: row.board_actor,
+    notifiedAt: row.notified_at,
+    notifyError: row.notify_error,
   }));
 };
 

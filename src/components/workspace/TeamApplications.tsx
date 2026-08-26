@@ -239,6 +239,23 @@ export default function TeamApplications({
                     {" · "}
                     {signatureLine("board", application.boardDecision, application.boardActor)}
                   </p>
+                  {/* #223. Whether the candidate actually heard back, shown where the decision is
+                      made. A failed send is the case that matters: the decision looks closed to
+                      everyone here while the person it is about has been told nothing. */}
+                  {application.outcome !== "pending" ? (
+                    application.notifiedAt ? (
+                      <p className={styles.cardMeta}>
+                        Email enviado a {formatSubmitted(application.notifiedAt)}. Já não pode ser
+                        retirado.
+                      </p>
+                    ) : (
+                      <p className={styles.notifyPending}>
+                        {application.notifyError
+                          ? `O email ainda não saiu: ${application.notifyError} Vai ser tentado outra vez.`
+                          : "O email está por enviar."}
+                      </p>
+                    )
+                  ) : null}
                   {application.otherTeams.length > 0 ? (
                     <p className={styles.cardMeta}>
                       Candidatou-se também a: {application.otherTeams.join(", ")} — cada equipa

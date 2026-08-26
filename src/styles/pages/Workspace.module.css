@@ -318,3 +318,18 @@
   padding-top: 0.7rem;
   border-top: 1px solid var(--light-secondary-colour);
 }
+
+/*
+ * A decision that is closed here but has not reached the candidate (#223). Deliberately not styled
+ * as an error: nothing is broken, the email is queued or is being retried — but it must not read
+ * like the quiet grey of the line above it either, because someone has to notice.
+ */
+.notifyPending {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  color: var(--warning-text, #8a5a00);
+  background: var(--warning-bg, #fff5e0);
+  border-left: 3px solid var(--warning-border, #e0a800);
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.25rem;
+}
