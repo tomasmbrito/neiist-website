@@ -189,8 +189,13 @@ export const getApprovalSides = async (
  * May this person give the BOARD signature at all?
  *
  * A question about the person, not about any team — which is why it does not go through
- * `getApprovalSides`, where a department has to be named and would only be ignored. Same rule as
- * SQL applies on the write: an `admin`-graded role inside a department that is not a team.
+ * `getApprovalSides`, where a department has to be named and would only be ignored.
+ *
+ * Reads `board_member`, the same column `application_approval_sides` reads on the write (#217).
+ * It used to infer the board from an `admin` grade inside a non-team department, and that
+ * inference was wrong in exactly the way Tomás pointed out: the Diretores de Atividades are on
+ * the Direção and are graded `coordinator`, so a grade-based rule left them out. Being on the
+ * board and how much of the workspace a role opens are two different facts.
  */
 export const isBoardSignatory = async (actorIstid: string): Promise<boolean> => {
   const { rows } = await db_query<{ ok: boolean }>(
@@ -199,10 +204,9 @@ export const isBoardSignatory = async (actorIstid: string): Promise<boolean> => 
        FROM neiist.membership m
        JOIN neiist.valid_department_roles v
          ON v.department_name = m.department_name AND v.role_name = m.role_name
-       JOIN neiist.departments d ON d.name = m.department_name
        WHERE m.user_istid = $1::VARCHAR(50)
          AND (m.to_date IS NULL OR m.to_date > CURRENT_DATE)
-         AND v.active AND v.access = 'admin' AND d.department_type <> 'team'
+         AND v.active AND v.board_member
      ) AS ok`,
     [actorIstid]
   );

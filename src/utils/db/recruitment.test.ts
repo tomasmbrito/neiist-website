@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   getApprovalSides,
   getBoardPendingApplications,
+  isBoardSignatory,
   getOpenEdition,
   getTeamApplications,
   recordApplicationApproval,
@@ -35,7 +36,12 @@ const COORD_C = "ist9994103";
 const BOARD = "ist9994104";
 const BOTH = "ist9994105";
 const OUTSIDER = "ist9994106";
-const PEOPLE = [COORD_A, COORD_B, COORD_C, BOARD, BOTH, OUTSIDER];
+// #217, after Tomás corrected the rule: a Diretor de Atividades is ON the board and is graded
+// `coordinator`. DEVLEAD is the opposite case — graded `admin` (#189) and NOT on the board.
+const ATIVIDADES = "ist9994107";
+const TESOUREIRO = "ist9994108";
+const DEVLEAD = "ist9994109";
+const PEOPLE = [COORD_A, COORD_B, COORD_C, BOARD, BOTH, OUTSIDER, ATIVIDADES, TESOUREIRO, DEVLEAD];
 
 /** Sign one half. `side` stays undefined except where the test is about someone holding both. */
 const sign = (
@@ -92,6 +98,9 @@ beforeAll(async () => {
   await join(BOTH, TEAM_A, "Coordenador");
   await join(BOTH, "Direção", "Vogal");
   await join(OUTSIDER, TEAM_A, "Membro");
+  await join(ATIVIDADES, "Direção", "Diretor de Atividades (Taguspark)");
+  await join(TESOUREIRO, "Direção", "Tesoureiro");
+  await join(DEVLEAD, "Dev-Team", "Coordenador");
 
   // Clear any leftover test edition first. The overlap trigger refuses a second open round, so a
   // previous run that died before `afterAll` would otherwise block every subsequent run — which
@@ -426,6 +435,83 @@ describe("dual approval", () => {
     expect(await getApprovalSides(OUTSIDER, TEAM_A)).toEqual([]);
     // A coordinator is only a coordinator of their OWN team.
     expect(await getApprovalSides(COORD_A, TEAM_B)).toEqual([]);
+  });
+});
+
+/**
+ * Who counts as "the board" — corrected by Tomás on 2026-08-25:
+ *
+ *   "The Diretores de Atividades are members of the board, so yes they should have the role
+ *    board instead of coordinator."
+ *
+ * The rule used to infer the board from an `admin` grade inside a non-team department, which left
+ * them out because they are graded `coordinator`. Board membership is now its OWN column, because
+ * being on the Direção and how much of the workspace a role opens are two different facts.
+ */
+describe("board membership is data, not an access grade", () => {
+  it("lets a Diretor de Atividades give the board signature — the point of the change", async () => {
+    const id = await apply({ istid: "ist9994171", teams: [TEAM_A] });
+    await sign(id, TEAM_A, "accept", COORD_A);
+    expect(await sign(id, TEAM_A, "accept", ATIVIDADES)).toBe("board");
+    expect((await getTeamApplications(TEAM_A)).find((a) => a.id === id)!.outcome).toBe("accepted");
+  });
+
+  it("does not make them a coordinator of a team they are not in", async () => {
+    // The correction was about the board half only. A Diretor de Atividades must not thereby be
+    // able to supply Fotografia's own signature — that would be one person holding both again.
+    await expect(getApprovalSides(ATIVIDADES, TEAM_A)).resolves.toEqual(["board"]);
+  });
+
+  it("still refuses an `admin` grade that is not board membership (#189)", async () => {
+    // Dev-Team/Coordenador is graded `admin` ON PURPOSE. Under a grade-based rule they were the
+    // board signatory for every team — #180 again. The explicit column closes it by construction.
+    const id = await apply({ istid: "ist9994172", teams: [TEAM_A] });
+    await sign(id, TEAM_A, "accept", COORD_A);
+    await expect(sign(id, TEAM_A, "accept", DEVLEAD)).rejects.toMatchObject({ code: "NEI21" });
+  });
+
+  it("leaves Tesoureiro out, as seeded — a decision, and one row to change", async () => {
+    // Formally on the Direção, deliberately not seeded (#185). Pinned so that flipping it is a
+    // visible act rather than something that drifts in.
+    expect(await isBoardSignatory(TESOUREIRO)).toBe(false);
+  });
+
+  it("changes who may sign when the column changes, with no deploy", async () => {
+    // This is the #185 principle actually demonstrated, not just asserted in a comment.
+    expect(await isBoardSignatory(TESOUREIRO)).toBe(false);
+    await owner.query("SELECT neiist.set_role_board_membership('Direção', 'Tesoureiro', TRUE)");
+    expect(await isBoardSignatory(TESOUREIRO)).toBe(true);
+    await owner.query("SELECT neiist.set_role_board_membership('Direção', 'Tesoureiro', FALSE)");
+    expect(await isBoardSignatory(TESOUREIRO)).toBe(false);
+  });
+
+  it("refuses to make a TEAM role board membership", async () => {
+    // The board is an admin body. A team's role becoming board authority is the #180 shape
+    // exactly: a claim belonging to one team turning into authority over all of them.
+    await expect(
+      owner.query("SELECT neiist.set_role_board_membership('Dev-Team', 'Coordenador', TRUE)")
+    ).rejects.toMatchObject({ code: "NEI03" });
+  });
+
+  it("refuses a role that does not exist, rather than silently doing nothing", async () => {
+    await expect(
+      owner.query("SELECT neiist.set_role_board_membership('Direção', 'ZZ Nope', TRUE)")
+    ).rejects.toMatchObject({ code: "NEI03" });
+  });
+
+  it("seeds exactly the five intended board roles", async () => {
+    // Pinned like seededAdminRoles.test.ts pins the admin set: a future role seeded `board_member`
+    // has to be added here in the same commit, so it cannot arrive unnoticed.
+    const { rows } = await owner.query<{ department_name: string; role_name: string }>(
+      "SELECT department_name, role_name FROM neiist.valid_department_roles WHERE board_member"
+    );
+    expect(rows.map((r) => `${r.department_name} / ${r.role_name}`).sort()).toEqual([
+      "Direção / Diretor de Atividades (Taguspark)",
+      "Direção / Diretora de Atividades (Alameda)",
+      "Direção / Presidente",
+      "Direção / Vice-Presidente",
+      "Direção / Vogal",
+    ]);
   });
 });
 

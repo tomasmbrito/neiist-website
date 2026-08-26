@@ -114,7 +114,14 @@ CREATE TABLE neiist.valid_department_roles (
   role_name VARCHAR(40) NOT NULL,
   PRIMARY KEY (department_name, role_name),
   access neiist.user_access_enum NOT NULL DEFAULT 'member',
-  active BOOLEAN NOT NULL DEFAULT TRUE
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  -- Does holding this role make someone a member of the Direção? (#217)
+  --
+  -- Orthogonal to `access` on purpose: it says who they ARE, not how much of the workspace their
+  -- role opens. A Diretor de Atividades is on the board and is a `coordinator`; the Tesoureiro is
+  -- on the board and is a `member`. Collapsing the two facts into one is what made the board
+  -- signature miss the Diretores de Atividades in the first place.
+  board_member BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 -- MEMBERSHIP TABLE
@@ -662,7 +669,8 @@ CREATE OR REPLACE FUNCTION neiist.get_department_roles(u_department_name VARCHAR
 RETURNS TABLE (
   role_name VARCHAR(40),
   access neiist.user_access_enum,
-  active BOOLEAN
+  active BOOLEAN,
+  board_member BOOLEAN
 ) AS $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM neiist.departments WHERE name = u_department_name) THEN
@@ -670,7 +678,7 @@ BEGIN
   END IF;
 
   RETURN QUERY
-  SELECT vdr.role_name, vdr.access, vdr.active
+  SELECT vdr.role_name, vdr.access, vdr.active, vdr.board_member
   FROM neiist.valid_department_roles vdr
   WHERE vdr.department_name = u_department_name
   ORDER BY vdr.access DESC, vdr.role_name;
@@ -5765,16 +5773,47 @@ LANGUAGE sql STABLE SECURITY DEFINER AS $$
     FROM neiist.membership m
     JOIN neiist.valid_department_roles v
       ON v.department_name = m.department_name AND v.role_name = m.role_name
-    JOIN neiist.departments d ON d.name = m.department_name
     WHERE m.user_istid = s_actor
       AND (m.to_date IS NULL OR m.to_date > CURRENT_DATE)
       AND v.active
-      AND v.access = 'admin'
-      AND d.department_type <> 'team'
+      AND v.board_member
   );
 $$;
 
 GRANT EXECUTE ON FUNCTION neiist.application_approval_sides(VARCHAR, VARCHAR) TO neiist_app_user;
+
+-- Editable without a deploy, which is the whole #185 principle. Separate from
+-- `update_valid_department_role` on purpose: that one carries the last-admin lockout guard
+-- because it changes what a role can DO, and this changes who someone IS. Conflating them would
+-- put an irrelevant guard on one and hide a relevant one from the other.
+CREATE OR REPLACE FUNCTION neiist.set_role_board_membership(
+  b_department_name VARCHAR(30),
+  b_role_name       VARCHAR(40),
+  b_board_member    BOOLEAN
+) RETURNS VOID AS $$
+BEGIN
+  UPDATE neiist.valid_department_roles
+  SET board_member = b_board_member
+  WHERE department_name = b_department_name AND role_name = b_role_name;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'O cargo "%" não existe no departamento "%".', b_role_name, b_department_name
+      USING ERRCODE = 'NEI03';
+  END IF;
+
+  -- A team's role must never be board membership: that is the #180 shape exactly — a claim that
+  -- belongs to one team becoming authority over all of them. The board is an admin body.
+  IF b_board_member AND EXISTS (
+    SELECT 1 FROM neiist.departments
+    WHERE name = b_department_name AND department_type = 'team'
+  ) THEN
+    RAISE EXCEPTION 'Só os órgãos sociais podem ter cargos da direção.' USING ERRCODE = 'NEI03';
+  END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION neiist.set_role_board_membership(VARCHAR(30), VARCHAR(40), BOOLEAN)
+  TO neiist_app_user;
 
 -- Record one half of the pair.
 --

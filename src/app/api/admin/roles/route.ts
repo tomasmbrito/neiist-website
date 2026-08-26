@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   addValidDepartmentRole,
   removeValidDepartmentRole,
+  setRoleBoardMembership,
   updateValidDepartmentRole,
   countDepartmentRoleMembers,
   getDepartmentRoles,
@@ -141,7 +142,7 @@ export async function PATCH(request: NextRequest) {
         { status: 400 }
       );
     }
-    const { departmentName, roleName, access } = parsed.data;
+    const { departmentName, roleName, access, boardMember } = parsed.data;
 
     if (!(await mayManageRolesIn(userRoles.roles, userRoles.user!.istid, departmentName))) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
@@ -156,7 +157,22 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    // Board membership is an escalation of the same family as granting `admin`, and needs the same
+    // gate (#193): a coordinator who could mark their own role `board_member` would become a
+    // recruitment board signatory for every team. Checked separately from `access` because the
+    // two are now independent — a `coordinator` role can be on the board, which is the whole
+    // point of #217, so the access check above does not cover this one.
+    if (boardMember !== undefined && !can(userRoles.roles, "members.roles.grantAdmin")) {
+      return NextResponse.json(
+        { error: "Apenas a direção pode definir que cargos pertencem à direção." },
+        { status: 403 }
+      );
+    }
+
     await updateValidDepartmentRole(userRoles.user!.istid, departmentName, roleName, access);
+    if (boardMember !== undefined) {
+      await setRoleBoardMembership(departmentName, roleName, boardMember);
+    }
     return NextResponse.json({ success: true });
   } catch (error) {
     // NEI07 (last admin) becomes a 409 carrying its Portuguese message rather than a blanket 500.
