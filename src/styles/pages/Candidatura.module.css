@@ -1,0 +1,111 @@
+.container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+}
+
+.title {
+  font-family: var(--font-family);
+  font-size: 2.2rem;
+  margin: 0 0 0.75rem;
+  color: var(--foreground-colour);
+}
+
+.intro {
+  color: var(--light-foreground-colour);
+  font-size: 1rem;
+  line-height: 1.6;
+  margin: 0 0 2rem;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--foreground-colour);
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: var(--light-foreground-colour);
+}
+
+.input,
+.textarea {
+  padding: 0.65rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid var(--light-secondary-colour);
+  background: var(--background-colour);
+  color: var(--foreground-colour);
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+.textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.row {
+  display: flex;
+  gap: 1.1rem;
+  flex-wrap: wrap;
+}
+
+.row > * {
+  flex: 1 1 12rem;
+}
+
+.teams {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.5rem;
+}
+
+.team {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  background: var(--background-colour-hover);
+  font-size: 0.9rem;
+  color: var(--foreground-colour);
+  cursor: pointer;
+}
+
+.submit {
+  align-self: flex-start;
+  padding: 0.75rem 1.6rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary-colour);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.done {
+  padding: 1.5rem;
+  border-radius: 12px;
+  background: var(--background-colour-hover);
+  color: var(--foreground-colour);
+  line-height: 1.6;
+}

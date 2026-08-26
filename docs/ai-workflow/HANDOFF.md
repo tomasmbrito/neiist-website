@@ -175,29 +175,31 @@ rather than extending it. Four things to know before you touch it:
 |---|---|---|
 | #127 | Read-only Notion-backed events view | ✅ merged |
 | #128 | Phase 0 — teams and team membership | ✅ superseded by #182 |
-| #129 | Phase 1 — events and meetings | 🔵 **slice A merged-pending (#198), slice B in review** |
-| #130 | Phase 2 — tasks and the member dashboard | 🔵 in review |
+| #129 | Phase 1 — events and meetings | ✅ merged — all four slices |
+| #130 | Phase 2 — tasks and the member dashboard | ✅ merged (#211) |
 | #131 | Phase 3 — requerimentos (cross-team approval) | ⬜ blocked on order integrity |
 | #132 | Phase 4 — forms engine for C&Q inscrições | ⬜ not started |
 | #138 | Phase 5 — sponsorship outreach | ⬜ not started |
 | #133 | Phase 6 — event finance ledger | ⬜ not started |
-| #134 | Phase 7 — recruitment pipeline | ⬜ not started |
+| #134 | Phase 7 — recruitment pipeline | 🔵 **slices A + dual approval in review** |
 | #135 | Phase 8 — venue scouting | ⬜ not started |
 | #136 | Phase 9 — fold Sweats Verdes into the shop | ⬜ not started |
 | #137 | Phase 10 — retire Notion | ⬜ last |
+| #210 | Import the existing Notion events and meetings | 🟢 **unblocked by #219, ready** |
+| #219 | Events: collaborating teams + per-event visibility | 🔵 in review (#221) |
 
 **Content has started moving.** `/workspace/[team]` no longer shows a placeholder: it lists the
 team's events and meetings, and each opens a detail page with agenda, minutes, attendance,
 document links and related events. Everything else in the table above is still untouched.
 
-#129 is sliced into four PRs, because it is far too big for one:
+#129 was sliced into four PRs, because it is far too big for one. **All four are merged.**
 
 | slice | what | state |
 |---|---|---|
-| A | events + meetings, team-scoped, in the workspace | #198 |
-| B | agenda, minutes, attendance, documents, relations | in review |
-| C | `is_public` drives `/activities` — read from the database, not Notion | in review |
-| D | public events reach members' Google Calendars | in review |
+| A | events + meetings, team-scoped, in the workspace | ✅ merged (#198) |
+| B | agenda, minutes, attendance, documents, relations | ✅ merged |
+| C | `is_public` drives `/activities` — read from the database, not Notion | ✅ merged |
+| D | public events reach members' Google Calendars | ✅ merged (half — see below) |
 
 **Slice C landed the visible win: `/activities` no longer calls Notion at request time.** Public
 workspace events appear on the students' calendar, and the members-only panel reads the database
@@ -226,52 +228,73 @@ meeting to one is the exact leak #202 exists to stop. That half needs the ACL de
 
 ## 4. State right now
 
-**#186 and #188 are merged.** `/workspace` is live on `main`. **PR #190** (the roles edit control)
-is open and independent.
+**Everything in the access model (epic #182) is merged and the epic is closed.** So is #129
+(events and meetings, all four slices) and #130 (tasks and the member dashboard). What is open
+is the recruitment pipeline and the events model that the Notion import waits on.
 
-Open and ready:
+### Open PRs
 
-| # | What | Note |
+| PR | What | Targets | State |
+|---|---|---|---|
+| #221 | #219 — collaborating teams + per-event visibility | `main` | ✅ mergeable |
+| #215 | #134 slice A + #217 dual approval + board membership as data | `main` | ✅ mergeable |
+
+#220 (`how-neiist-works.md`), #214 (`@neiist.pt` addresses) and #222 (dual approval) are merged.
+#222 went into `feat/recruitment-applications`, so **#215 now carries three things**: slice A, the
+two-signature approval, and the `board_member` correction that depends on it. The two open PRs are
+independent of each other.
+
+### #134 — the recruitment pipeline, sliced
+
+| slice | what | state |
 |---|---|---|
-| **#189** | **Dev-Team Coordenador is seeded organisation-wide `admin`** | **needs your decision** — see below |
-| #184 | Temporary, delegable team access grants | requirement 6; not started |
-| #187 | Profile photo: silent discard for members | found in passing |
-| #158 | Roles UI — *editing* an access level | **built, PR #190** — the mechanism #189 needs |
-| #152 | Measure production schema drift | do before migrations touch order functions |
-| #141 | Rotate exposed shared credential | P0-ish, needs a human |
+| A | public application form, per-team review in the workspace | 🔵 PR #215 |
+| — | #217 dual approval + board membership as data — **blocks C**, because C is what sends the email | 🔵 in PR #215 |
+| B | #213 `@neiist.pt` address generation | ✅ merged (#214) |
+| C | #223 — acceptance / rejection emails, with a one-time onboarding token | ⬜ **unblocked once #215 merges** |
+| D | #224 — the onboarding page the token leads to | ⬜ after C |
+| E | #225 — WhatsApp group links per team, handed out on onboarding | ⬜ after D |
+| #218 | Crabfit-style availability scheduling for interviews | ⬜ **unblocked now** — see below |
 
-### #189 is the one to read first
+**#218 does not depend on #217 or on slices C–E.** It is coordinator availability plus slot
+booking, and it touches `recruitment_applications` only to mark `status = 'interviewing'`, which
+already exists from slice A. It can start as soon as **#215 is merged**, in parallel with C.
 
-Five (department, role) pairs are seeded `admin`, and `_ADMIN` is organisation-wide by design:
+**Slices C–E can start as soon as #215 is merged.** C is the one that must not jump the queue:
+until the two signatures exist, one click would email a candidate.
 
-```
-Dev-Team                 | Coordenador     | admin   <- defeats requirement 2 and 6
-Direção                  | Presidente      | admin   <- intended
-Direção                  | Vice-Presidente | admin   <- intended
-Direção                  | Vogal           | admin   <- intended
-Mesa da Assembleia Geral | Presidente      | admin   <- needs a human answer
-```
+### Waiting on a human
 
-So the **Dev-Team coordinator can read every team's workspace, including Direção's** — the exact
-opposite of "controlled access given by the board". It is not a new escalation (they already reach
-`/users-management`), and it is **data, not code**: fixable through the roles API, and per the #185
-decision that is precisely where it belongs. `docker/init.sql:34` must be changed to match, or a
-fresh database reintroduces it.
+| # | What | Why it needs you |
+|---|---|---|
+| #202 | The personal calendar sync publishes internal meetings to a **world-readable** calendar | The leak is fixed; the ACL decision (public calendar vs. login-gated) is a product call |
+| #141 | Rotate the exposed shared account credential | Needs a person with the account |
+| #152 | Measure production schema drift | Needs production access; do it before migrations touch the order functions |
+| — | Should **Tesoureiro** and **Diretora SINFO** be on the board for recruitment sign-off? | Both sit on the Direção formally and both are graded `member` on purpose (#185). Not seeded — one checkbox in Gestão de Cargos either way. |
+
+### Supporting, deliberately deferred
+
+| | What | Why deferred |
+|---|---|---|
+| #159 | Per-member permission overrides | Should reuse the `team_access_grants` table from #184 |
+| #160 | Audit log | The grants table already records grant/revoke; #160 is a pure addition |
+| #187 | Should members manage their own photo? | Product question — ask Fotografia |
+| #212 | Workspace tidy-up: split the query modules, adopt the UI primitives | Do it once the recruitment slices stop moving these files |
 
 ---
 
 ## 5. Suggested next steps, in order
 
-1. ~~Merge #186, then #188.~~ **Done.**
-2. **Decide #189** and apply it through the roles screen — which #190 now makes possible, and
-   which also proves that path works end to end.
-3. ~~Build the UI half of #158.~~ **Done — PR #190.** Access levels are now editable in place,
-   with the impact count shown before the change and the last-admin refusal surfaced verbatim.
-4. **#184**, temporary delegable Dev-Team access. Requirement 6, and the last access-model piece.
-5. Then workspace **content** — #129 (events/meetings) is the natural first vertical slice, since
-   #127 already reads Notion events read-only.
-6. **#111 / #153** — `layout.tsx` swallows `DynamicServerError` the same way `serverCheckRoles`
-   did. Auth-adjacent, so it needs approval.
+1. **Merge #215, then #222.** That is the gate on everything else in recruitment.
+2. **#210 — import the Notion events and meetings.** Unblocked by #219: the import needs
+   collaborating teams (24 of the 52 Notion events have no single owning team) and the four
+   visibility levels (16 are public and would otherwise duplicate `/activities`).
+3. **Slice C** — the acceptance/rejection emails. Only after #222.
+4. **#218** — interview scheduling. Can run in parallel with C.
+5. **#111 / #153** — `layout.tsx:40-49` swallows `DynamicServerError` the same way
+   `serverCheckRoles` did. Auth-adjacent, so it needs approval.
+6. **#202** — the ACL decision, then the other half of #129 slice D (internal meetings to a
+   per-team calendar) becomes possible.
 
 Do **not** start #131 (requerimentos) yet — every operation in it is a multi-table write, so it
 depends on order integrity and transactions being threaded properly.

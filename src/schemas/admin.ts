@@ -17,4 +17,13 @@ export const updateDepartmentRoleSchema = z.object({
   departmentName: z.string().min(1, "Departamento obrigatório"),
   roleName: z.string().min(1, "Cargo obrigatório"),
   access: departmentRoleAccessSchema,
+  /**
+   * Does this role sit on the Direção? (#217)
+   *
+   * Optional so an ordinary access edit does not have to carry it — but note the consequence:
+   * `undefined` means "leave it alone", never "false". A PATCH that omitted it and was read as
+   * `false` would quietly remove people from the board every time somebody changed a role's
+   * access level.
+   */
+  boardMember: z.boolean().optional(),
 });

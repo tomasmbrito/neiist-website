@@ -23,3 +23,23 @@
     font-size: 1.5rem;
   }
 }
+
+/*
+ * The "cargo da direção" toggle (#217). Sits next to the access select rather than inside it,
+ * because it answers a different question: who someone IS, not what their role opens.
+ */
+.boardToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.6rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #555);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.boardToggle input {
+  cursor: pointer;
+  margin: 0;
+}

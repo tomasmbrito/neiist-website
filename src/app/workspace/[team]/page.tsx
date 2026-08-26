@@ -14,6 +14,8 @@ import { getTeamTasks } from "@/utils/db/taskQueries";
 import TeamAccessGrants from "@/components/workspace/TeamAccessGrants";
 import TeamEvents from "@/components/workspace/TeamEvents";
 import TeamTasks from "@/components/workspace/TeamTasks";
+import { getApprovalSides, getTeamApplications } from "@/utils/db/recruitmentQueries";
+import TeamApplications from "@/components/workspace/TeamApplications";
 import { UserRole } from "@/types/user";
 import styles from "@/styles/pages/Workspace.module.css";
 
@@ -54,7 +56,6 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
   // someone outside it must not receive, so this must never move before the guard.
   const events = await getTeamInternalEvents(team);
   const tasks = await getTeamTasks(team);
-
   // The roster, for the assignee picker. Grouped so someone holding two roles appears once (#8).
   const roster = groupMembershipsByMember(
     memberships.filter((membership) => membership.departmentName === team && membership.isActive)
@@ -74,6 +75,24 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
       scope.access === UserRole._ADMIN &&
       scope.departmentType !== "team"
   );
+  // Applications are fetched ONLY when the caller may see them (#134). Every other panel on this
+  // page is gated on `team.workspace.view`, which any member of the team holds — but these rows
+  // hold names, phones, emails and motivations belonging to people who may never join NEIIST, so
+  // they need their own permission, and the data must not enter the response for someone who
+  // lacks it. Authorized before fetching, not filtered after (#127).
+  const canReviewApplications = canForTeam(
+    session.roles,
+    session.scopes,
+    "team.recruitment.decide",
+    team
+  );
+  const applications = canReviewApplications ? await getTeamApplications(team) : [];
+  // Which half of the two-signature approval this person may give (#217). Derived from their
+  // memberships in SQL, not from `canForTeam` — a board member's organisation-wide access lets
+  // them take part in every team's recruitment, and must not thereby become the team's own
+  // signature. Used only to choose which button to render; SQL decides again on the write.
+  const approvalSides =
+    canReviewApplications && session.user ? await getApprovalSides(session.user.istid, team) : [];
   // The receiving team's own coordinator may revoke anyone's grant on it — by MEMBERSHIP, so a
   // grantee holding coordinator-level borrowed access cannot revoke the people around them.
   const canRevokeAny =
@@ -137,6 +156,14 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
         canManage={canForTeam(session.roles, session.scopes, "team.tasks.manage", team)}
         canDelete={canForTeam(session.roles, session.scopes, "team.tasks.delete", team)}
       />
+      {canReviewApplications ? (
+        <TeamApplications
+          team={team}
+          initialApplications={applications}
+          mySides={approvalSides}
+          viewerIstid={session.user!.istid}
+        />
+      ) : null}
 
       <TeamEvents
         team={team}

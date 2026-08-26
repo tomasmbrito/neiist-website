@@ -3,6 +3,7 @@ import { requireNeiistMember } from "@/utils/permissionUtils";
 import { visibleWorkspaceTeams, canForTeam, ROLE_LABELS } from "@/lib/auth/permissions";
 import { getAllDepartments } from "@/utils/db/userQueries";
 import { getUserTasks } from "@/utils/db/taskQueries";
+import { getBoardPendingApplications, isBoardSignatory } from "@/utils/db/recruitmentQueries";
 
 /** Mirrors TeamTasks; the dashboard shows the same words for the same states. */
 const TASK_STATUS_LABELS = {
@@ -33,6 +34,12 @@ export default async function WorkspacePage() {
   // The member dashboard's core panel (#130): my tasks, across every team I belong to. Scoped in
   // SQL through `get_user_team_scopes`, so a task in a team I have left drops off by itself.
   const myTasks = session.user ? await getUserTasks(session.user.istid) : [];
+
+  // #217 — the board's half of the two signatures, across every team. Fetched only for people who
+  // actually hold the board side somewhere: `getApprovalSides` reads memberships, so this is the
+  // same answer SQL will give on the write, not a second opinion about who the board is.
+  const signsForBoard = session.user ? await isBoardSignatory(session.user.istid) : false;
+  const boardQueue = signsForBoard ? await getBoardPendingApplications() : [];
   const openTasks = myTasks.filter((task) => task.status !== "done");
 
   const accessIn = (team: string) =>
@@ -46,6 +53,37 @@ export default async function WorkspacePage() {
           As equipas de que fazes parte. Só os membros de cada equipa veem o respetivo espaço.
         </p>
       </header>
+
+      {boardQueue.length > 0 ? (
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>
+            À espera da direção ({boardQueue.length}{" "}
+            {boardQueue.length === 1 ? "candidatura" : "candidaturas"})
+          </h2>
+          <p className={styles.cardMeta}>
+            A equipa já assinou. Falta a segunda aprovação para a decisão ser comunicada ao
+            candidato — nada é enviado antes disso.
+          </p>
+          <ul className={styles.memberList}>
+            {boardQueue.map((row) => (
+              <li key={`${row.id}-${row.departmentName}`} className={styles.member}>
+                <span className={styles.memberName}>
+                  {/* Straight to the team's own page, where the same authorization applies and the
+                      full application lives. This list carries only what a queue needs. */}
+                  <Link href={`/workspace/${encodeURIComponent(row.departmentName)}`}>
+                    {row.fullName}
+                  </Link>
+                  <span className={styles.cardMeta}> · {row.departmentName}</span>
+                </span>
+                <span className={styles.memberRoles}>
+                  {row.teamDecision === "accept" ? "A equipa aceitou" : "A equipa rejeitou"}
+                  {row.teamActor ? ` — ${row.teamActor}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {myTasks.length > 0 ? (
         <section className={styles.section}>

@@ -18,6 +18,21 @@ SELECT neiist.add_valid_department_role('Direção', 'Diretor de Atividades (Tag
 SELECT neiist.add_valid_department_role('Direção', 'Diretora SINFO', 'member');
 SELECT neiist.add_valid_department_role('Direção', 'Tesoureiro', 'member');
 
+-- Who sits on the Direção (#217). Separate from `access` on purpose: it says who they ARE, not
+-- how much of the workspace their role opens — which is why the two Diretores de Atividades are
+-- `coordinator` AND on the board.
+--
+-- Tesoureiro and Diretora SINFO are deliberately NOT set. Both are on the Direção formally, and
+-- both are graded `member` on purpose (#185) — the SINFO director heads a secção autónoma and the
+-- treasurer "is treated like he isn't even a member". Not a judgement that they should stay out;
+-- a refusal to widen their authority as a side effect of a change about somebody else. One toggle
+-- in the roles screen either way.
+SELECT neiist.set_role_board_membership('Direção', 'Presidente', TRUE);
+SELECT neiist.set_role_board_membership('Direção', 'Vice-Presidente', TRUE);
+SELECT neiist.set_role_board_membership('Direção', 'Vogal', TRUE);
+SELECT neiist.set_role_board_membership('Direção', 'Diretora de Atividades (Alameda)', TRUE);
+SELECT neiist.set_role_board_membership('Direção', 'Diretor de Atividades (Taguspark)', TRUE);
+
 -- `coordinator`, not `admin`: `admin` is organisation-wide, so this seeded the MAG president
 -- with read access to every team's workspace including Direção's (#189). The MAG gets only what
 -- it is explicitly given; organisation-wide access belongs to Direção's Presidente and

@@ -1,7 +1,9 @@
 import styles from "@/styles/components/about-us/JoinUs.module.css";
 
 export default function JoinUs() {
-  const joinUsLink = "https://google.com";
+  // #134. This pointed at https://google.com — a placeholder that shipped. The application form
+  // now exists on the site.
+  const joinUsLink = "/candidatura";
 
   return (
     <div className={styles.container}>
