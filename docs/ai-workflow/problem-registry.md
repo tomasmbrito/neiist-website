@@ -173,3 +173,65 @@ Each entry records root cause and fix for future reference.
 - **Why it is worth writing down**: **a concurrency test that has never failed is not a guard.**
   Every one added since is checked by deliberately breaking the thing it protects, and the result
   is recorded in the PR. This is the practice, not a one-off.
+
+## A client component pulled the `pg` driver into the browser bundle (2026-08-26)
+
+**Symptom.** `yarn build` failed on `main` with seven `Module not found: Can't resolve 'dns'` and
+`'fs'` errors, every one of them inside `node_modules/pg`. The only pointer to the actual cause was
+a single filename in an otherwise unrelated list: `src/components/workspace/TeamEvents.tsx`.
+
+**Root cause.** `TeamEvents` is a `"use client"` component. It imported `EVENT_VISIBILITY` and
+`VISIBILITY_LABELS` — plain constants — from `src/utils/db/eventQueries.ts`. A `type` import is
+erased at compile time; a **value** import is not. That one line pulled the whole module into the
+browser bundle, and with it `db_query`, `pg`, and `pg`'s `dns` and `fs` requires. Introduced in
+#219 and merged in #221.
+
+**Why it was not obvious.** The two shapes are indistinguishable at a glance:
+
+```ts
+import { EVENT_VISIBILITY, type EventVisibility } from "@/utils/db/eventQueries";
+//       ^^^^^^^^^^^^^^^^ bundles the data layer  ^^^^^^^^^^^^^^^^^^^ erased
+```
+
+**Fix.** Constants that both sides need live in `src/types/` — here `eventVisibility.ts`, which
+imports nothing. `eventQueries` re-exports them so server code keeps one import.
+
+**Regression guard.** `src/lib/clientBundle.test.ts` walks every file under `components/`, `app/`
+and `context/` carrying a `"use client"` directive and fails on any non-`type` import of
+`@/utils/db/*`. It also tests its own matcher against the four import shapes it must tell apart, so
+a matcher that silently matched nothing cannot pass forever. Verified by reintroducing the original
+import: the test fails.
+
+**Lesson.** A rule in CLAUDE.md would not have caught this, because the shape that causes it reads
+exactly like the shape that does not. Build failures that name only `node_modules` files are almost
+always a bundling boundary being crossed — read the one `./src/...` line in the list first.
+
+## A mutation that did not compile read as a surviving mutant (2026-08-27)
+
+**Symptom.** Two mutations against migration 027 reported SURVIVED — the tests passed with the
+guard removed — which would normally mean the tests are worthless. One of them was real. The other
+was not.
+
+**Root cause.** The mutation harness pipes the mutated migration into `psql -q -f` and then runs
+the suite. It did not check whether the mutant *applied*. The M3 mutation deleted a CTE and left a
+trailing comma before `SELECT`, so the migration failed with a syntax error, the function was never
+replaced, and the suite ran against the **original**. Every test passed, and the report said the
+guard was untested.
+
+**Why this is worse than a plain false negative.** A broken mutant is indistinguishable from a
+surviving one in the output, and it points the wrong way: it says "your test does not cover this",
+which invites weakening or deleting a guard that was fine. The failure mode of a verification tool
+is more dangerous than the failure mode of the thing it verifies.
+
+**Fix.** The harness now captures psql's stderr and reports `MUTANT DID NOT APPLY` instead of a
+test result when the mutated SQL errors. With the mutation rewritten to be syntactically valid, M3
+died immediately.
+
+**The genuine survivor it was hiding alongside.** M2 — dropping `AND e.visibility = 'members'` from
+the promote — was real, and mattered: `members` is not just any visibility there, it is the specific
+downgrade #210 applies to a page that was public in Notion. An event marked `teams` is internal on
+purpose, and promoting it because a stale `activities` row shares its Notion id publishes an
+internal event to every student.
+
+**Lesson.** Verify the verifier. A mutation result is only evidence if the mutant actually ran —
+check that the mutated code loaded before believing that a test failed to catch it.

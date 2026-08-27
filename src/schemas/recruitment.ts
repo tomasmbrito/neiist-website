@@ -56,3 +56,28 @@ export const withdrawApprovalSchema = z.object({
   applicationId: z.number().int().positive(),
   departmentName: z.string().trim().min(1).max(30),
 });
+
+/**
+ * The onboarding form (#224). Reached by token, with no session — a candidate has no account.
+ *
+ * There is deliberately no field for the team, the application, or any role: all of those come
+ * from the server's reading of the token. A form that could name them would be a form that could
+ * name somebody else's.
+ */
+export const onboardingSchema = z.object({
+  token: z.string().min(20).max(200),
+  preferredName: z.string().trim().min(1, "Diz-nos como queres ser tratado(a)").max(80),
+  phone: z.string().trim().max(20).optional(),
+});
+
+/** A coordinator rotating their team's WhatsApp invite (#225). Shape is re-checked in SQL. */
+export const teamLinkSchema = z.object({
+  departmentName: z.string().trim().min(1).max(30),
+  whatsappUrl: z.string().trim().max(200).nullable(),
+});
+
+/** Marking somebody as actually added. Records only — it does not create the membership. */
+export const markOnboardedSchema = z.object({
+  applicationId: z.number().int().positive(),
+  departmentName: z.string().trim().min(1).max(30),
+});
