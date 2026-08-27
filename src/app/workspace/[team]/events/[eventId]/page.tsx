@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTeamWorkspace } from "@/utils/permissionUtils";
+import { decodeRouteParam } from "@/lib/routeParams";
 import { canForTeam, ROLE_LABELS } from "@/lib/auth/permissions";
 import {
   getEventAttendees,
@@ -27,7 +28,9 @@ export default async function EventDetailPage({
 }: {
   params: Promise<{ team: string; eventId: string }>;
 }) {
-  const { team, eventId: rawId } = await params;
+  // Same decoding as the team page — a team name with an accent or a space arrives encoded.
+  const { team: rawTeam, eventId: rawId } = await params;
+  const team = decodeRouteParam(rawTeam);
   const session = await requireTeamWorkspace(team, "team.workspace.view");
 
   const eventId = Number(rawId);
