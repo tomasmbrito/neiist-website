@@ -7542,6 +7542,219 @@ GRANT EXECUTE ON FUNCTION neiist.add_requirement_deliverable(
 -- Keyed by department in SQL rather than filtered in the route, like every reader in #126. A
 -- requerimento is a conversation between exactly two teams, and a third sees nothing — not
 -- because a route remembers to check, but because the WHERE clause cannot return it.
+-- The shared checklist — the To-do List from the Notion protocol (#242).
+-- The requesting team says what is expected; the target team says what is done.
+-- See docker/migrations/032 for why `source` exists.
+CREATE TABLE IF NOT EXISTS neiist.requirement_checklist (
+  id             SERIAL PRIMARY KEY,
+  requirement_id INT NOT NULL REFERENCES neiist.requirements(id) ON DELETE CASCADE,
+  item           TEXT NOT NULL,
+  position       INT NOT NULL DEFAULT 0,
+
+  done     BOOLEAN NOT NULL DEFAULT FALSE,
+  done_by  VARCHAR(50) REFERENCES neiist.users(istid),
+  done_at  TIMESTAMPTZ,
+
+  -- 'brief'  — generated from a brief option (#233); replaceable when the brief changes
+  -- 'manual' — typed by a person; never touched by regeneration
+  source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('brief', 'manual')),
+  /** The brief option this came from, so regeneration can match rather than guess by text. */
+  brief_key TEXT,
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT checklist_item_not_blank CHECK (btrim(item) <> ''),
+  -- Done says who and when, or claims neither. Same shape as every other completion in this
+  -- schema (#215's decisions, #217's approvals).
+  CONSTRAINT checklist_done_complete CHECK (
+    (done = FALSE AND done_by IS NULL AND done_at IS NULL)
+    OR (done = TRUE AND done_by IS NOT NULL AND done_at IS NOT NULL)
+  ),
+  -- A brief item must say which option produced it, or regeneration cannot find it again.
+  CONSTRAINT checklist_brief_has_key CHECK (source <> 'brief' OR brief_key IS NOT NULL)
+);
+
+CREATE INDEX IF NOT EXISTS idx_requirement_checklist
+  ON neiist.requirement_checklist (requirement_id, position, id);
+
+-- A brief option maps to at most one item on a requerimento, so regenerating is idempotent.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_requirement_checklist_brief_key
+  ON neiist.requirement_checklist (requirement_id, brief_key)
+  WHERE brief_key IS NOT NULL;
+
+-- ---------------------------------------------------------------------------------------------
+-- Who may do what — the slice A asymmetry, applied to the checklist
+-- ---------------------------------------------------------------------------------------------
+
+-- Add an item. **The REQUESTING team only.**
+--
+-- The checklist is the requester's definition of done: it is the list of what they expect back.
+-- Letting the target team add to it would let Visuais decide what Organização de Eventos asked
+-- for, which is the same inversion #232 refuses when it stops the requester marking its own
+-- request `done`.
+CREATE OR REPLACE FUNCTION neiist.add_checklist_item(
+  c_requirement INT,
+  c_item        TEXT,
+  c_team        VARCHAR(30),
+  c_source      TEXT DEFAULT 'manual',
+  c_brief_key   TEXT DEFAULT NULL
+) RETURNS INT AS $$
+DECLARE
+  v_requesting VARCHAR(30);
+  v_next       INT;
+  v_id         INT;
+BEGIN
+  SELECT requesting_department INTO v_requesting
+  FROM neiist.requirements WHERE id = c_requirement;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Esse requerimento não existe.' USING ERRCODE = 'NEI20';
+  END IF;
+  IF c_team <> v_requesting THEN
+    RAISE EXCEPTION 'Só a equipa que fez o pedido pode dizer o que espera receber.'
+      USING ERRCODE = 'NEI21';
+  END IF;
+  IF btrim(coalesce(c_item, '')) = '' THEN
+    RAISE EXCEPTION 'Escreve o que é preciso.' USING ERRCODE = 'NEI19';
+  END IF;
+
+  SELECT coalesce(max(position), -1) + 1 INTO v_next
+  FROM neiist.requirement_checklist WHERE requirement_id = c_requirement;
+
+  INSERT INTO neiist.requirement_checklist
+    (requirement_id, item, position, source, brief_key)
+  VALUES (c_requirement, btrim(c_item), v_next, c_source, c_brief_key)
+  -- Regenerating a brief must not duplicate: the same option updates its own item in place, and
+  -- deliberately does NOT reset `done` — the work was still done.
+  ON CONFLICT (requirement_id, brief_key) WHERE brief_key IS NOT NULL DO UPDATE
+  SET item = EXCLUDED.item
+  RETURNING id INTO v_id;
+
+  RETURN v_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION neiist.add_checklist_item(INT, TEXT, VARCHAR(30), TEXT, TEXT)
+  TO neiist_app_user;
+
+-- Tick or untick. **The TARGET team only.** It is their work; saying it is finished is their
+-- statement to make, exactly as `status` is in #232.
+CREATE OR REPLACE FUNCTION neiist.set_checklist_item_done(
+  c_id    INT,
+  c_done  BOOLEAN,
+  c_actor VARCHAR(50),
+  c_team  VARCHAR(30)
+) RETURNS VOID AS $$
+DECLARE
+  v_target VARCHAR(30);
+BEGIN
+  SELECT r.target_department INTO v_target
+  FROM neiist.requirement_checklist c
+  JOIN neiist.requirements r ON r.id = c.requirement_id
+  WHERE c.id = c_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Esse item não existe.' USING ERRCODE = 'NEI20';
+  END IF;
+  IF c_team <> v_target THEN
+    RAISE EXCEPTION 'Só a equipa responsável pode marcar o que já fez.' USING ERRCODE = 'NEI21';
+  END IF;
+
+  UPDATE neiist.requirement_checklist
+  SET done = c_done,
+      done_by = CASE WHEN c_done THEN c_actor ELSE NULL END,
+      done_at = CASE WHEN c_done THEN NOW() ELSE NULL END
+  WHERE id = c_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION neiist.set_checklist_item_done(INT, BOOLEAN, VARCHAR(50), VARCHAR(30))
+  TO neiist_app_user;
+
+-- Remove an item. Requesting team only, mirroring who may add.
+--
+-- A `brief` item cannot be removed by hand: it exists because the brief says so, and deleting it
+-- here would put the checklist and the brief in disagreement until the next regeneration silently
+-- brought it back. Untick the option in the brief instead.
+CREATE OR REPLACE FUNCTION neiist.remove_checklist_item(
+  c_id   INT,
+  c_team VARCHAR(30)
+) RETURNS VOID AS $$
+DECLARE
+  v_requesting VARCHAR(30);
+  v_source     TEXT;
+BEGIN
+  SELECT r.requesting_department, c.source INTO v_requesting, v_source
+  FROM neiist.requirement_checklist c
+  JOIN neiist.requirements r ON r.id = c.requirement_id
+  WHERE c.id = c_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Esse item não existe.' USING ERRCODE = 'NEI20';
+  END IF;
+  IF c_team <> v_requesting THEN
+    RAISE EXCEPTION 'Só a equipa que fez o pedido pode remover itens.' USING ERRCODE = 'NEI21';
+  END IF;
+  IF v_source = 'brief' THEN
+    RAISE EXCEPTION 'Este item vem do briefing. Desmarca a opção no briefing para o remover.'
+      USING ERRCODE = 'NEI19';
+  END IF;
+
+  DELETE FROM neiist.requirement_checklist WHERE id = c_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION neiist.remove_checklist_item(INT, VARCHAR(30)) TO neiist_app_user;
+
+-- Drop the brief items an option no longer selects (#233 will call this before regenerating).
+-- Manual items are untouched, which is the whole point of `source`.
+CREATE OR REPLACE FUNCTION neiist.prune_brief_checklist_items(
+  c_requirement INT,
+  c_keep_keys   TEXT[]
+) RETURNS INT AS $$
+DECLARE
+  v_removed INT;
+BEGIN
+  DELETE FROM neiist.requirement_checklist
+  WHERE requirement_id = c_requirement
+    AND source = 'brief'
+    AND NOT (brief_key = ANY(coalesce(c_keep_keys, ARRAY[]::TEXT[])));
+
+  GET DIAGNOSTICS v_removed = ROW_COUNT;
+  RETURN v_removed;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION neiist.prune_brief_checklist_items(INT, TEXT[]) TO neiist_app_user;
+
+-- ---------------------------------------------------------------------------------------------
+-- Reading it
+-- ---------------------------------------------------------------------------------------------
+
+-- Keyed by requirement AND asking team, like every reader in #126: an id belonging to a pair the
+-- caller is not part of returns nothing, rather than trusting the route to compare.
+CREATE OR REPLACE FUNCTION neiist.get_requirement_checklist(
+  g_requirement INT,
+  g_department  VARCHAR(30)
+) RETURNS TABLE (
+  id           INT,
+  item         TEXT,
+  done         BOOLEAN,
+  done_by_name TEXT,
+  done_at      TIMESTAMPTZ,
+  source       TEXT
+) LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT c.id, c.item, c.done, u.name, c.done_at, c.source
+  FROM neiist.requirement_checklist c
+  JOIN neiist.requirements r ON r.id = c.requirement_id
+  LEFT JOIN neiist.users u ON u.istid = c.done_by
+  WHERE c.requirement_id = g_requirement
+    AND (r.target_department = g_department OR r.requesting_department = g_department)
+  ORDER BY c.position, c.id;
+$$;
+
+GRANT EXECUTE ON FUNCTION neiist.get_requirement_checklist(INT, VARCHAR(30)) TO neiist_app_user;
+
 CREATE OR REPLACE FUNCTION neiist.get_team_requirements(g_department VARCHAR(30))
 RETURNS TABLE (
   id               INT,
@@ -7556,6 +7769,8 @@ RETURNS TABLE (
   status           TEXT,
   assignee_name    TEXT,
   deliverable_count INT,
+  checklist_total  INT,
+  checklist_done   INT,
   created_at       TIMESTAMPTZ
 ) LANGUAGE sql STABLE SECURITY DEFINER AS $$
   SELECT r.id, r.event_id, e.name,
@@ -7564,6 +7779,10 @@ RETURNS TABLE (
          r.title, r.detail, r.deadline, r.status, u.name,
          (SELECT count(*)::INT FROM neiist.requirement_deliverables d
           WHERE d.requirement_id = r.id),
+         (SELECT count(*)::INT FROM neiist.requirement_checklist c
+          WHERE c.requirement_id = r.id),
+         (SELECT count(*)::INT FROM neiist.requirement_checklist c
+          WHERE c.requirement_id = r.id AND c.done),
          r.created_at
   FROM neiist.requirements r
   JOIN neiist.internal_events e ON e.id = r.event_id
@@ -7573,6 +7792,7 @@ RETURNS TABLE (
 $$;
 
 GRANT EXECUTE ON FUNCTION neiist.get_team_requirements(VARCHAR(30)) TO neiist_app_user;
+
 
 -- One requerimento's deliverables, keyed by requirement AND asking team — same rule as
 -- `event_teams` in #219: an id belonging to an unrelated pair returns nothing.

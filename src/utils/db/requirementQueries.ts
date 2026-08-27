@@ -38,7 +38,20 @@ export type TeamRequirement = {
   status: RequirementStatus;
   assigneeName: string | null;
   deliverableCount: number;
+  /** "3/4" is what an inbox shows; "em curso" tells nobody anything. */
+  checklistTotal: number;
+  checklistDone: number;
   createdAt: string;
+};
+
+export type ChecklistItem = {
+  id: number;
+  item: string;
+  done: boolean;
+  doneByName: string | null;
+  doneAt: string | null;
+  /** `brief` items come from a brief option (#233) and cannot be deleted by hand. */
+  source: "brief" | "manual";
 };
 
 export type RequirementDeliverable = {
@@ -101,6 +114,8 @@ export const getTeamRequirements = async (departmentName: string): Promise<TeamR
     status: RequirementStatus;
     assignee_name: string | null;
     deliverable_count: number;
+    checklist_total: number;
+    checklist_done: number;
     created_at: string;
   }>("SELECT * FROM neiist.get_team_requirements($1::VARCHAR(30))", [departmentName]);
 
@@ -117,6 +132,8 @@ export const getTeamRequirements = async (departmentName: string): Promise<TeamR
     status: row.status,
     assigneeName: row.assignee_name,
     deliverableCount: row.deliverable_count,
+    checklistTotal: row.checklist_total,
+    checklistDone: row.checklist_done,
     createdAt: row.created_at,
   }));
 };
@@ -184,4 +201,68 @@ export const getRequirementDeliverables = async (
     uploadedByName: row.uploaded_by_name,
     uploadedAt: row.uploaded_at,
   }));
+};
+
+/**
+ * The shared checklist — the Notion To-do List (#242).
+ *
+ * The asymmetry here IS the feature, and it is the same one that runs through slice A:
+ * **the requesting team says what is expected; the target team says what is done.** Every guard is
+ * in SQL; these functions pass the caller's team through and decide nothing.
+ */
+export const getRequirementChecklist = async (
+  requirementId: number,
+  departmentName: string
+): Promise<ChecklistItem[]> => {
+  const { rows } = await db_query<{
+    id: number;
+    item: string;
+    done: boolean;
+    done_by_name: string | null;
+    done_at: string | null;
+    source: "brief" | "manual";
+  }>("SELECT * FROM neiist.get_requirement_checklist($1::INT, $2::VARCHAR(30))", [
+    requirementId,
+    departmentName,
+  ]);
+  return rows.map((row) => ({
+    id: row.id,
+    item: row.item,
+    done: row.done,
+    doneByName: row.done_by_name,
+    doneAt: row.done_at,
+    source: row.source,
+  }));
+};
+
+/** Requesting team only. `briefKey` is for #233's generated items; omit it for a typed one. */
+export const addChecklistItem = async (
+  requirementId: number,
+  item: string,
+  team: string,
+  options: { source?: "brief" | "manual"; briefKey?: string } = {}
+): Promise<number> => {
+  const { rows } = await db_query<{ add_checklist_item: number }>(
+    `SELECT neiist.add_checklist_item($1::INT, $2::TEXT, $3::VARCHAR(30), $4::TEXT, $5::TEXT)`,
+    [requirementId, item, team, options.source ?? "manual", options.briefKey ?? null]
+  );
+  return rows[0].add_checklist_item;
+};
+
+/** Target team only — it is their work. */
+export const setChecklistItemDone = async (
+  itemId: number,
+  done: boolean,
+  actorIstid: string,
+  team: string
+): Promise<void> => {
+  await db_query(
+    "SELECT neiist.set_checklist_item_done($1::INT, $2::BOOLEAN, $3::VARCHAR(50), $4::VARCHAR(30))",
+    [itemId, done, actorIstid, team]
+  );
+};
+
+/** Requesting team only, and never a `brief` item — untick the option in the brief instead. */
+export const removeChecklistItem = async (itemId: number, team: string): Promise<void> => {
+  await db_query("SELECT neiist.remove_checklist_item($1::INT, $2::VARCHAR(30))", [itemId, team]);
 };

@@ -39,3 +39,21 @@ export const requirementDeliverableSchema = z.object({
   url: z.string().trim().url("O link tem de ser um URL").max(500),
   label: z.string().trim().max(120).optional(),
 });
+
+/**
+ * The shared checklist (#242).
+ *
+ * No `team` field, as everywhere else: the caller's team comes from the session and SQL decides.
+ * No `source` or `briefKey` either — those are #233's to set, from a brief, never from a request.
+ */
+export const checklistAddSchema = z.object({
+  requirementId: z.number().int().positive(),
+  item: z.string().trim().min(1, "Escreve o que é preciso").max(200),
+});
+
+export const checklistToggleSchema = z.object({
+  itemId: z.number().int().positive(),
+  done: z.boolean(),
+});
+
+export const checklistRemoveSchema = z.object({ itemId: z.number().int().positive() });
