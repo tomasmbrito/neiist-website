@@ -244,6 +244,17 @@ describe("the is_public boundary", () => {
       // reason to skip the check — a future route could.
       "public_calendar_handover_report",
       "hand_over_public_calendar",
+      // #232. `raise_requirements` is a writer returning a count, and it REFUSES an event that is
+      // not the requesting team's — so it cannot even be used to probe for one.
+      //
+      // `get_team_requirements` does return an event NAME to a team that does not own the event —
+      // which is the intended behaviour, not a hole. A requerimento is raised deliberately by the
+      // owning team TO another team; being told which event you are drawing a poster for is the
+      // entire point. It is the same shape as a collaborating team seeing an event (#219), and it
+      // is keyed in SQL: a team that is neither the requester nor the target cannot reach the row,
+      // proven by test rather than by the route remembering.
+      "raise_requirements",
+      "get_team_requirements",
     ].sort();
 
     const { rows } = await owner.query<{ proname: string }>(
