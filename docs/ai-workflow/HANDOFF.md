@@ -232,28 +232,29 @@ meeting to one is the exact leak #202 exists to stop. That half needs the ACL de
 (events and meetings, all four slices) and #130 (tasks and the member dashboard). What is open
 is the recruitment pipeline and the events model that the Notion import waits on.
 
-### Open PRs — all three mergeable, all independent of each other
+### Open PRs
 
-| PR | What | Migration |
-|---|---|---|
-| #229 | #210 — the Notion events import | 025 |
-| #230 | #224 + #225 — onboarding page and per-team WhatsApp links | 026 |
+| PR | What |
+|---|---|
+| #240 | the `/activities` calendar's empty-month hint |
 
-Merge order does not matter between them. #214, #215, #220, #221, #222, #226, #227 and #228
-are merged — including the build fix, so `main` compiles again.
+Everything else is merged. **The Notion import has been run** — 51 events, 16 public,
+125 attendee links — and the workspace is populated.
+
 ### #134 — the recruitment pipeline
 
-**Complete, pending merges.**
+**Complete.** Application form → dual approval → interview booking → decision emails →
+onboarding → per-team WhatsApp links. All merged.
+
+### #131 — requerimentos
 
 | slice | what | state |
 |---|---|---|
-| A | public application form, per-team review | ✅ merged (#215) |
-| — | #217 dual approval + board membership as data | ✅ merged (#215) |
-| B | #213 `@neiist.pt` address generation | ✅ merged (#214) |
-| C | #223 acceptance / rejection emails, exactly once | ✅ merged (#226) |
-| — | #218 interview availability and booking | ✅ merged (#227) |
-| D | #224 the onboarding page the token leads to | 🔵 PR #230 |
-| E | #225 per-team WhatsApp links | 🔵 PR #230 |
+| A | #232 request/assign/deliver lifecycle | ✅ merged |
+| B | #233 the five typed briefs | ⬜ ready |
+| C | #234 approval + publication gates | ⬜ ready |
+| D | #235 inboxes and the unpublished queue | ⬜ ready |
+
 ### Waiting on a human
 
 | # | What | Why it needs you |

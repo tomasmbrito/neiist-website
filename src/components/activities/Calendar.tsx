@@ -106,6 +106,17 @@ export default function Calendar({
   const [selectedEvent, setSelectedEvent] = useState<NormalizedCalendarEvent | null>(null);
   const [signUps, setSignUps] = useState<Set<string>>(new Set(signedUpEventIds));
   const [eventList, setEventList] = useState<CalendarEvent[]>(events);
+  /**
+   * The visible month, held here rather than inside react-big-calendar.
+   *
+   * The navigation always worked — clicking "<" really did move from agosto 2026 to julho 2026.
+   * It LOOKED broken, and the reason is worth writing down: every one of NEIIST's imported events
+   * is from the 2025/26 academic year, so the calendar opens on today's month, which is empty, and
+   * so is every month either side of it. Pressing an arrow changed a small label and nothing else.
+   *
+   * Taking control of the date is what lets the empty state below offer to jump somewhere useful.
+   */
+  const [visibleDate, setVisibleDate] = useState<Date>(new Date());
 
   useEffect(() => {
     setEventList(events);
@@ -135,13 +146,51 @@ export default function Calendar({
       current && current.id === updatedEvent.id ? normalizeCalendarEvent(updatedEvent) : current
     );
   };
-  const components = {
-    toolbar: (props: {
-      label: string;
-      onNavigate: (_action: "PREV" | "NEXT" | "TODAY") => void;
-    }) => <CustomToolbar label={props.label} onNavigate={props.onNavigate} />,
-    event: IconEventsCard,
-  };
+  /**
+   * Memoised. As a fresh object literal this made `toolbar` a NEW component type on every render,
+   * so React unmounted and remounted the whole toolbar each time the month changed — which is why
+   * the arrows felt inert even when they were working.
+   */
+  const components = useMemo(
+    () => ({
+      toolbar: (props: {
+        label: string;
+        onNavigate: (_action: "PREV" | "NEXT" | "TODAY") => void;
+      }) => <CustomToolbar label={props.label} onNavigate={props.onNavigate} />,
+      event: IconEventsCard,
+    }),
+    []
+  );
+
+  /** Does the visible month contain anything? Drives the hint below. */
+  const monthHasEvents = useMemo(
+    () =>
+      calendarEvents.some(
+        (event) =>
+          event.start.getFullYear() === visibleDate.getFullYear() &&
+          event.start.getMonth() === visibleDate.getMonth()
+      ),
+    [calendarEvents, visibleDate]
+  );
+
+  /**
+   * The month with an event closest to the one being viewed, in either direction.
+   *
+   * Nearest rather than "next", because NEIIST's calendar is seasonal: in August everything is
+   * behind you, in September everything is ahead. A "next" link would be dead half the year.
+   */
+  const nearestEventDate = useMemo(() => {
+    if (calendarEvents.length === 0 || monthHasEvents) return null;
+    const target = visibleDate.getTime();
+    return calendarEvents.reduce((closest, event) =>
+      Math.abs(event.start.getTime() - target) < Math.abs(closest.start.getTime() - target)
+        ? event
+        : closest
+    ).start;
+  }, [calendarEvents, visibleDate, monthHasEvents]);
+
+  const monthName = (date: Date) =>
+    date.toLocaleDateString("pt-PT", { month: "long", year: "numeric" });
 
   const dayPropGetter = (date: Date) => {
     const now = startOfDay(new Date());
@@ -183,8 +232,22 @@ export default function Calendar({
           dayPropGetter={dayPropGetter}
           eventPropGetter={eventPropGetter}
           culture="pt"
+          date={visibleDate}
+          onNavigate={(date: Date) => setVisibleDate(date)}
         />
       </div>
+
+      {/* An empty month with no explanation reads as a broken calendar — which is exactly how this
+          was reported. Saying so, and offering the nearest month that has something, turns it into
+          an answer. */}
+      {!monthHasEvents && calendarEvents.length > 0 && nearestEventDate ? (
+        <p className={styles.emptyMonth}>
+          Não há atividades em {monthName(visibleDate)}.{" "}
+          <button type="button" onClick={() => setVisibleDate(nearestEventDate)}>
+            Ver {monthName(nearestEventDate)}
+          </button>
+        </p>
+      ) : null}
 
       {selectedEvent && (
         <EventDetails

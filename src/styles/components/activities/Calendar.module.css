@@ -73,3 +73,27 @@
   height: calc(100vh - 200px);
   background: transparent;
 }
+
+/*
+ * Shown when the visible month has nothing in it. NEIIST's calendar is seasonal — in August the
+ * whole year is behind you — so landing on an empty month is normal, and saying nothing about it
+ * is what made the navigation look broken.
+ */
+.emptyMonth {
+  margin: 1rem 0 0;
+  text-align: center;
+  color: var(--text-secondary, #666);
+  font-size: 0.95rem;
+}
+
+.emptyMonth button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 0.25rem;
+  color: var(--primary, #2863fd);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
