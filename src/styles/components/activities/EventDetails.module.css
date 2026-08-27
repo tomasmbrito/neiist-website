@@ -185,3 +185,16 @@
 .descriptionLink {
   color: var(--secondary-colour);
 }
+
+/* Visibility control for workspace events (#241). Board and Diretores de Atividades only. */
+.visibilitySelect {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--border, #e0e0e6);
+  background: var(--surface, #fff);
+  color: inherit;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}

@@ -260,6 +260,14 @@ describe("the is_public boundary", () => {
       // all because the app role may not UPDATE the table directly; the previous inline UPDATE
       // would have 500'd the visibility dropdown in production.
       "set_event_visibility",
+      // #241. The SECOND unscoped reader, and unlike `get_public_internal_events` it does NOT earn
+      // that by filtering: it returns every internal event, including another team's owner-only
+      // meetings. It is safe only because `/activities` calls it behind `isBoardSignatory`.
+      //
+      // Listed here deliberately so it cannot be added quietly, and so a reviewer meeting a second
+      // call site knows to check that the guard was repeated. This is the weakest entry on the
+      // list; if a way is found to scope it in SQL, take it.
+      "get_all_internal_events",
     ].sort();
 
     const { rows } = await owner.query<{ proname: string }>(

@@ -8,6 +8,7 @@ import IconPicker from "./IconPicker";
 import EventIcon from "@/components/activities/EventIcon";
 import { DEFAULT_EVENT_ICON_NAME } from "@/components/activities/IconRegistry";
 import { formatEventDateTime } from "@/utils/calendarUtils";
+import { EVENT_VISIBILITY, VISIBILITY_LABELS, type EventVisibility } from "@/types/eventVisibility";
 import { getEventSettings } from "@/types/events";
 import Linkify from "linkify-react";
 import { toast } from "sonner";
@@ -24,6 +25,17 @@ import { Modal } from "@/components/ui/Modal";
 import styles from "@/styles/components/activities/EventDetails.module.css";
 
 type CalendarEventWithOptionalCustom = CalendarEvent & { customIcon?: string };
+/**
+ * #241 — the board and the Diretores de Atividades can change who sees an event, from here.
+ *
+ * Offered only for events that came from the workspace (id `internal-<n>`), because those are the
+ * only ones with a `visibility` to change: a Notion-synced activity has no such column.
+ *
+ * `canSetVisibility` is coarse — it says "this person is on the board", not "this person may
+ * publish THIS team's event". That is fine and deliberate: the API resolves the owning team from
+ * the event id and re-runs `canForTeam`, so a wrong answer here produces a 403, never a change.
+ * The UI decides what to offer; SQL and the route decide what happens.
+ */
 interface EventDetailsProps {
   event: NormalizedCalendarEvent;
   onClose: () => void;
@@ -32,6 +44,9 @@ interface EventDetailsProps {
   onSignUpChange: (eventId: string, signedUp: boolean) => void;
   // eslint-disable-next-line no-unused-vars
   onUpdate: (updatedEvent?: CalendarEvent) => void;
+  canSetVisibility?: boolean;
+  /** Current visibility, keyed by calendar id, for workspace events only. */
+  visibilityById?: Record<string, EventVisibility>;
 }
 
 export default function EventDetails({
@@ -40,6 +55,8 @@ export default function EventDetails({
   isSignedUp,
   onSignUpChange,
   onUpdate,
+  canSetVisibility = false,
+  visibilityById = {},
 }: EventDetailsProps) {
   const router = useRouter();
   const { user } = useUser();
@@ -48,6 +65,42 @@ export default function EventDetails({
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [signedUp, setSignedUp] = useState(isSignedUp);
+
+  // Only workspace events carry a visibility. `internal-<n>` is the id shape
+  // `internalEventToCalendarEvent` produces.
+  const internalId = event.id.startsWith("internal-") ? Number(event.id.slice(9)) : null;
+  const [visibility, setVisibility] = useState<EventVisibility | null>(
+    visibilityById[event.id] ?? null
+  );
+  const [savingVisibility, setSavingVisibility] = useState(false);
+
+  const changeVisibility = async (next: EventVisibility) => {
+    if (internalId === null) return;
+    setSavingVisibility(true);
+    const previous = visibility;
+    setVisibility(next);
+    try {
+      const response = await fetch(`/api/workspace/events/${internalId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "visibility", visibility: next }),
+      });
+      if (response.ok) {
+        toast.success("Visibilidade alterada.", { closeButton: true });
+        return;
+      }
+      // Rolled back, because the select showed the new value optimistically. The route refuses
+      // `public` to anyone without `team.events.publish`, so this is a real path, not a rare one.
+      setVisibility(previous);
+      const body = await response.json().catch(() => ({}));
+      toast.error(body.error || "Não foi possível alterar.", { closeButton: true });
+    } catch {
+      setVisibility(previous);
+      toast.error("Não foi possível alterar.", { closeButton: true });
+    } finally {
+      setSavingVisibility(false);
+    }
+  };
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [settings, setSettings] = useState<EventSettings>(() => getEventSettings(event.raw));
   const hasChanges = useRef(false);
@@ -273,6 +326,28 @@ export default function EventDetails({
             <span>{event.location}</span>
           </div>
         )}
+        {/* #241. Only for workspace events, and only offered to the board and the Diretores de
+            Atividades. The route re-derives the owning team from the id and re-checks, and it
+            refuses `public` to anyone without `team.events.publish` — so this is an offer, not a
+            decision. */}
+        {canSetVisibility && internalId !== null && visibility !== null ? (
+          <div className={styles.detailRow}>
+            <select
+              className={styles.visibilitySelect}
+              value={visibility}
+              disabled={savingVisibility}
+              aria-label={`Quem vê ${event.summary}`}
+              onChange={(inputEvent) =>
+                changeVisibility(inputEvent.target.value as EventVisibility)
+              }>
+              {EVENT_VISIBILITY.map((level) => (
+                <option key={level} value={level}>
+                  {VISIBILITY_LABELS[level]}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
       </div>
 
       {settings.description && !isAdmin && (

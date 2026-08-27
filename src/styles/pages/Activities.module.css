@@ -23,3 +23,29 @@
 .quaternary {
   color: var(--quaternary-colour);
 }
+
+/* The board's team filter (#241). Only rendered for board members. */
+.teamFilter {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary, #666);
+  flex-wrap: wrap;
+}
+
+.teamFilter a {
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border, #e0e0e6);
+  color: inherit;
+  text-decoration: none;
+}
+
+.teamFilterActive {
+  background: var(--primary, #2863fd);
+  border-color: var(--primary, #2863fd) !important;
+  color: #fff !important;
+  font-weight: 600;
+}
