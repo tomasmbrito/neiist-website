@@ -70,6 +70,17 @@ INSERT INTO neiist.categories (id, name) VALUES (1, 'Vestuário');
 INSERT INTO neiist.categories (id, name) VALUES (2, 'Stickers');
 INSERT INTO neiist.categories (id, name) VALUES (3, 'Merch');
 
+-- Advance the sequence past the explicit ids above.
+--
+-- Without this, `categories_id_seq` is still at 0 while rows 1-3 exist, so the first call to
+-- `get_or_create_category` asks for id 1 and hits `categories_pkey`. /shop/manage logged a
+-- duplicate-key error for every category on every render, and the page still worked — which is
+-- why it survived: the failed INSERT advances the sequence, so it self-heals after N renders and
+-- looks like noise rather than a bug.
+--
+-- Any table seeded with explicit ids needs this. It is the reason to prefer seeding without them.
+SELECT setval('neiist.categories_id_seq', (SELECT max(id) FROM neiist.categories));
+
 
 -- Add Sample Products
 /*

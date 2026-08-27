@@ -255,6 +255,11 @@ describe("the is_public boundary", () => {
       // proven by test rather than by the route remembering.
       "raise_requirements",
       "get_team_requirements",
+      // 029. A writer returning void: it sets one event's visibility and returns nothing, so it
+      // cannot leak a name, a date or an attendee — which is what this list guards. It exists at
+      // all because the app role may not UPDATE the table directly; the previous inline UPDATE
+      // would have 500'd the visibility dropdown in production.
+      "set_event_visibility",
     ].sort();
 
     const { rows } = await owner.query<{ proname: string }>(

@@ -7592,3 +7592,65 @@ $$;
 
 GRANT EXECUTE ON FUNCTION neiist.get_requirement_deliverables(INT, VARCHAR(30))
   TO neiist_app_user;
+
+-- Functions replacing four queries that read tables directly (#029).
+-- `neiist_app_user` has NO table privileges by design (schema.sql:11-16); every access goes
+-- through a SECURITY DEFINER function. See docker/migrations/029.
+-- May this person give the board signature? Reads `board_member`, exactly as
+-- `application_approval_sides` does — the same rule, in one place (#217).
+CREATE OR REPLACE FUNCTION neiist.is_board_signatory(b_istid VARCHAR(50))
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM neiist.membership m
+    JOIN neiist.valid_department_roles v
+      ON v.department_name = m.department_name AND v.role_name = m.role_name
+    WHERE m.user_istid = b_istid
+      AND (m.to_date IS NULL OR m.to_date > CURRENT_DATE)
+      AND v.active
+      AND v.board_member
+  );
+$$;
+
+GRANT EXECUTE ON FUNCTION neiist.is_board_signatory(VARCHAR(50)) TO neiist_app_user;
+
+-- The open recruitment round, if there is one. Drives whether /candidatura shows a form or an
+-- explanation, so it is called on a PUBLIC page — the one place a permission error is most
+-- visible and least explicable to the person hitting it.
+CREATE OR REPLACE FUNCTION neiist.get_open_recruitment_edition()
+RETURNS TABLE (id INT, name TEXT, closes_at TIMESTAMPTZ)
+LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT e.id, e.name, e.closes_at
+  FROM neiist.recruitment_editions e
+  WHERE NOW() BETWEEN e.opens_at AND e.closes_at
+  LIMIT 1;
+$$;
+
+GRANT EXECUTE ON FUNCTION neiist.get_open_recruitment_edition() TO neiist_app_user;
+
+-- Change an event's visibility. The trigger from 020 keeps `is_public` in step, so this stays a
+-- plain UPDATE — but it has to be a function, because the app role cannot write the table.
+CREATE OR REPLACE FUNCTION neiist.set_event_visibility(
+  v_event      INT,
+  v_visibility neiist.event_visibility_enum
+) RETURNS VOID AS $$
+BEGIN
+  UPDATE neiist.internal_events SET visibility = v_visibility WHERE id = v_event;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'O evento não existe.' USING ERRCODE = 'NEI15';
+  END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION neiist.set_event_visibility(INT, neiist.event_visibility_enum)
+  TO neiist_app_user;
+
+-- The times and coordinator of one slot, for building the interview event (#218).
+CREATE OR REPLACE FUNCTION neiist.get_interview_slot_times(s_slot INT)
+RETURNS TABLE (starts_at TIMESTAMPTZ, ends_at TIMESTAMPTZ, coordinator VARCHAR(50))
+LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT s.starts_at, s.ends_at, s.coordinator_istid
+  FROM neiist.interview_slots s WHERE s.id = s_slot;
+$$;
+
+GRANT EXECUTE ON FUNCTION neiist.get_interview_slot_times(INT) TO neiist_app_user;
