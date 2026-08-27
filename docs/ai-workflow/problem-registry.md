@@ -234,3 +234,33 @@ internal event to every student.
 
 **Lesson.** Verify the verifier. A mutation result is only evidence if the mutant actually ran —
 check that the mutated code loaded before believing that a test failed to catch it.
+
+## The app role read tables directly, and no test could see it (2026-08-27)
+
+**Symptom.** `/workspace` returned 500 with `permission denied for table membership` for every
+user, while all 566 tests passed.
+
+**Root cause.** `docker/schema.sql:11-16` deliberately gives `neiist_app_user` no table
+privileges: every access goes through a `SECURITY DEFINER` function. Four query functions added
+across migrations 020-028 inlined SQL against a table instead — `isBoardSignatory` →
+`membership`, `getOpenEdition` → `recruitment_editions`, `setEventVisibility` → `internal_events`,
+`bookInterview` → `interview_slots`. Only the first was reachable from a page anyone had opened;
+the other three were waiting on the recruitment form, the visibility menu and interview booking.
+
+**Why the suite could not catch it.** **Every test in this repository connects as the OWNER.** A
+query that reads a table directly therefore passes everything and fails only in the running app.
+That gap is the real defect; the four queries are its symptoms. It is the same shape as the
+concurrency lesson of 2026-08-19 — a test that cannot reproduce the condition proves nothing —
+and the same shape as the client-bundle defect of 2026-08-26, where the failure only appeared in
+a build.
+
+**Fix.** Four `SECURITY DEFINER` functions in migration 029, and the call sites now invoke them.
+
+**Regression guard.** `src/utils/db/appRolePrivileges.test.ts` is the only test file that connects
+as the APP role. It does not scan source text — it asks Postgres what that role can do. Its final
+assertion reads `information_schema.role_table_grants` as the owner, so the guard still works
+where the app connection cannot be made. Verified by granting `SELECT` on `membership`, watching
+it fail, and revoking.
+
+**Lesson.** When a privilege model exists, at least one test must run under the restricted
+identity. Testing as the owner tests a different system than the one that ships.
