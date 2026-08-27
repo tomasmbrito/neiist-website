@@ -43,7 +43,24 @@ import {
   type NotionEventRow,
 } from "../src/utils/notion/eventImportMapping.ts";
 
-const NOTION_VERSION = "2022-06-28";
+/**
+ * Two API generations, because NEIIST's events database is **multi-source**.
+ *
+ * `Databases` in Notion holds seven data sources — Events/Meetings, Tasks, Members, Contacts,
+ * Businesses, Inflows and Outflows, Requirements. The 2022-06-28 API predates that model: it has
+ * no concept of a data source, so a multi-source database is not addressable through
+ * `/v1/databases/{id}/query` and does not even appear in `/v1/search`. That produces a 404 whose
+ * message says "make sure the database is shared with your integration" — which sends you off
+ * checking permissions that were already correct. It cost an hour; hence this comment.
+ *
+ * `2025-09-03` introduced `/v1/data_sources/{id}/query`, which is what actually reaches
+ * Events/Meetings. The old path is kept as a fallback so the script still works against a plain
+ * single-source database, and so it does not break if NEIIST restructures Notion later.
+ */
+const NOTION_DATA_SOURCE_VERSION = "2025-09-03";
+const NOTION_LEGACY_VERSION = "2022-06-28";
+/** Stable across both generations. */
+const NOTION_USERS_VERSION = NOTION_LEGACY_VERSION;
 
 type NotionPage = { id: string; properties: Record<string, unknown>; url?: string };
 
@@ -72,33 +89,99 @@ function flatten(page: NotionPage): NotionEventRow {
   };
 }
 
+type QueryRoute = { label: string; version: string; path: (id: string) => string };
+
+/**
+ * Newest first. The data-source route is the one that reaches a multi-source database; the legacy
+ * route is kept so a plain single-source database still works.
+ */
+const QUERY_ROUTES: QueryRoute[] = [
+  {
+    label: "data_sources (2025-09-03)",
+    version: NOTION_DATA_SOURCE_VERSION,
+    path: (id) => `https://api.notion.com/v1/data_sources/${id}/query`,
+  },
+  {
+    label: "databases (2022-06-28)",
+    version: NOTION_LEGACY_VERSION,
+    path: (id) => `https://api.notion.com/v1/databases/${id}/query`,
+  },
+];
+
+/** One page of results, or the HTTP status so the caller can decide whether to try another route. */
+async function queryOnce(
+  route: QueryRoute,
+  id: string,
+  apiKey: string,
+  cursor?: string
+): Promise<
+  | { ok: true; results: NotionPage[]; next: string | undefined }
+  | { ok: false; status: number; body: string }
+> {
+  const response = await fetch(route.path(id), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Notion-Version": route.version,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(cursor ? { start_cursor: cursor, page_size: 100 } : { page_size: 100 }),
+  });
+  if (!response.ok) {
+    return { ok: false, status: response.status, body: await response.text() };
+  }
+  const body = (await response.json()) as {
+    results: NotionPage[];
+    next_cursor: string | null;
+    has_more: boolean;
+  };
+  return {
+    ok: true,
+    results: body.results,
+    next: body.has_more ? (body.next_cursor ?? undefined) : undefined,
+  };
+}
+
+/**
+ * Read every page, trying each API generation until one answers.
+ *
+ * Only 400 and 404 fall through to the next route — those mean "this endpoint does not know about
+ * this id". A 401 is a bad key and a 403 is a real permission problem; retrying those on another
+ * version would turn one clear error into two confusing ones.
+ */
 async function notionQuery(databaseId: string, apiKey: string): Promise<NotionPage[]> {
-  const pages: NotionPage[] = [];
-  let cursor: string | undefined;
+  const failures: string[] = [];
 
-  do {
-    const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Notion-Version": NOTION_VERSION,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(cursor ? { start_cursor: cursor, page_size: 100 } : { page_size: 100 }),
-    });
-    if (!response.ok) {
-      throw new Error(`Notion returned ${response.status}: ${await response.text()}`);
+  for (const route of QUERY_ROUTES) {
+    const first = await queryOnce(route, databaseId, apiKey);
+
+    if (!first.ok) {
+      if (first.status === 404 || first.status === 400) {
+        failures.push(`  ${route.label}: ${first.status}`);
+        continue;
+      }
+      throw new Error(`Notion returned ${first.status}: ${first.body}`);
     }
-    const body = (await response.json()) as {
-      results: NotionPage[];
-      next_cursor: string | null;
-      has_more: boolean;
-    };
-    pages.push(...body.results);
-    cursor = body.has_more ? (body.next_cursor ?? undefined) : undefined;
-  } while (cursor);
 
-  return pages;
+    console.log(`  (via ${route.label})`);
+    const pages = [...first.results];
+    let cursor = first.next;
+    while (cursor) {
+      const next = await queryOnce(route, databaseId, apiKey, cursor);
+      if (!next.ok) throw new Error(`Notion returned ${next.status}: ${next.body}`);
+      pages.push(...next.results);
+      cursor = next.next;
+    }
+    return pages;
+  }
+
+  throw new Error(
+    `Nenhuma rota da API do Notion encontrou "${databaseId}":\n${failures.join("\n")}\n\n` +
+      "Verifica que:\n" +
+      "  1. a integração tem acesso a este conteúdo (Conexões -> Content access), e\n" +
+      "  2. o ID é o da DATA SOURCE Events/Meetings, não o da página que a contém.\n" +
+      "     O ID aparece no URL quando abres a base de dados no Notion."
+  );
 }
 
 /** Notion person id -> our istid, by email. Unmatched people are reported, never invented. */
@@ -112,7 +195,7 @@ async function resolvePeople(
 
   for (const id of personIds) {
     const response = await fetch(`https://api.notion.com/v1/users/${id}`, {
-      headers: { Authorization: `Bearer ${apiKey}`, "Notion-Version": NOTION_VERSION },
+      headers: { Authorization: `Bearer ${apiKey}`, "Notion-Version": NOTION_USERS_VERSION },
     });
     if (!response.ok) {
       unmatched.push(`${id} (não foi possível ler do Notion)`);
