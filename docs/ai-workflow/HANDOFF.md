@@ -236,25 +236,24 @@ is the recruitment pipeline and the events model that the Notion import waits on
 
 | PR | What | Migration |
 |---|---|---|
-| #221 | #219 — collaborating teams + per-event visibility | 020 |
-| #226 | #223 — decision emails, exactly once | 023 |
-| #227 | #218 — interview availability and slot booking | 024 |
+| #229 | #210 — the Notion events import | 025 |
+| #230 | #224 + #225 — onboarding page and per-team WhatsApp links | 026 |
 
-Merge order does not matter between them. #215 (slice A + #217 + board membership),
-#214, #220 and #222 are merged.
+Merge order does not matter between them. #214, #215, #220, #221, #222, #226, #227 and #228
+are merged — including the build fix, so `main` compiles again.
+### #134 — the recruitment pipeline
 
-### #134 — the recruitment pipeline, sliced
+**Complete, pending merges.**
 
 | slice | what | state |
 |---|---|---|
 | A | public application form, per-team review | ✅ merged (#215) |
 | — | #217 dual approval + board membership as data | ✅ merged (#215) |
 | B | #213 `@neiist.pt` address generation | ✅ merged (#214) |
-| C | #223 acceptance / rejection emails + onboarding token | 🔵 PR #226 |
-| — | #218 interview availability and booking | 🔵 PR #227 |
-| D | #224 the onboarding page the token leads to | ⬜ **unblocked once #226 merges** |
-| E | #225 per-team WhatsApp links | ⬜ after D |
-
+| C | #223 acceptance / rejection emails, exactly once | ✅ merged (#226) |
+| — | #218 interview availability and booking | ✅ merged (#227) |
+| D | #224 the onboarding page the token leads to | 🔵 PR #230 |
+| E | #225 per-team WhatsApp links | 🔵 PR #230 |
 ### Waiting on a human
 
 | # | What | Why it needs you |

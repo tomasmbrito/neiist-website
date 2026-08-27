@@ -17,6 +17,8 @@ import TeamTasks from "@/components/workspace/TeamTasks";
 import { getApprovalSides, getTeamApplications } from "@/utils/db/recruitmentQueries";
 import { getTeamInterviewSlots } from "@/utils/db/interviewQueries";
 import TeamInterviewSlots from "@/components/workspace/TeamInterviewSlots";
+import { getPendingOnboarding, getTeamLink } from "@/utils/db/onboardingQueries";
+import TeamOnboarding from "@/components/workspace/TeamOnboarding";
 import TeamApplications from "@/components/workspace/TeamApplications";
 import { UserRole } from "@/types/user";
 import styles from "@/styles/pages/Workspace.module.css";
@@ -98,6 +100,10 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
   // #218. Same guard as the applications panel: who is being interviewed, and when, is
   // information about candidates.
   const interviewSlots = canReviewApplications ? await getTeamInterviewSlots(team) : [];
+  // #224/#225. Same guard as the applications panel — the queue holds names, phone numbers and
+  // addresses of people who were just accepted, which is the same category of data.
+  const pendingOnboarding = canReviewApplications ? await getPendingOnboarding(team) : [];
+  const teamLink = canReviewApplications ? await getTeamLink(team) : null;
   // The receiving team's own coordinator may revoke anyone's grant on it — by MEMBERSHIP, so a
   // grantee holding coordinator-level borrowed access cannot revoke the people around them.
   const canRevokeAny =
@@ -169,7 +175,13 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
             mySides={approvalSides}
             viewerIstid={session.user!.istid}
           />
+          {/* In pipeline order: decide, then interview, then onboard. */}
           <TeamInterviewSlots team={team} initialSlots={interviewSlots} />
+          <TeamOnboarding
+            team={team}
+            initialPending={pendingOnboarding}
+            initialLink={teamLink?.whatsappUrl ?? null}
+          />
         </>
       ) : null}
 
