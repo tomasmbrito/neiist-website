@@ -117,8 +117,7 @@ export async function bookInterview(
   );
 
   const slotTimes = await db_query<{ starts_at: string; ends_at: string; coordinator: string }>(
-    `SELECT starts_at, ends_at, coordinator_istid AS coordinator
-     FROM neiist.interview_slots WHERE id = $1`,
+    "SELECT * FROM neiist.get_interview_slot_times($1::INT)",
     [slotId]
   );
   const slot = slotTimes.rows[0];

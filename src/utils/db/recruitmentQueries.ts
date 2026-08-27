@@ -209,19 +209,11 @@ export const getApprovalSides = async (
  * board and how much of the workspace a role opens are two different facts.
  */
 export const isBoardSignatory = async (actorIstid: string): Promise<boolean> => {
-  const { rows } = await db_query<{ ok: boolean }>(
-    `SELECT EXISTS (
-       SELECT 1
-       FROM neiist.membership m
-       JOIN neiist.valid_department_roles v
-         ON v.department_name = m.department_name AND v.role_name = m.role_name
-       WHERE m.user_istid = $1::VARCHAR(50)
-         AND (m.to_date IS NULL OR m.to_date > CURRENT_DATE)
-         AND v.active AND v.board_member
-     ) AS ok`,
+  const { rows } = await db_query<{ is_board_signatory: boolean }>(
+    "SELECT neiist.is_board_signatory($1::VARCHAR(50))",
     [actorIstid]
   );
-  return rows[0].ok;
+  return rows[0].is_board_signatory;
 };
 
 /** The board's queue: team has signed, the board has not. Deliberately without the full record. */
@@ -254,8 +246,7 @@ export const getOpenEdition = async (): Promise<{
   closesAt: string;
 } | null> => {
   const { rows } = await db_query<{ id: number; name: string; closes_at: string }>(
-    `SELECT id, name, closes_at FROM neiist.recruitment_editions
-     WHERE NOW() BETWEEN opens_at AND closes_at LIMIT 1`
+    "SELECT * FROM neiist.get_open_recruitment_edition()"
   );
   const row = rows[0];
   return row ? { id: row.id, name: row.name, closesAt: row.closes_at } : null;

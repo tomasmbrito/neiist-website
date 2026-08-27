@@ -590,8 +590,8 @@ export const setEventVisibility = async (
   eventId: number,
   visibility: EventVisibility
 ): Promise<void> => {
-  await db_query(
-    "UPDATE neiist.internal_events SET visibility = $2::neiist.event_visibility_enum WHERE id = $1",
-    [eventId, visibility]
-  );
+  await db_query("SELECT neiist.set_event_visibility($1::INT, $2::neiist.event_visibility_enum)", [
+    eventId,
+    visibility,
+  ]);
 };
