@@ -248,12 +248,24 @@ onboarding → per-team WhatsApp links. All merged.
 
 ### #131 — requerimentos
 
+> **Read [`requerimentos-plan.md`](requerimentos-plan.md) first.** The Notion protocol was read end
+> to end on 2026-08-27; the slice order changed as a result, and #234 is now blocked on a decision.
+
 | slice | what | state |
 |---|---|---|
 | A | #232 request/assign/deliver lifecycle | ✅ merged |
-| B | #233 the five typed briefs | ⬜ ready |
-| C | #234 approval + publication gates | ⬜ ready |
-| D | #235 inboxes and the unpublished queue | ⬜ ready |
+| — | **#242 the shared checklist** — the To-do List; **do this first** | ⬜ ready |
+| B | #233 the five typed briefs (depends on #242) | ⬜ ready |
+| C | #234 approval + publication gates | ⚠️ **blocked on a decision** |
+| D | #235 inboxes and the unpublished queue | ⬜ after C |
+| — | #243 the team page: 7 panels, 13 sequential queries | ⬜ alongside B/C/D |
+
+**#234 is blocked because `Team Manager Approval` has never been ticked — 0 of 7 requerimentos.**
+Either it is aspirational and the website should make it real, or it is dead and should not be
+ported. That is Tomás's call, not ours.
+
+
+
 
 ### Waiting on a human
 

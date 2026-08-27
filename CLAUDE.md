@@ -256,7 +256,10 @@ enforcement hooks in `.claude/hooks/`.
 
 ## 7. Project memory
 
-**Start here for current state: [`docs/ai-workflow/HANDOFF.md`](docs/ai-workflow/HANDOFF.md)**,
+**Start here for current state: [`docs/ai-workflow/HANDOFF.md`](docs/ai-workflow/HANDOFF.md)**
+**Before touching #131 or the workspace UI: [`docs/ai-workflow/requerimentos-plan.md`](docs/ai-workflow/requerimentos-plan.md)**
+— what a requerimento actually is at NEIIST, the five briefs read from the real Notion templates,
+and why the team page needs restructuring before more panels are added to it.,
 and read [`docs/ai-workflow/how-neiist-works.md`](docs/ai-workflow/how-neiist-works.md) before
 designing anything in the workspace — it records how the núcleo actually operates, straight from
 the product owner, and the code contradicts it in three known places.
