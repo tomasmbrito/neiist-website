@@ -426,6 +426,8 @@ export type MemberInternalEvent = {
   startsAt: string;
   endsAt: string | null;
   isPublic: boolean;
+  /** #219's four levels. Carried so the calendar can offer the control to whoever may change it. */
+  visibility: EventVisibility;
   locations: string[];
 };
 
@@ -466,7 +468,14 @@ export const getPublicInternalEvents = async (): Promise<PublicInternalEvent[]> 
  * function knowing they exist. Narrower than the Notion view it replaces, on purpose — see the
  * migration comment.
  */
-export const getMemberInternalEvents = async (istid: string): Promise<MemberInternalEvent[]> => {
+export const getMemberInternalEvents = async (
+  istid: string,
+  /**
+   * The calendar needs the past; the "próximos eventos" list does not. Defaults to the list's
+   * behaviour so the existing caller is unaffected (#241).
+   */
+  includePast = false
+): Promise<MemberInternalEvent[]> => {
   const { rows } = await db_query<{
     id: number;
     kind: "event" | "meeting";
@@ -475,8 +484,12 @@ export const getMemberInternalEvents = async (istid: string): Promise<MemberInte
     starts_at: string;
     ends_at: string | null;
     is_public: boolean;
+    visibility: EventVisibility;
     locations: string[];
-  }>("SELECT * FROM neiist.get_member_internal_events($1::VARCHAR(50))", [istid]);
+  }>("SELECT * FROM neiist.get_member_internal_events($1::VARCHAR(50), $2::BOOLEAN)", [
+    istid,
+    includePast,
+  ]);
 
   return rows.map((row) => ({
     id: row.id,
@@ -486,9 +499,71 @@ export const getMemberInternalEvents = async (istid: string): Promise<MemberInte
     startsAt: row.starts_at,
     endsAt: row.ends_at,
     isPublic: row.is_public,
+    visibility: row.visibility,
     locations: row.locations,
   }));
 };
+
+/**
+ * Every internal event, for the board's "all teams" filter (#241).
+ *
+ * **Unscoped, and therefore only safe because of where it is called.** Unlike
+ * `getPublicInternalEvents`, which earns its lack of a department parameter by filtering
+ * `WHERE visibility = 'public'`, this returns everything — including a team's `owner`-only
+ * meetings. `/activities` calls it only when `isBoardSignatory` says so.
+ *
+ * A second call site must repeat that check. There is no guard inside the function, on purpose:
+ * re-deriving "is this person the board" there would be the same rule in two places, and #185 is
+ * about that rule living in exactly one.
+ */
+export const getAllInternalEvents = async (): Promise<MemberInternalEvent[]> => {
+  const { rows } = await db_query<{
+    id: number;
+    kind: "event" | "meeting";
+    name: string;
+    department_name: string;
+    starts_at: string;
+    ends_at: string | null;
+    is_public: boolean;
+    visibility: EventVisibility;
+    locations: string[];
+  }>("SELECT * FROM neiist.get_all_internal_events()");
+
+  return rows.map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    name: row.name,
+    departmentName: row.department_name,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    isPublic: row.is_public,
+    visibility: row.visibility,
+    locations: row.locations,
+  }));
+};
+
+/**
+ * A team event in the shape the calendar speaks (#241).
+ *
+ * The id is prefixed `internal-` so it cannot collide with a public workspace event
+ * (`workspace-<id>`) or a Notion-synced activity, and so the calendar can tell at a glance which
+ * kind of thing it is holding — the styling and the visibility control both depend on that.
+ *
+ * The team name goes in `location` rather than the title: the title is what a member scans, and
+ * "Reunião Organização de Eventos — Organização de Eventos" reads badly. For the board's all-teams
+ * view the team is the thing they are looking for, so it is prefixed there instead.
+ */
+export const internalEventToCalendarEvent = (
+  event: MemberInternalEvent,
+  options: { showTeam?: boolean } = {}
+): CalendarEvent => ({
+  id: `internal-${event.id}`,
+  summary: options.showTeam ? `${event.departmentName} · ${event.name}` : event.name,
+  description: undefined,
+  location: [event.departmentName, ...event.locations].filter(Boolean).join(" · ") || undefined,
+  start: { dateTime: event.startsAt },
+  end: { dateTime: event.endsAt ?? event.startsAt },
+});
 
 /**
  * A workspace event rendered as a calendar entry, so `/activities` can show one list.

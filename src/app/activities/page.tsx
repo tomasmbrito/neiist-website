@@ -2,10 +2,14 @@ import Calendar from "@/components/activities/Calendar";
 import { isFrameworkSignal } from "@/lib/errors/frameworkSignal";
 import {
   getActivitiesEventsFromDb,
+  getAllInternalEvents,
   getMemberInternalEvents,
   getPublicInternalEvents,
+  internalEventToCalendarEvent,
   publicEventToCalendarEvent,
 } from "@/utils/db/eventQueries";
+import { isBoardSignatory } from "@/utils/db/recruitmentQueries";
+import TeamEventsFilter from "@/components/activities/TeamEventsFilter";
 import { syncNotionEventsToDb, isNotionConfigured } from "@/utils/eventsUtils";
 import { UserRole } from "@/types/user";
 import { serverCheckRoles } from "@/utils/permissionUtils";
@@ -68,7 +72,7 @@ async function getEventsAndSubscriptions() {
 export default async function ActivitiesPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ eventId?: string }>;
+  searchParams?: Promise<{ eventId?: string; equipas?: string }>;
 }) {
   const params = searchParams ? await searchParams : {};
   const { events, signedUpEventIds, roles, istid } = await getEventsAndSubscriptions();
@@ -85,8 +89,52 @@ export default async function ActivitiesPage({
   //
   // Still authorized BEFORE fetching, not filtered after: an internal meeting must never enter
   // the response payload for a caller who may not see it (#127).
-  const internalEvents =
-    istid && can(roles, "activities.viewInternal") ? await getMemberInternalEvents(istid) : [];
+  const mayViewInternal = Boolean(istid) && can(roles, "activities.viewInternal");
+
+  // The board can widen this to every team (#241). Asked BEFORE fetching, and the answer decides
+  // which query runs — `getAllInternalEvents` is unscoped and returns other teams' owner-only
+  // meetings, so it must never be reachable by anyone else.
+  //
+  // A URL parameter rather than client state on purpose: the widening is an authorization
+  // decision, and keeping it in the request means the server decides what to fetch. A checkbox
+  // that filtered an already-fetched list would have put every team's meetings in the payload of
+  // someone who may not see them, which is the mistake #127 records.
+  const isBoard = istid ? await isBoardSignatory(istid) : false;
+  const wantsAllTeams = isBoard && params.equipas === "todas";
+
+  const internalEvents = !mayViewInternal
+    ? []
+    : wantsAllTeams
+      ? await getAllInternalEvents()
+      : // `true`: the calendar is navigated backwards, so it needs past events too. The list
+        // panel below still shows only what is upcoming — filtered from this same fetch rather
+        // than queried twice.
+        await getMemberInternalEvents(istid!, true);
+
+  // Merged into the calendar rather than living only in the list below it. A member's meetings are
+  // part of their week; keeping them in a separate panel meant the calendar showed a student's
+  // view of NEIIST to somebody who is running it.
+  //
+  // Public workspace events are already in `events` via `publicEventToCalendarEvent`, so a public
+  // event would otherwise appear twice — once from each source. Excluded by id.
+  const alreadyOnCalendar = new Set(events.map((event) => event.id));
+  const internalCalendarEvents = internalEvents
+    .map((event) => internalEventToCalendarEvent(event, { showTeam: wantsAllTeams }))
+    .filter((event) => !alreadyOnCalendar.has(event.id.replace("internal-", "workspace-")));
+
+  const calendarEvents = [...events, ...internalCalendarEvents];
+
+  // The panel under the calendar is "what is coming", so it keeps the old horizon. Filtered from
+  // the fetch above rather than asking the database a second time.
+  // Current visibility per calendar id, so the modal can show the right value without a fetch.
+  // Only workspace events have one.
+  const visibilityById = Object.fromEntries(
+    internalEvents.map((event) => [`internal-${event.id}`, event.visibility])
+  );
+
+  const upcomingInternalEvents = internalEvents.filter(
+    (event) => new Date(event.startsAt).getTime() >= Date.now() - 86_400_000
+  );
 
   return (
     <div className={styles.container}>
@@ -96,12 +144,15 @@ export default async function ActivitiesPage({
         <span className={styles.tertiary}>da</span>
         <span className={styles.quaternary}>des</span>
       </h1>
+      {isBoard ? <TeamEventsFilter showingAllTeams={wantsAllTeams} /> : null}
       <Calendar
-        events={events}
+        events={calendarEvents}
         signedUpEventIds={signedUpEventIds}
         initialSelectedEventId={urlSelectdEventID}
+        canSetVisibility={isBoard}
+        visibilityById={visibilityById}
       />
-      {internalEvents.length > 0 && <InternalEvents events={internalEvents} />}
+      {upcomingInternalEvents.length > 0 && <InternalEvents events={upcomingInternalEvents} />}
     </div>
   );
 }

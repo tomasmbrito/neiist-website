@@ -6357,7 +6357,10 @@ GRANT EXECUTE ON FUNCTION neiist.get_team_internal_events(VARCHAR(30)) TO neiist
 --
 -- A member now sees: their own teams' events (owner or collaborator), AND anything marked
 -- `members` or `public` regardless of team — which is what that level is for.
-CREATE OR REPLACE FUNCTION neiist.get_member_internal_events(u_istid VARCHAR(50))
+CREATE OR REPLACE FUNCTION neiist.get_member_internal_events(
+  u_istid       VARCHAR(50),
+  u_include_past BOOLEAN DEFAULT FALSE
+)
 RETURNS TABLE (
   id              INT,
   kind            TEXT,
@@ -6385,18 +6388,20 @@ RETURNS TABLE (
             WHERE c.event_id = e.id
               AND c.department_name IN (
                 SELECT s.department_name FROM neiist.get_user_team_scopes(u_istid) s)))
-      -- Or anything the núcleo as a whole is meant to see. This is the level that did not exist.
+      -- Or anything the núcleo as a whole is meant to see.
       OR e.visibility IN ('members', 'public')
     )
-    -- Still a member, and still upcoming. A caller with no scopes gets only nothing: the guard
-    -- is that `members` events are for members, and someone with zero scopes is not one.
+    -- Unchanged, and the important half: a caller with no scopes gets nothing. `members` events
+    -- are for members, and someone with zero scopes is not one.
     AND EXISTS (SELECT 1 FROM neiist.get_user_team_scopes(u_istid) s2)
-    AND e.starts_at >= NOW() - INTERVAL '1 day'
+    AND (u_include_past OR e.starts_at >= NOW() - INTERVAL '1 day')
   GROUP BY e.id
   ORDER BY e.starts_at;
 $$;
 
-GRANT EXECUTE ON FUNCTION neiist.get_member_internal_events(VARCHAR(50)) TO neiist_app_user;
+GRANT EXECUTE ON FUNCTION neiist.get_member_internal_events(VARCHAR(50), BOOLEAN)
+  TO neiist_app_user;
+
 
 -- The public reader, unchanged in behaviour but stated in the new vocabulary.
 --
@@ -7654,3 +7659,30 @@ LANGUAGE sql STABLE SECURITY DEFINER AS $$
 $$;
 
 GRANT EXECUTE ON FUNCTION neiist.get_interview_slot_times(INT) TO neiist_app_user;
+
+-- Every internal event, for the board's "all teams" filter (#241).
+-- UNSCOPED: safe only because /activities calls it behind `is_board_signatory`.
+-- See docker/migrations/030 for why the guard is at the call site and not in here.
+CREATE OR REPLACE FUNCTION neiist.get_all_internal_events()
+RETURNS TABLE (
+  id              INT,
+  kind            TEXT,
+  name            TEXT,
+  department_name VARCHAR(30),
+  starts_at       TIMESTAMPTZ,
+  ends_at         TIMESTAMPTZ,
+  is_public       BOOLEAN,
+  visibility      TEXT,
+  locations       TEXT[]
+) LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT e.id, e.kind, e.name, e.owner_department_name, e.starts_at, e.ends_at, e.is_public,
+         e.visibility::TEXT,
+         coalesce(array_agg(DISTINCT l.location) FILTER (WHERE l.location IS NOT NULL),
+                  ARRAY[]::TEXT[])
+  FROM neiist.internal_events e
+  LEFT JOIN neiist.event_locations l ON l.event_id = e.id
+  GROUP BY e.id
+  ORDER BY e.starts_at;
+$$;
+
+GRANT EXECUTE ON FUNCTION neiist.get_all_internal_events() TO neiist_app_user;

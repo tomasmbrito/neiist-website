@@ -10,6 +10,7 @@ import type { NormalizedCalendarEvent, CalendarEvent } from "@/types/events";
 import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
 import EventIcon from "@/components/activities/EventIcon";
 import { DEFAULT_EVENT_ICON_NAME } from "@/components/activities/IconRegistry";
+import type { EventVisibility } from "@/types/eventVisibility";
 import styles from "@/styles/components/activities/Calendar.module.css";
 
 const locales = { pt };
@@ -102,7 +103,14 @@ export default function Calendar({
   events,
   signedUpEventIds,
   initialSelectedEventId,
-}: CalendarProps & { initialSelectedEventId?: string }) {
+  canSetVisibility = false,
+  visibilityById = {},
+}: CalendarProps & {
+  initialSelectedEventId?: string;
+  /** #241 — whether to OFFER the visibility control. The API decides whether it takes effect. */
+  canSetVisibility?: boolean;
+  visibilityById?: Record<string, EventVisibility>;
+}) {
   const [selectedEvent, setSelectedEvent] = useState<NormalizedCalendarEvent | null>(null);
   const [signUps, setSignUps] = useState<Set<string>>(new Set(signedUpEventIds));
   const [eventList, setEventList] = useState<CalendarEvent[]>(events);
@@ -252,6 +260,8 @@ export default function Calendar({
       {selectedEvent && (
         <EventDetails
           event={selectedEvent}
+          canSetVisibility={canSetVisibility}
+          visibilityById={visibilityById}
           onClose={() => setSelectedEvent(null)}
           isSignedUp={signUps.has(selectedEvent.id)}
           onSignUpChange={(eventId: string, signedUp: boolean) => {
