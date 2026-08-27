@@ -7165,7 +7165,6 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION neiist.mark_onboarding_complete(INT, VARCHAR(30), VARCHAR(50))
   TO neiist_app_user;
-
 -- Handing the public calendar from the Notion sync to the workspace (#137, first slice).
 -- Run deliberately, after the import, once somebody has looked at the events. See migration 027.
 -- Report first: what WOULD be promoted, and what would be left behind.

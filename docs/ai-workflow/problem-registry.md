@@ -205,7 +205,6 @@ import: the test fails.
 **Lesson.** A rule in CLAUDE.md would not have caught this, because the shape that causes it reads
 exactly like the shape that does not. Build failures that name only `node_modules` files are almost
 always a bundling boundary being crossed — read the one `./src/...` line in the list first.
-
 ## A mutation that did not compile read as a surviving mutant (2026-08-27)
 
 **Symptom.** Two mutations against migration 027 reported SURVIVED — the tests passed with the
