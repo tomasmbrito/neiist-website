@@ -11,6 +11,8 @@ import {
 import { groupMembershipsByMember } from "@/types/memberships";
 import { getTeamInternalEvents } from "@/utils/db/eventQueries";
 import { getTeamTasks } from "@/utils/db/taskQueries";
+import { getTeamRequirements } from "@/utils/db/requirementQueries";
+import TeamRequirements from "@/components/workspace/TeamRequirements";
 import TeamAccessGrants from "@/components/workspace/TeamAccessGrants";
 import TeamEvents from "@/components/workspace/TeamEvents";
 import TeamTasks from "@/components/workspace/TeamTasks";
@@ -60,6 +62,9 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
   // someone outside it must not receive, so this must never move before the guard.
   const events = await getTeamInternalEvents(team);
   const tasks = await getTeamTasks(team);
+  // #232. Visible to both teams in a requerimento by construction, so this needs only the ordinary
+  // workspace-view guard the whole page already ran — SQL returns nothing to a third team.
+  const requirements = await getTeamRequirements(team);
   // The roster, for the assignee picker. Grouped so someone holding two roles appears once (#8).
   const roster = groupMembershipsByMember(
     memberships.filter((membership) => membership.departmentName === team && membership.isActive)
@@ -158,6 +163,8 @@ export default async function TeamWorkspacePage({ params }: { params: Promise<{ 
         canRevokeAny={canRevokeAny}
         viewerIstid={session.user!.istid}
       />
+
+      <TeamRequirements team={team} initialRequirements={requirements} canEdit={mayEdit} />
 
       <TeamTasks
         team={team}

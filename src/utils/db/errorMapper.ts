@@ -285,3 +285,32 @@ export function throwIfShopDbError(error: unknown): void {
     throw new ValidationError(message || "Pedido inválido");
   }
 }
+
+/** Requerimentos (#232). */
+const REQUIREMENT_SQLSTATE = {
+  /** Malformed request: blank title, no teams, bad status, a link that is not a URL. */
+  INVALID: "NEI19",
+  /** The requerimento, event or team does not exist, or is not part of this conversation. */
+  UNAVAILABLE: "NEI20",
+  /** The caller's team is not the one allowed to do this. */
+  NOT_YOUR_TEAM: "NEI21",
+  /** The event is not the requesting team's. */
+  WRONG_EVENT: "NEI15",
+} as const;
+
+/**
+ * `NOT_YOUR_TEAM` is a 403, not a 400: the request was well formed, this team simply may not do
+ * it. Telling Organização de Eventos that its input was malformed when what actually happened is
+ * that it tried to close Visuais' work would send them looking in the wrong place.
+ */
+export function throwIfRequirementDbError(error: unknown): void {
+  const dbError = error as { message?: string; code?: string };
+  switch (dbError?.code) {
+    case REQUIREMENT_SQLSTATE.INVALID:
+    case REQUIREMENT_SQLSTATE.UNAVAILABLE:
+    case REQUIREMENT_SQLSTATE.WRONG_EVENT:
+      throw new ValidationError(dbError.message ?? "Pedido inválido.");
+    case REQUIREMENT_SQLSTATE.NOT_YOUR_TEAM:
+      throw new ForbiddenError(dbError.message ?? "A tua equipa não pode fazer isto.");
+  }
+}
