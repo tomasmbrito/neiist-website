@@ -7248,7 +7248,6 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION neiist.hand_over_public_calendar(BOOLEAN) TO neiist_app_user;
-
 -- Requerimentos: how the teams ask each other for work (#232, slice A of #131).
 -- The requesting team asks; the TARGET team owns the status and the deliverables.
 -- See docker/migrations/028 for why that asymmetry is the whole authorization model.
