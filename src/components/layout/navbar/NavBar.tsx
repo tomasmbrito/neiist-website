@@ -76,8 +76,24 @@ export default function NavBar() {
     setUser(null);
   };
 
+  /**
+   * Members get one extra link: the workspace.
+   *
+   * The test is `teams.length > 0`, not "is logged in" — the same rule as `isNeiistMember` on the
+   * server (#183). A Técnico student who bought a t-shirt authenticates fine and belongs to no
+   * team, and showing them a link that redirects to /unauthorized is worse than not showing it.
+   *
+   * This only decides what the NAVBAR offers. The boundary is `requireNeiistMember` in the
+   * workspace layout and `requireTeamWorkspace` on each team page; a wrong answer here is a
+   * missing link, never access.
+   */
+  const isMember = (user?.teams?.length ?? 0) > 0;
+  const visibleLinks = isMember
+    ? [...navLinks, { name: "Espaço de Trabalho", href: "/workspace" }]
+    : navLinks;
+
   const renderNavItems = (onClick?: (_href: string) => void) => {
-    return navLinks.map((link) => (
+    return visibleLinks.map((link) => (
       <NavItem
         key={link.name}
         href={link.href}

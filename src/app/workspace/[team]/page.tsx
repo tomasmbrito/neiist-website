@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTeamWorkspace } from "@/utils/permissionUtils";
+import { decodeRouteParam } from "@/lib/routeParams";
 import { accessRank, canForTeam, ROLE_LABELS } from "@/lib/auth/permissions";
 import {
   getAllDepartments,
@@ -34,10 +35,13 @@ import styles from "@/styles/pages/Workspace.module.css";
  * future refactor, into the response.
  */
 export default async function TeamWorkspacePage({ params }: { params: Promise<{ team: string }> }) {
-  // Next's App Router already decodes dynamic params. Decoding again would be a second pass —
-  // it throws URIError on a literal "%" before the guard below can run, and it is the only
-  // decodeURIComponent on a param anywhere in src/app.
-  const { team } = await params;
+  // Decoded here, because Next does NOT hand back a decoded segment: every team whose name needs
+  // percent-encoding — Organização de Eventos, Divulgação, Direção, Controlo & Qualidade — 404'd,
+  // while Visuais, Fotografia, Dev-Team and Contacto worked. Those four are exactly the names
+  // `encodeURIComponent` leaves untouched. `decodeRouteParam` survives a literal "%", which is the
+  // reason the previous code avoided decoding at all.
+  const { team: rawTeam } = await params;
+  const team = decodeRouteParam(rawTeam);
 
   const session = await requireTeamWorkspace(team, "team.workspace.view");
 
