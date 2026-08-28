@@ -124,26 +124,106 @@ Three duplications visible in that one page, all of which the website can remove
 
 ---
 
-## 3. Google Drive — not yet read
+## 3. Google Drive — read 2026-08-27
 
-Tomás has Drive folders `Documentos` and `Eventos` in the Organização de Eventos shared drive, with
-worked examples of events and requerimentos.
+Read after the connector was re-authorised. **It changes the plan more than Notion did**, because
+it shows an artefact the website has no concept of.
 
-**The connector is attached but its token lacks read scopes** — `search_files` and
-`list_recent_files` both return `Request had insufficient authentication scopes`. Nothing was read.
+### 3.1 The shape
 
-To unblock, re-authorise the Google Drive connector with Drive read access, then a session should
-look for:
+```
+Eventos/
+  25/26/
+    Eventos 25/26/
+      Workshop de Rust - Dez 2025/
+        Plano Workshop de Rust - 25/26        ← Google Doc
+        Requerimentos/
+      Linux Install Party - Fev 2026/
+        Plano de Atividades - Linux Install Party.docx
+        ReqVisuais - Linux Install Party - DataEvento.docx
+        ReqDivulgacao - Linux Install Party- DataEvento.docx
+      Jantar de Curso - 2026/ · Workshop de LLM's - Mar 2026/ · Advent of Code - Dez 2025/ …
+    Requerimentos - Templates/
+      ReqVisuais - NomeEvento - DataEvento.docx
+      ReqDivulgacao - NomeEvento - DataEvento.docx
+      ReqC&Q - NomeEvento - DataEvento.docx
+      Plano de Atividades - Template.docx
+      Relatório - Template.docx
+    Reuniões da Equipa 25/26/ · Calendário de Eventos 25/26/ · Espaços e Divulgação do IST/
+  24/25/ · 23/24/ · 22/23/ · 21/22/ · 20/21/ · 19/20/ · 18/19/
 
-- how deliverables are actually organised per event (the folder shape), since `Material Link` is
-  unused and the files clearly live somewhere
-- naming conventions worth mirroring in `requirement_deliverables`
-- anything in `Documentos` that is a *template* and belongs alongside the briefs
+Documentos/
+  Plano de Atividades - Template.docx · Relatório - Template.docx
+  Reserva de Espaços IST.docx · Pedidos Divulgação IST · Requerimentos/ · AGA 44/
+```
 
-Until then, **§6 assumes deliverables are links** — which is what slice A already built, and what
-the evidence supports.
+Folders are `<Nome do Evento> - <Mês Ano>`; files are `Req<Equipa> - <NomeEvento> - <DataEvento>`.
 
----
+### 3.2 The finding that matters: the Plano de Atividades
+
+**There is an artefact above the requerimento that the website does not model.** Every event has a
+*Plano de Atividades*, and it is what Organização de Eventos writes first. From the real Linux
+Install Party plan:
+
+```
+Local: Alameda [LE3]; Oeiras [1.2?]        Data: dd-02-2026   Hora: 00h00
+Coordenador:
+Colaboradores Responsáveis: Francisco Plácido, Guilherme Carreira, Tiago Santos
+
+Objetivo(s)      … a paragraph of real prose about what the event is for
+Estrutura        … the run of show
+Comunicação Externa:  Oradores Convidados · Outros (Empresa/Patrocínio)
+Comunicação Interna:  Equipa de Visuais · Divulgação · Fotografia · Membros NEIIST
+
+# To Dos
+  Contacto inicial com a HackerSchool para determinar uma data — Francisco Plácido
+  Fazer o plano de atividades                                  — Francisco Plácido
+  Fazer a reserva de espaços do tagus                          — Guilherme Carreira
+  Fazer a reserva de espaços na Alameda                        — Tiago Santos
+  Fazer o requerimento de visuais                              — Guilherme Carreira
+  Fazer o requerimento de divulgação                           — Tiago Santos
+```
+
+Three things follow, and each changes something:
+
+**D1 — Raising a requerimento is itself a to-do on the plan.** *"Fazer o requerimento de visuais —
+Guilherme Carreira"*. The requerimentos are not free-standing; they are spawned from the plan and
+assigned to a named person before they exist. The website currently lets you raise one from an
+event, which is right, but has nowhere to say *who is supposed to raise it and by when*.
+
+**D2 — "Comunicação Interna" is the requerimento list, written in prose.** *Equipa de Visuais /
+Divulgação / Fotografia* are section headings with dashes under them. That is a list of which teams
+the event needs, decided at planning time — exactly the input to `raise_requirements`.
+
+**D3 — The lifecycle is Plano → evento → Relatório.** `Relatório - Template.docx` sits beside the
+plan in both `Documentos/` and the templates folder. The website models the event and now the
+requerimentos, and neither end.
+
+### 3.3 Two systems in parallel
+
+Requerimentos exist **both** as Notion database rows **and** as `.docx` files in the event folder.
+The Notion Requirements database has 7 rows; the Drive folders have `.docx` copies for events that
+also have Notion rows.
+
+Evidence that the `.docx` path is the lived one and the friction is real: the Linux Install Party
+files are still named `ReqVisuais - Linux Install Party - DataEvento.docx` — **the `DataEvento`
+placeholder was never replaced**, in a file edited three times over two months. That is what
+copy-a-template-and-rename produces.
+
+This is the strongest argument yet for finishing #131: the teams are maintaining the same
+requerimento in two places, and neither is pleasant.
+
+### 3.4 What this adds to the plan
+
+- **#246 (new): the Plano de Atividades.** Objetivo, estrutura, comunicação externa/interna, and a
+  to-do list with assignees — attached to an event, above its requerimentos. Raising a requerimento
+  should be creatable *from* a plan to-do, closing D1.
+- **`Reserva de Espaços IST` and `Pedidos Divulgação IST`** are standing procedures, not per-event
+  data. They belong linked from the plan, not copied into it — the Tier C boundary #126 already
+  draws, and #137 keeps them in Notion/Drive by design.
+- **Deliverables (F4) are answered.** They live in the event folder, not in a `Material Link`
+  field. `requirement_deliverables` storing a Drive link is the right model; the win is that the
+  website can hold the *folder* link once per event instead of a URL per requerimento.
 
 ## 4. Where the workspace is today
 
