@@ -12,6 +12,8 @@ import {
   getEventTeams,
 } from "@/utils/db/eventQueries";
 import { getAllDepartments, getAllMemberships } from "@/utils/db/userQueries";
+import { getEventPlan, getPlanExternals, getPlanTodos } from "@/utils/db/eventPlanQueries";
+import EventPlanPanel from "@/components/workspace/EventPlan";
 import { groupMembershipsByMember } from "@/types/memberships";
 import EventDetail from "@/components/workspace/EventDetail";
 import styles from "@/styles/pages/Workspace.module.css";
@@ -58,6 +60,15 @@ export default async function EventDetailPage({
   ).map((member) => ({ istid: member.userNumber, name: member.userName }));
 
   const canEdit = canForTeam(session.roles, session.scopes, "team.events.manage", team);
+
+  // The Plano de Atividades (#247) — the document above the requerimentos. All three reads are
+  // keyed by event AND team in SQL, so a collaborating team sees the plan (a poster designer needs
+  // the objetivo) and a third team sees nothing, without this page deciding anything.
+  const [eventPlan, planTodos, planExternals] = await Promise.all([
+    getEventPlan(eventId, team),
+    getPlanTodos(eventId, team),
+    getPlanExternals(eventId, team),
+  ]);
   // #219. Only the owning team decides who helps — a team viewing an event it merely collaborates
   // on cannot add a third. The route re-checks against the owner for the same reason.
   const canSetCollaborators =
@@ -80,6 +91,19 @@ export default async function EventDetailPage({
             : ` — o teu acesso (${ROLE_LABELS[session.scopes.find((s) => s.departmentName === team)?.access ?? "member"]}) é de leitura`}
         </p>
       </header>
+
+      <EventPlanPanel
+        eventId={eventId}
+        team={team}
+        initialPlan={eventPlan}
+        initialTodos={planTodos}
+        initialExternals={planExternals}
+        roster={roster}
+        otherTeams={departments
+          .filter((d) => d.active && d.name !== team && d.department_type === "team")
+          .map((d) => d.name)
+          .sort((a, b) => a.localeCompare(b, "pt"))}
+      />
 
       <EventDetail
         team={team}

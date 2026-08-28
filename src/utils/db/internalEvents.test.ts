@@ -268,6 +268,30 @@ describe("the is_public boundary", () => {
       // call site knows to check that the guard was repeated. This is the weakest entry on the
       // list; if a way is found to scope it in SQL, take it.
       "get_all_internal_events",
+      // #247, the Plano de Atividades. Twelve functions that touch `internal_events`, all for the
+      // same reason: the plan belongs to an event, so every one of them joins the table to ask who
+      // owns it and whether this team collaborates.
+      //
+      // **None of them returns event CONTENT.** No name, no date, no attendee list — they return
+      // plan text, to-dos, collaborators and externals. And every reader is keyed by event AND
+      // asking department, so a team that is neither owner nor collaborator gets zero rows, which
+      // is proven by test rather than argued here.
+      //
+      // `raise_requirement_from_todo` is a writer returning an id, and it delegates to
+      // `raise_requirements` rather than reimplementing its rules — so slice A's constraints hold
+      // without a second copy.
+      "upsert_event_plan",
+      "get_event_plan",
+      "set_plan_collaborator",
+      "get_plan_collaborators",
+      "add_plan_external",
+      "remove_plan_external",
+      "get_plan_externals",
+      "add_plan_todo",
+      "set_plan_todo_done",
+      "remove_plan_todo",
+      "get_plan_todos",
+      "raise_requirement_from_todo",
     ].sort();
 
     const { rows } = await owner.query<{ proname: string }>(
