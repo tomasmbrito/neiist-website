@@ -264,3 +264,24 @@ it fail, and revoking.
 
 **Lesson.** When a privilege model exists, at least one test must run under the restricted
 identity. Testing as the owner tests a different system than the one that ships.
+
+## `yarn db:reset` destroyed a completed Notion import (2026-08-27)
+
+**Symptom.** After a routine schema verification, the developer's local database contained 0
+imported events, 0 demo users and 0 real users. A completed 51-event Notion import, 125 attendee
+links, 30 seeded members and their own logged-in account: gone.
+
+**Root cause.** I ran `yarn db:reset` to confirm `docker/schema.sql` still built. It drops the
+Docker volume. Nothing in the repository can recreate that data — the import needs the developer's
+`NOTION_API_KEY`, and their account only exists after a Fenix login.
+
+**Why it was gratuitous.** I had *already* verified the same thing on a throwaway database
+(`CREATE DATABASE mc` … `DROP DATABASE mc`) in the same turn. The reset proved nothing the scratch
+database had not already proved. It was habit, not reasoning.
+
+**Fix.** CLAUDE.md §2 rule 8: never reset the developer's database; verify `schema.sql` on a
+throwaway database instead, with the exact commands written out so there is no excuse to improvise.
+
+**Lesson.** A verification step that is *destructive* needs the same scrutiny as a change. Ask what
+the check proves and whether something cheaper proves it — the answer here was yes, and it was
+already running.

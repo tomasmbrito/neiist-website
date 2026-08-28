@@ -61,6 +61,28 @@ See `.claude/skills/upstream-sync/SKILL.md`.
    `docker/migrations/`), auth/permission changes, SumUp/payment changes, adding or upgrading
    dependencies, and anything touching production.
 
+8. **Never run `yarn db:reset` on the developer's database.** It drops the volume: imported
+   data, demo data and their logged-in account all go, and none of it is recoverable from this
+   repository. I did exactly this on 2026-08-27 and destroyed a completed Notion import.
+
+   To check that `docker/schema.sql` builds, use a **throwaway database**, which proves the same
+   thing and costs nothing:
+
+   ```bash
+   docker exec -i neiist_db psql -U admin -d postgres -q \
+     -c "DROP DATABASE IF EXISTS schemacheck WITH (FORCE);" -c "CREATE DATABASE schemacheck;"
+   docker cp docker/schema.sql neiist_db:/tmp/s.sql
+   docker exec neiist_db psql -U admin -d schemacheck -q -f /tmp/s.sql 2>&1 | grep -i ERROR
+   docker exec -i neiist_db psql -U admin -d postgres -q -c "DROP DATABASE schemacheck WITH (FORCE);"
+   ```
+
+   Use `psql -f`, never `psql < file`: reading from **stdin** prints `ERROR:` with no `psql:`
+   prefix, so a grep for `^psql.*ERROR` silently matches nothing and a broken file looks clean.
+   That cost an hour on 2026-08-26.
+
+   Only reset when the developer asks, or when the schema genuinely cannot be applied incrementally
+   — and say so first.
+
 If a step needs a secret or a production infra change → **stop and ask.**
 
 ---
