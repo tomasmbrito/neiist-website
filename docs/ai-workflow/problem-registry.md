@@ -10,19 +10,36 @@ phase live in the archived fork (tag `archive/fase-1`) and describe code that no
 
 ---
 
+## Fixed, 2026-09-15 — kept for context
+
+### The Notion webhook failed open
+
+- **Symptom.** With the verification-token environment variable unset, every unsigned POST to
+  `/api/calendar/notion-webhook` was accepted and processed.
+- **Root cause.** `src/app/api/calendar/notion-webhook/route.ts:119` guarded the signature
+  check behind `if (verificationToken)`. A missing configuration value disabled authentication
+  rather than failing closed.
+- **Fix.** Inverted to a guard clause: no token configured now returns `503` before any
+  signature logic runs. See `docs/ai-workflow/audit-2026-09.md` P1-5, PR #278.
+- **Guard.** None possible today — no test runner.
+
+### Marking an order paid was two separate writes
+
+- **Symptom.** A crash between the two writes could leave an order marked `paid` with no
+  `payment_reference`, unreconcilable against SumUp.
+- **Root cause.** `finalizePaidOrder` called `setOrderState(..., "paid")` and, in a separate
+  call, `updateOrder(..., { payment_reference })` — two transactions, and the in-memory
+  in-flight guard only held within one process, not across blue/green.
+- **Fix.** Folded into one `plpgsql` function, `neiist.mark_order_paid`, with a `FOR UPDATE`
+  lock. See `docs/ai-workflow/audit-2026-09.md` P2-5, PR #282. This is the pattern to copy for
+  any other function found doing the same thing — not a general fix.
+- **Guard.** None possible today — no test runner. Verified manually against the real local DB
+  (see the PR); not verified through a real SumUp callback, which needs credentials this
+  environment doesn't have.
+
 ## Known-open, carried from the reset
 
 These are real defects in the current code. None is fixed; none has a guard.
-
-### The Notion webhook fails open
-
-- **Symptom.** With the verification-token environment variable unset, every unsigned POST to
-  `/api/calendar/notion-webhook` is accepted and processed.
-- **Root cause.** `src/app/api/calendar/notion-webhook/route.ts:119` guards the signature check
-  behind `if (verificationToken)`. A missing configuration value disables authentication rather
-  than failing closed.
-- **Fix.** Reject when the token is absent. An unconfigured webhook should be inert, not open.
-- **Guard.** None possible today — no test runner.
 
 ### Deploy pins a Node version that disagrees with `.nvmrc`
 
@@ -78,3 +95,14 @@ Corepack (as shipped with Node 24.11.1, and 0.36.0) looks for `bin/pnpm.cjs`; pn
 `bin/pnpm.mjs`. The result is an opaque `MODULE_NOT_FOUND` naming a file inside
 `~/.cache/node/corepack/`, which looks like a corrupted download and is not — clearing the cache
 and re-downloading changes nothing. Fix: `npm i -g --force pnpm@12.3.4`.
+
+### `pnpm build` fails with `DB Broadcaster Connection Error` for a function that exists
+
+A local dev database created before a given function landed in `docker/schema.sql` doesn't
+have it — `schema.sql` only runs on an empty data directory (see `CLAUDE.md` §4), so anything
+added to it after that database's first boot is invisible locally until applied by hand.
+Surfaced as `dbBroadcaster.ts` looping `function neiist.listen_voting_updates() does not
+exist` during `pnpm build`/`pnpm dev`, even though that exact function is right there in the
+file. Not a code bug — the function needs applying to *this* database once, the same
+standalone-`CREATE OR REPLACE FUNCTION` technique documented in `CLAUDE.md` §4 for
+`mark_order_paid`.

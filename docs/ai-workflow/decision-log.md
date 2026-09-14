@@ -9,6 +9,44 @@ archived fork (tag `archive/fase-1`) and are not authoritative here.
 
 ---
 
+## 2026-09-15 — Did not implement CSP nonces; `unsafe-inline` stays
+
+**Decision.** Investigated implementing per-request CSP nonces (issue #269, `script-src
+'unsafe-inline'`) and did not implement it. `src/lib/security/cspUtils.ts` is unchanged.
+
+**Context.** `next.config.ts` has `cacheComponents: true`. Next's own bundled docs for this
+exact version (`node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/cacheComponents.md`)
+state this flag *is* Partial Prerendering ("`cacheComponents` implements Partial Prerendering
+(PPR) as the default behavior in the App Router"). Next's CSP guide
+(`node_modules/next/dist/docs/01-app/02-guides/content-security-policy.md`) states nonce-based
+CSP requires every page to render fully dynamically and is explicitly incompatible with PPR
+("static shell scripts won't have access to the nonce"). Ran a real `pnpm build` against the
+local dev database to check whether this app actually relies on PPR or just has the flag
+switched on unused: all 25 pages render `◐` (Partial Prerender) with no exceptions. Also
+inspected real rendered HTML — the only inline `<script>` tags present (7, on a plain
+homepage load) are Next's own framework output (`self.__next_f.push`, Suspense resolution),
+none authored by this app, and their content is per-request (carries a request id), so a
+static CSP hash could never cover them either — ruling out the hash/SRI alternative Next's own
+docs suggest as a nonce alternative.
+
+**Alternatives considered.**
+1. *Implement nonces anyway.* Rejected — would force disabling `cacheComponents` (or opting
+   every one of the 25 pages out of it individually), a site-wide rendering-performance
+   regression, to fix a CSP directive. Far outside "fix the CSP header."
+2. *Hash-based CSP / Subresource Integrity, Next's suggested alternative to nonces.* Rejected —
+   SRI verifies fetched *external* script content against a build-time hash; it doesn't apply
+   to inline scripts at all, and the inline scripts this app actually emits change content
+   per-request, so no static hash could allow them regardless.
+3. *Leave `unsafe-inline`, documented as a conscious trade-off.* Chosen. The CSP is weaker than
+   ideal, but the alternative on offer costs more than the CSP itself is worth trading for
+   right now.
+
+**Consequences.** `script-src 'unsafe-inline'` remains, so CSP does not block a script injected
+through another vulnerability (relevant context: the SVG-upload vector closed in #259/#266 no
+longer has a delivery path, but CSP itself still wouldn't have stopped it). Revisiting this
+needs a deliberate, scoped decision to trade PPR away — not something to fold into a future
+"quick CSP fix." Full writeup: `docs/ai-workflow/audit-2026-09.md`, section P2-7.
+
 ## 2026-09-14 — Reset the fork onto upstream v3.0.0 instead of continuing to diverge
 
 **Decision.** `main` was reset to `upstream/main` at v3.0.0, discarding ~130 commits of
