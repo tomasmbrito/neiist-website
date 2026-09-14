@@ -36,9 +36,17 @@ export function isBot(request: NextRequest): boolean {
 }
 
 export function getClientIp(request: NextRequest): string {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    request.headers.get("x-real-ip") ??
-    "unknown"
-  );
+  // The client can send whatever it wants as X-Forwarded-For, but our reverse proxy appends
+  // the IP it actually observed as the LAST hop rather than trusting or reordering earlier
+  // ones — so that trailing entry is the only part of this header we can't spoof ourselves.
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) {
+    const hops = forwardedFor
+      .split(",")
+      .map((ip) => ip.trim())
+      .filter(Boolean);
+    if (hops.length > 0) return hops[hops.length - 1];
+  }
+
+  return request.headers.get("x-real-ip") ?? "unknown";
 }
