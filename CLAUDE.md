@@ -236,16 +236,28 @@ were a defect in the old fork only because that fork added Google OAuth users wi
 the column and every cast must widen first, or Postgres will silently truncate rather than
 error.)
 
-### ⚠️ There are no transactions
+### Transactions: where they exist and where they don't
 
-`grep` for `withTransaction` or `BEGIN` returns nothing. **Every multi-table write in this
-codebase is non-atomic**, including order placement, payment recording, stock decrement and
-discount redemption. `db_query` takes a connection from the pool per call, so two queries in
-the same function are not even guaranteed to share a connection.
+`grep` for `withTransaction` or `BEGIN` in `src/` returns nothing, and `db_query` takes a
+connection from the pool per call — so two calls in the same TypeScript function are not even
+guaranteed to share a connection. But that is only half the picture, and the half that is
+usually quoted wrongly:
 
-This is the single largest correctness risk in the repository. Do not describe existing order
-handling as safe, and if you add a multi-table write, say explicitly that it is not atomic and
-what that costs.
+**Atomicity lives in `plpgsql`, and mostly it is there.** Every repository function is a
+*single* SQL call (the one exception is `getUser`, which does three reads), and the real work
+happens inside the 80 functions in `docker/schema.sql` — each of which runs in its own implicit
+transaction. `neiist.new_order` is the model: it takes `FOR UPDATE` locks on the product and
+variant rows *before* checking stock, so two people buying the last unit cannot both succeed.
+**Do not describe order placement or stock decrement as racy — they are not.**
+
+**The gap is TypeScript sequencing two SQL calls.** The live example is
+`finalizePaidOrder` (`src/utils/shop/orderFinalization.ts:56-68`): `setOrderState(…, "paid")`
+and then, separately, `updateOrder(…, { payment_reference })`. Two transactions — a crash
+between them leaves an order marked paid with no payment reference.
+
+So the rule is: **keep multi-step writes inside one `plpgsql` function.** If you find yourself
+calling two repository write functions in a row, that is the bug, and the fix is a SQL function,
+not a `withTransaction` helper.
 
 ### ⚠️ Schema changes have no path to an existing database
 

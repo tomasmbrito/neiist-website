@@ -67,16 +67,21 @@ against a fixed set — never interpolate a user-supplied identifier.
 **Transactions for every multi-table write.** Order creation, payment finalization, stock
 decrement, discount redemption, and any cascade all qualify.
 
-> **There are currently no transactions in this codebase at all.** `db_query` is
-> `pool.query()`, which takes an arbitrary connection per call, so a transaction *cannot be
-> expressed* with the existing data layer — nothing anywhere issues `BEGIN`. Every
-> multi-statement TypeScript operation is non-atomic by construction. The only atomicity that
-> exists comes from logic fully contained inside a single `plpgsql` function (`new_order` is
-> the good example — it takes `FOR UPDATE` row locks and is genuinely correct).
+> **There is no `withTransaction` helper**, and `db_query` is `pool.query()`, which takes an
+> arbitrary connection per call — so a transaction spanning two TypeScript calls *cannot be
+> expressed* with the existing data layer.
 >
-> So the first step of any fix here is usually **adding a `withTransaction` helper to
-> `src/lib/db/connection.ts`** and giving query functions an optional client parameter, so the
-> same function works inside and outside a transaction.
+> **But atomicity is mostly there, in the right place.** Every repository function is a single
+> SQL call (only `getUser` isn't, and it is read-only), and the work happens inside the 80
+> `plpgsql` functions, each of which runs in its own implicit transaction. `neiist.new_order` is
+> the model: `FOR UPDATE` on the product and variant rows *before* the stock check, so the last
+> unit cannot be sold twice. **Audited 2026-09-14 — do not report order placement or stock
+> decrement as racy.**
+>
+> The real gap is a TypeScript function issuing two write calls in a row. The live example is
+> `finalizePaidOrder` (`src/utils/shop/orderFinalization.ts:56-68`). **The fix for that class is
+> a single `plpgsql` function, not a `withTransaction` helper** — it matches how the rest of the
+> schema already works, and it does not need approval for new infrastructure.
 ```ts
 const client = await pool.connect();
 try {
