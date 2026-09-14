@@ -20,8 +20,7 @@ export async function POST(req: NextRequest) {
   if (!Number.isInteger(orderId) || orderId <= 0)
     return sumupErrorResponse("Invalid order_id", 400);
 
-  const clientTransactionId = body?.payload?.client_transaction_id;
-  const checkoutId = body?.payload?.checkout_id;
+  const clientTransactionId = String(body?.payload?.client_transaction_id ?? "").trim();
 
   try {
     const order = await getOrderById(orderId);
@@ -31,36 +30,49 @@ export async function POST(req: NextRequest) {
     if (["paid", "ready", "delivered"].includes(order.status))
       return NextResponse.json({ success: true, alreadyProcessed: true });
 
-    if (status === "successful") {
-      let paymentReference = clientTransactionId ?? checkoutId ?? order.payment_reference;
+    if (status !== "successful") return NextResponse.json({ success: true, status });
 
-      if (clientTransactionId && SUMUP_MERCHANT_CODE && process.env.SUMUP_API_KEY) {
-        try {
-          const checkoutData = (await withSumUp((client) =>
-            client.transactions.get(SUMUP_MERCHANT_CODE!, {
-              client_transaction_id: clientTransactionId,
-            })
-          )) as SumUpCheckout;
+    if (!clientTransactionId) return sumupErrorResponse("Missing client_transaction_id", 400);
 
-          const transactionCode = checkoutData?.transaction_code;
-          if (transactionCode) paymentReference = transactionCode;
-        } catch (error) {
-          console.warn("Reader callback could not resolve transaction_code", error);
-        }
-      }
+    // The transaction id must match the one this server itself stored when a shop manager
+    // started the checkout (readers/[readerId]/checkout). Anything else is not our payment.
+    if (order.payment_reference && order.payment_reference !== clientTransactionId)
+      return sumupErrorResponse("Transaction does not match order", 400);
 
-      const result = await finalizePaidOrder({
-        orderId,
-        paymentReference: String(paymentReference ?? ""),
-        paymentCheckedBy: "sumup-tpa",
-      });
+    if (!SUMUP_MERCHANT_CODE || !process.env.SUMUP_API_KEY)
+      return sumupErrorResponse("Payment service misconfigured", 500);
 
-      if (!result.success) {
-        return sumupErrorResponse(result.error, result.statusCode);
-      }
+    let transaction: SumUpCheckout;
+    try {
+      transaction = (await withSumUp((client) =>
+        client.transactions.get(SUMUP_MERCHANT_CODE!, {
+          client_transaction_id: clientTransactionId,
+        })
+      )) as SumUpCheckout;
+    } catch (error) {
+      return sumupErrorResponse(error);
     }
 
-    return NextResponse.json({ success: true });
+    if (String(transaction.status ?? "").toUpperCase() !== "SUCCESSFUL")
+      return sumupErrorResponse("Transaction not successful", 400);
+
+    if (transaction.currency && transaction.currency.toUpperCase() !== "EUR")
+      return sumupErrorResponse("Payment currency mismatch", 400);
+
+    const expectedAmountCents = Math.round(Number(order.total_amount) * 100);
+    const actualAmountCents = Math.round(Number(transaction.amount) * 100);
+    if (actualAmountCents !== expectedAmountCents)
+      return sumupErrorResponse("Payment amount mismatch", 400);
+
+    const result = await finalizePaidOrder({
+      orderId,
+      paymentReference: transaction.transaction_code || clientTransactionId,
+      paymentCheckedBy: "sumup-tpa",
+    });
+
+    if (!result.success) return sumupErrorResponse(result.error, result.statusCode);
+
+    return NextResponse.json({ success: true, transactionCode: transaction.transaction_code });
   } catch (error) {
     console.error("Reader callback processing error", error);
     return sumupErrorResponse("Failed to process callback", 500);
