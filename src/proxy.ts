@@ -110,5 +110,8 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/|favicon\\.ico|static/|images/|image/|.*\\..*$).*)"],
+  // The dotted-path exclusion only applies outside /api/ — a dotted path under /api/ (e.g.
+  // /api/shop/photo/x.svg) is a route, not a static asset, and skipping the proxy for it means
+  // skipping rate limiting, bot blocking and the security headers every other API route gets.
+  matcher: ["/((?!_next/|favicon\\.ico|static/|images/|image/|(?!api/).*\\..*$).*)"],
 };
