@@ -377,6 +377,22 @@ export const setOrderState = async (
   return result;
 };
 
+export const markOrderPaid = async (
+  orderId: number,
+  paymentReference: string,
+  user_istid?: string
+): Promise<{ order: Order; alreadyPaid: boolean } | null> => {
+  const {
+    rows: [row],
+  } = await db_query<dbOrder & { already_paid: boolean }>(
+    `SELECT * FROM neiist.mark_order_paid($1,$2,$3)`,
+    [orderId, paymentReference, user_istid ?? null]
+  );
+  if (!row) return null;
+  revalidateTag("orders", "max");
+  return { order: mapdbOrderToOrder(row), alreadyPaid: row.already_paid };
+};
+
 export const getUserOrderedProductsInCategory = async (
   userIstid: string,
   categoryName: string
