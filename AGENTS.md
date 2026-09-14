@@ -76,12 +76,21 @@ production database**, which also means a release reads live production rows at 
   Every repository function is a single SQL call, and the 80 functions in `docker/schema.sql`
   each run in their own transaction. `neiist.new_order` takes `FOR UPDATE` locks before checking
   stock, so **order placement and stock decrement are not racy** — do not claim otherwise. The
-  real gap is TypeScript sequencing two SQL calls, as `finalizePaidOrder` does. Keep multi-step
-  writes inside one SQL function.
+  real gap is TypeScript sequencing two SQL calls; `neiist.mark_order_paid` (2026-09-15) is the
+  template for fixing one when you find it — fold the two writes into one function with a
+  `FOR UPDATE` lock, don't reach for a transaction helper that doesn't exist.
 - **No migration path.** `docker/schema.sql` runs only on an empty data directory; there is no
   `docker/migrations/` and no `psql` step in either deploy script. Editing `schema.sql` does
-  **not** change production, whose real schema is unmeasured.
+  **not** change production, whose real schema is unmeasured. Exception: every function here is
+  `CREATE OR REPLACE FUNCTION` — idempotent, no table/data touched — so a single new or changed
+  function can be applied standalone via `psql -f` against a real database (dev or prod) without
+  needing the rest of the file. Still needs a human to say yes to running it against production.
 - **No Zod.** Validation is hand-rolled in `src/utils/apiValidationUtils.ts`.
+- **CSP nonces are not viable without disabling Cache Components.** `cacheComponents: true` in
+  `next.config.ts` *is* Partial Prerendering (Next's own docs say so), and Next's CSP docs say
+  nonce-based CSP requires every page to render fully dynamically — confirmed against a real
+  `pnpm build`: all 25 pages render as Partial Prerender. `script-src 'unsafe-inline'` stays
+  until a human decides to trade PPR away for a strict CSP.
 
 ## 5. Where things live
 

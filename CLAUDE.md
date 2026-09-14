@@ -250,14 +250,18 @@ transaction. `neiist.new_order` is the model: it takes `FOR UPDATE` locks on the
 variant rows *before* checking stock, so two people buying the last unit cannot both succeed.
 **Do not describe order placement or stock decrement as racy — they are not.**
 
-**The gap is TypeScript sequencing two SQL calls.** The live example is
-`finalizePaidOrder` (`src/utils/shop/orderFinalization.ts:56-68`): `setOrderState(…, "paid")`
-and then, separately, `updateOrder(…, { payment_reference })`. Two transactions — a crash
-between them leaves an order marked paid with no payment reference.
+**The gap is TypeScript sequencing two SQL calls.** `finalizePaidOrder` used to be the live
+example — `setOrderState(…, "paid")` then, separately, `updateOrder(…, { payment_reference })` —
+until 2026-09-15, when it was folded into one function, `neiist.mark_order_paid`, which also
+takes a `FOR UPDATE` lock so two callers racing the same order serialize instead of
+double-processing. It is the template to copy, not just the fixed instance: the pattern still
+has no general-purpose fix, so the next function that writes two things about the same row in
+sequence has the exact same bug until someone gives it the same treatment.
 
 So the rule is: **keep multi-step writes inside one `plpgsql` function.** If you find yourself
 calling two repository write functions in a row, that is the bug, and the fix is a SQL function,
-not a `withTransaction` helper.
+not a `withTransaction` helper. This is itself a schema change — needs approval (§9) before
+you write it, same as `mark_order_paid` did.
 
 ### ⚠️ Schema changes have no path to an existing database
 
@@ -272,6 +276,16 @@ plus anything typed into a `psql` session since — it is unmeasured.
 So: editing `schema.sql` changes nothing in production, and a `CREATE OR REPLACE` applied by
 hand will silently overwrite whatever is really there. Any schema work needs a human in the
 loop and a plan for how it actually reaches the server.
+
+**One narrow exception worth knowing, not a general licence.** Every function in this file is
+`CREATE OR REPLACE FUNCTION` — idempotent, touches no table, no data. A *new or changed
+function* (not a table/column/constraint change) can be applied standalone by running just that
+one block through `psql`, safely re-runnable, without needing the rest of `schema.sql` or a
+fresh database. This is how `neiist.mark_order_paid` was verified: applied and exercised
+directly against the real local dev database, never touching `pnpm db:reset`. It is still a
+human decision to run that DDL against production — this only means the mechanism to do so is
+simple (`psql -f` on the one function's block) once a human says yes, not that the yes is
+implied.
 
 ### Authorization is two-layered, and must stay that way
 
@@ -382,13 +396,20 @@ A bug that took an hour to diagnose and is not written down will cost an hour ag
 
 So you do not "discover" these as new:
 
-- **No tests, no transactions, no migration path.** Each is covered above; each is a real gap,
-  not an oversight to fix casually. All three are the kind of change that needs the
+- **No tests, no `withTransaction` helper, no migration path.** Each is covered above; each is
+  a real gap, not an oversight to fix casually. All three are the kind of change that needs the
   coordinator's buy-in, because they are structural and this fork no longer wants to diverge
-  alone.
-- **The Notion webhook fails open.** `src/app/api/calendar/notion-webhook/route.ts:119` only
-  verifies the signature when the verification token env var is set — with it unset, every
-  unsigned request is accepted. The old fork fixed this; this codebase has not.
+  alone. (The Notion webhook, listed here until 2026-09-15, is now fixed — see
+  `docs/ai-workflow/audit-2026-09.md`. The general absence of a transaction helper is not; only
+  the one live example that used to be cited in §4, `finalizePaidOrder`'s two-write payment
+  flow, was fixed, by moving that specific logic into one SQL function.)
+- **CSP nonces are not viable without giving up Cache Components.** This app has
+  `cacheComponents: true`, which Next's own docs confirm *is* Partial Prerendering — and Next's
+  CSP docs are explicit that nonce-based CSP requires every page to render fully dynamically,
+  incompatible with PPR. Confirmed against a real `pnpm build`: all 25 pages render `◐`
+  (Partial Prerender). `script-src 'unsafe-inline'` stays until someone decides to trade PPR
+  away for a strict CSP — that decision is not implied by "fix the CSP", ask first. Full
+  writeup in `docs/ai-workflow/audit-2026-09.md` (P2-7).
 - **`scripts/deploy_prod.sh:3` hardcodes `node/v24.11.1` on PATH** while `.nvmrc` pins
   `24.14.0`. The build now happens on GitHub Actions (which honours `.nvmrc`), so the server
   only runs the artifact — but the versions disagree and nobody has reconciled them.

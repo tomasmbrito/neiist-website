@@ -41,16 +41,24 @@ under a 10-character prefix.
 
 ### The two gaps
 
-1. **No transactions.** Covered in full below. This is the largest correctness risk in the repo.
+1. **No `withTransaction` helper.** Covered in full below. `neiist.mark_order_paid`
+   (2026-09-15) is the template for fixing one live instance of this when you find it — it is
+   not a general fix, and the next TypeScript function issuing two writes in a row has the
+   exact same bug until it gets the same treatment.
 2. **No migration path.** `docker/schema.sql` is mounted into
    `/docker-entrypoint-initdb.d/`, which Postgres runs **only on an empty data directory**.
    There is no `docker/migrations/`, no runner, and no `psql` step in either deploy script.
    So `schema.sql` describes what a *new* database gets — **it has never described
-   production**, whose real schema is unmeasured.
+   production**, whose real schema is unmeasured. One narrow exception: every function here is
+   `CREATE OR REPLACE FUNCTION` — idempotent, no table/data touched — so a single new or
+   changed function can be applied standalone via `psql -f`, verified against a real database,
+   without needing a fresh one or the rest of the file.
 
 Both are structural. After the 2026-09-14 reset onto upstream v3.0.0, this fork is
 deliberately not building parallel architecture on its own: **propose either one to the human
-before writing it**, with the trade-off, not as a finished PR.
+before writing it**, with the trade-off, not as a finished PR. This includes writing a single
+new SQL function to fix one instance of gap 1 — it is a schema change (`CLAUDE.md` §9) and
+needs a yes before the DDL is written, not just before it is applied to production.
 
 ## Non-negotiables
 
@@ -78,10 +86,12 @@ decrement, discount redemption, and any cascade all qualify.
 > unit cannot be sold twice. **Audited 2026-09-14 — do not report order placement or stock
 > decrement as racy.**
 >
-> The real gap is a TypeScript function issuing two write calls in a row. The live example is
-> `finalizePaidOrder` (`src/utils/shop/orderFinalization.ts:56-68`). **The fix for that class is
-> a single `plpgsql` function, not a `withTransaction` helper** — it matches how the rest of the
-> schema already works, and it does not need approval for new infrastructure.
+> The real gap is a TypeScript function issuing two write calls in a row. `finalizePaidOrder`
+> was the live example until 2026-09-15, when it was folded into `neiist.mark_order_paid`.
+> **The fix for that class is a single `plpgsql` function, not a `withTransaction` helper** —
+> it matches how the rest of the schema already works. It is still a schema change and still
+> needs the human's yes before you write it (§9) — "no new infrastructure" means don't invent
+> a transaction mechanism, not that the function is exempt from approval.
 ```ts
 const client = await pool.connect();
 try {
