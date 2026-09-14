@@ -17,6 +17,14 @@ import { getUser, updateUser } from "@/lib/db/repositories/user.repository";
 import { serverCheckRoles } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 
+function isShopManagerOrAbove(roles: UserRole[]) {
+  return (
+    roles.includes(UserRole._ADMIN) ||
+    roles.includes(UserRole._COORDINATOR) ||
+    roles.includes(UserRole._SHOP_MANAGER)
+  );
+}
+
 function parseOrderSource(value: string): OrderSource {
   switch (value) {
     case "dinner":
@@ -79,10 +87,17 @@ export async function POST(request: NextRequest) {
     const { orderKind, isMixedInvalid } = getOrderKindFromItems(products as Product[]);
     const orderRules = getOrderKindRules(orderKind, orderSource);
     const userAssignmentRequired = orderRules.requiresUserAssignment;
+    // Only shop staff placing a POS order may assign someone else's istid (e.g. jantar de
+    // curso bought at the physical shop for a member). Everyone else gets their own session
+    // istid regardless of what the body sends — otherwise any logged-in user could assign an
+    // order, and the phone-number update below, to an istid that isn't theirs.
+    const canAssignOtherUser = isShopManagerOrAbove(userRoles.roles ?? []) && orderSource === "pos";
     const orderUserIstid = guestCheckout
       ? undefined
       : userAssignmentRequired
-        ? body.user_istid
+        ? canAssignOtherUser
+          ? body.user_istid
+          : userRoles.user!.istid
         : undefined;
 
     if (isMixedInvalid) {
