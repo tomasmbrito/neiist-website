@@ -3032,6 +3032,96 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Atomically mark an order paid: status, paid_at, payment_checked_by and payment_reference
+-- all move together in one UPDATE, so a crash between them (previously two separate
+-- statements from TypeScript) can no longer leave an order "paid" with no reference. The
+-- FOR UPDATE lock also makes two concurrent calls for the same order safe: the second waits
+-- for the first, then sees status already changed and reports already_paid instead of
+-- reprocessing (the SumUp callback, webhook and reader endpoints can all race each other).
+CREATE OR REPLACE FUNCTION neiist.mark_order_paid(
+  p_order_id INTEGER,
+  p_payment_reference TEXT,
+  p_user_istid TEXT DEFAULT NULL
+) RETURNS TABLE (
+  id INTEGER,
+  order_number TEXT,
+  customer_name TEXT,
+  user_istid VARCHAR(10),
+  customer_email TEXT,
+  customer_phone TEXT,
+  customer_nif TEXT,
+  campus TEXT,
+  pickup_deadline TIMESTAMPTZ,
+  items JSONB,
+  notes TEXT,
+  total_amount NUMERIC(10,2),
+  payment_method TEXT,
+  payment_reference TEXT,
+  created_by TEXT,
+  created_at TIMESTAMPTZ,
+  paid_at TIMESTAMPTZ,
+  payment_checked_by TEXT,
+  delivered_at TIMESTAMPTZ,
+  delivered_by TEXT,
+  updated_at TIMESTAMPTZ,
+  updated_by TEXT,
+  status TEXT,
+  already_paid BOOLEAN
+) AS $$
+DECLARE
+  v_was_pending BOOLEAN;
+BEGIN
+  SELECT o.status NOT IN ('paid', 'ready', 'delivered') INTO v_was_pending
+  FROM neiist.orders o
+  WHERE o.id = p_order_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  IF v_was_pending THEN
+    UPDATE neiist.orders o
+    SET status = 'paid',
+        paid_at = NOW(),
+        payment_checked_by = COALESCE(p_user_istid, o.payment_checked_by),
+        payment_reference = CASE WHEN o.payment_method = 'cash' THEN o.payment_reference ELSE p_payment_reference END,
+        updated_at = NOW(),
+        updated_by = COALESCE(p_user_istid, o.updated_by)
+    WHERE o.id = p_order_id;
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    g.id,
+    g.order_number,
+    g.customer_name,
+    g.user_istid,
+    g.customer_email,
+    g.customer_phone,
+    g.customer_nif,
+    g.campus,
+    g.pickup_deadline,
+    g.items,
+    g.notes,
+    g.total_amount,
+    g.payment_method,
+    g.payment_reference,
+    g.created_by,
+    g.created_at,
+    g.paid_at,
+    g.payment_checked_by,
+    g.delivered_at,
+    g.delivered_by,
+    g.updated_at,
+    g.updated_by,
+    g.status::TEXT,
+    NOT v_was_pending
+  FROM neiist.get_all_orders() g
+  WHERE g.id = p_order_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- Get all non-cancelled ordered quantities by product for a user within a category
 CREATE OR REPLACE FUNCTION neiist.get_user_ordered_products_in_category(
   p_user_istid VARCHAR(10),
