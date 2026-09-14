@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   devIndicators: false,
   typedRoutes: true,
+  agentRules: false,
   experimental: {
     typedEnv: true,
     optimizePackageImports: [
