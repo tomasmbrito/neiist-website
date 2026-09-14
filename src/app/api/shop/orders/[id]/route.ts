@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { handleApiError } from "@/utils/apiErrorUtils";
 import { UserRole, type User } from "@/types/user";
 import { getOrderKindRules, getOrderKindFromItems } from "@/utils/shop/orderKindUtils";
-import { getStatusLabel } from "@/utils/shop/orderStatusUtils";
+import { getStatusLabel, canTransitionTo } from "@/utils/shop/orderStatusUtils";
 import { isValidPaymentMethod } from "@/types/shop/payment";
 import { Order } from "@/types/shop/order";
+import type { OrderStatus } from "@/types/shop/orderStatus";
 import {
   getPendingOrderEmailTemplate,
   getStatusUpdateOrderEmailTemplate,
@@ -227,6 +228,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
   const orderId = order.id;
 
+  if (!canTransitionTo(order.status, status as OrderStatus))
+    return NextResponse.json(
+      { error: `Cannot change order from "${order.status}" to "${status}"` },
+      { status: 400 }
+    );
+
   try {
     await setOrderState(orderId, status, userRoles.user!.istid);
     const updatedOrder = await getOrderById(orderId);
@@ -282,6 +289,12 @@ export async function DELETE(
   ) {
     return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
   }
+
+  if (!canTransitionTo(order.status, "cancelled"))
+    return NextResponse.json(
+      { error: `Cannot cancel an order that is already "${order.status}"` },
+      { status: 400 }
+    );
 
   const updatedOrder = await setOrderState(orderId, "cancelled", user!.istid);
   if (!updatedOrder) return NextResponse.json({ error: "Failed to cancel order" }, { status: 500 });
