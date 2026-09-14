@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useDeferredValue } from "react";
+import { useState, useMemo, useCallback, useDeferredValue, useRef } from "react";
 import MiniSearch, { SearchOptions } from "minisearch";
 
 export const normalizeText = (value: string): string =>
@@ -10,7 +10,7 @@ export const normalizeText = (value: string): string =>
     .replace(/\s+/g, " ")
     .trim();
 
-const IST_PREFIX_REG = /^ist\d*/i;
+const IST_PREFIX_REG = /^ist\d+/i;
 
 export const isIstIdQuery = (query: string): boolean => IST_PREFIX_REG.test(query.trim());
 
@@ -42,6 +42,15 @@ export interface UseSearchResult<T> {
   allData: T[];
   isSearching: boolean;
   clear: () => void;
+}
+
+// Keeps returning the same reference as long as `key` hasn't changed, even when `value` is a
+// fresh object/array literal every render — lets an expensive useMemo depend on the value
+// itself instead of an identity that changes every render for reasons that don't matter.
+function useStableByKey<V>(value: V, key: string): V {
+  const ref = useRef({ key, value });
+  if (ref.current.key !== key) ref.current = { key, value };
+  return ref.current.value;
 }
 
 const getNestedValue = (obj: unknown, path: string): unknown => {
@@ -93,14 +102,24 @@ export function useSearch<T>(options: UseSearchOptions<T>): UseSearchResult<T> {
     );
   }, [fieldNames]);
 
+  // fields, boostMap and extractField are almost always literals or closures rebuilt on every
+  // render at the call site, which would otherwise rebuild the whole MiniSearch index — and
+  // reindex every item in allData — on every keystroke. Give the first two a stable identity
+  // keyed on their actual content, and read extractField through a ref, so the expensive index
+  // build below only reruns when something that matters has actually changed.
+  const stableFieldNames = useStableByKey(fieldNames, fieldNames.join(" "));
+  const stableBoostMap = useStableByKey(boostMap, JSON.stringify(boostMap));
+  const extractFieldRef = useRef(extractField);
+  extractFieldRef.current = extractField;
+
   const miniSearch = useMemo(() => {
     if (allData.length === 0) return null;
 
     const ms = new MiniSearch({
       idField: "__mini_search_id__",
-      fields: fieldNames,
+      fields: stableFieldNames,
       searchOptions: {
-        boost: boostMap,
+        boost: stableBoostMap,
         prefix: true,
         fuzzy: (term: string) =>
           fuzzy === false || term.length < 3 ? false : typeof fuzzy === "number" ? fuzzy : 0.2,
@@ -110,9 +129,9 @@ export function useSearch<T>(options: UseSearchOptions<T>): UseSearchResult<T> {
         if (fieldName === "__mini_search_id__")
           return doc.__mini_search_id__ != null ? String(doc.__mini_search_id__) : "";
 
-        if (extractField) {
+        if (extractFieldRef.current) {
           const rawItem = (doc.self !== undefined ? doc.self : doc) as T;
-          const custom = extractField(rawItem, fieldName);
+          const custom = extractFieldRef.current(rawItem, fieldName);
           if (custom !== undefined)
             return Array.isArray(custom)
               ? custom.map((c) => String(c ?? "")).join(" ")
@@ -128,7 +147,14 @@ export function useSearch<T>(options: UseSearchOptions<T>): UseSearchResult<T> {
 
         return val != null ? String(val) : "";
       },
-      processTerm: (term) => normalizeText(term) || undefined,
+      // normalizeText turns hyphens/underscores into spaces (so "jantar-de-curso" indexes as
+      // "jantar de curso"); returning that as one string would index it as a single unmatchable
+      // token instead of three searchable ones, so split it into the array form MiniSearch
+      // also accepts from processTerm.
+      processTerm: (term) => {
+        const tokens = normalizeText(term).split(" ").filter(Boolean);
+        return tokens.length > 0 ? tokens : undefined;
+      },
     });
 
     try {
@@ -143,7 +169,7 @@ export function useSearch<T>(options: UseSearchOptions<T>): UseSearchResult<T> {
     }
 
     return ms;
-  }, [allData, boostMap, fieldNames, fuzzy, extractField]);
+  }, [allData, stableBoostMap, stableFieldNames, fuzzy]);
 
   const deferredQuery = useDeferredValue(query);
 
@@ -178,7 +204,7 @@ export function useSearch<T>(options: UseSearchOptions<T>): UseSearchResult<T> {
     if (!miniSearch) return returnAllWhenEmpty ? (limit ? allData.slice(0, limit) : allData) : [];
 
     const hits = miniSearch.search(normalizeText(trimmed), {
-      boost: boostMap,
+      boost: stableBoostMap,
       combineWith: "AND",
       prefix: true,
       fuzzy: (term: string) =>
@@ -189,7 +215,16 @@ export function useSearch<T>(options: UseSearchOptions<T>): UseSearchResult<T> {
       .filter((item): item is T => item !== undefined);
 
     return limit ? mapped.slice(0, limit) : mapped;
-  }, [deferredQuery, allData, istFieldKey, miniSearch, boostMap, limit, returnAllWhenEmpty, fuzzy]);
+  }, [
+    deferredQuery,
+    allData,
+    istFieldKey,
+    miniSearch,
+    stableBoostMap,
+    limit,
+    returnAllWhenEmpty,
+    fuzzy,
+  ]);
 
   const status: SearchStatus = query.trim() === "" ? "idle" : "ready";
 
@@ -197,5 +232,13 @@ export function useSearch<T>(options: UseSearchOptions<T>): UseSearchResult<T> {
     setQuery("");
   }, []);
 
-  return { results, query, setQuery, status, allData, isSearching: false, clear };
+  return {
+    results,
+    query,
+    setQuery,
+    status,
+    allData,
+    isSearching: query !== deferredQuery,
+    clear,
+  };
 }
