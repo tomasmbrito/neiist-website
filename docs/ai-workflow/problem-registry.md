@@ -50,6 +50,22 @@ It drops the `neiist_db` volume: imported data, demo data and the logged-in acco
 none of it can be rebuilt from this repository. Done by accident on 2026-08-27, destroying a
 completed Notion import. To validate `docker/schema.sql`, build a throwaway database instead.
 
+### `pnpm build` fails without a database, and the failure looks like a code bug
+
+- **Symptom.** `Build error occurred / Failed to collect page data for /[locale]/shop/[id]`,
+  preceded by a `DatabaseError("Ocorreu um erro inesperado na base de dados.", 500)` pointing at
+  `src/lib/db/errorMapper.ts:89`. Looks like a broken build; is not.
+- **Root cause.** `src/app/[locale]/shop/[id]/page.tsx:11` exports `generateStaticParams()`,
+  which queries Postgres. Next runs it while collecting page data, so the build needs a
+  reachable database. With Docker down, nothing is on 5432.
+- **Fix.** Start the database before building. Not a code change.
+- **Worth knowing.** This is why `ci.yml` has no build job. `deploy-prod.yml:62-80` builds by
+  opening an **SSH tunnel to the production database** and pointing `DATABASE_URL` at
+  `127.0.0.1:5432` through a `neiist_readonly` role. So a production deploy reads live
+  production rows at build time — anything added to `generateStaticParams` runs against real
+  data during every release.
+- **Guard.** None. Verified by hand on 2026-09-14.
+
 ### Port 5432 must be free before `pnpm dev`
 
 If another Postgres holds the port, the container starts without publishing its own and the app

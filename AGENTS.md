@@ -63,6 +63,12 @@ pnpm --filter @neiist/ui dev    # design-system playground
 Baseline on a fresh checkout: all three gates clean. CI runs only those three — **there is no
 build job and no test job**, so `pnpm build` is your responsibility.
 
+**`pnpm build` needs a live database.** `src/app/[locale]/shop/[id]/page.tsx` has a
+`generateStaticParams()` that queries Postgres, so with nothing on port 5432 the build dies with
+`Failed to collect page data for /[locale]/shop/[id]` — an environment failure, not a code bug.
+CI has no build job for this reason; `deploy-prod.yml` builds through an **SSH tunnel to the
+production database**, which also means a release reads live production rows at build time.
+
 ## 4. What does not exist (do not claim otherwise)
 
 - **No tests and no test runner.** Do not claim coverage. Adding one needs approval.

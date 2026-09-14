@@ -26,6 +26,13 @@ prove it (`git stash && pnpm type:check`) before saying so.
 **CI does not run `pnpm build`.** `.github/workflows/ci.yml` runs typegen, format, lint and
 type-check only. A build break reaches `main` unnoticed unless you catch it — so run it.
 
+**But `pnpm build` needs a live database.** `src/app/[locale]/shop/[id]/page.tsx:11` has a
+`generateStaticParams()` that queries Postgres, so the build reads the DB while collecting page
+data. With nothing on port 5432 it fails with `Failed to collect page data for
+/[locale]/shop/[id]` and a `DatabaseError` — **do not report that as a broken build.** Bring the
+container up first. (This is also why CI has no build job: `deploy-prod.yml` builds through an
+SSH tunnel to the *production* database, which a plain runner does not have.)
+
 ## The rules
 
 1. **A gate you did not run is a gate that failed.** Do not infer, predict, or assume. Run it.

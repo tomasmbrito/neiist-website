@@ -159,9 +159,21 @@ or data-integrity bug, say plainly that no gate can catch a regression of it.
 ### CI
 
 `.github/workflows/ci.yml` runs one job on push/PR to `main`: install → `next typegen` →
-`format:check` → `lint` → `type:check`. **No build job and no tests.** `pnpm build` passing
-locally is therefore information CI does not have — run it yourself before shipping anything
-that could break the build.
+`format:check` → `lint` → `type:check`. **No build job and no tests.**
+
+### ⚠️ `pnpm build` needs a live database
+
+`src/app/[locale]/shop/[id]/page.tsx:11` has a `generateStaticParams()` that queries Postgres,
+so the build reads the database while collecting page data. With nothing on port 5432 it fails
+with `Failed to collect page data for /[locale]/shop/[id]` and a `DatabaseError` — **that is an
+environment failure, not a code defect.** Start the database first (`pnpm dev` brings the
+container up, or run docker compose yourself).
+
+This is also why CI has no build job: `deploy-prod.yml:62-80` builds by **opening an SSH tunnel
+to the production database** and pointing `DATABASE_URL` at `127.0.0.1:5432` through a
+`neiist_readonly` role. A plain CI runner has no such tunnel. Consequence worth keeping in
+mind: **a production deploy reads production data at build time**, so a query added to
+`generateStaticParams` runs against live rows during every release.
 
 ---
 
