@@ -6,7 +6,7 @@ import { serverCheckRoles } from "@/lib/auth";
 
 export async function GET() {
   const userRoles = await serverCheckRoles([
-    UserRole._MEMBER,
+    UserRole._SHOP_MANAGER,
     UserRole._COORDINATOR,
     UserRole._ADMIN,
   ]);
