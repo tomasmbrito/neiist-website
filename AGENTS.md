@@ -72,9 +72,12 @@ production database**, which also means a release reads live production rows at 
 ## 4. What does not exist (do not claim otherwise)
 
 - **No tests and no test runner.** Do not claim coverage. Adding one needs approval.
-- **No transactions.** `withTransaction` and `BEGIN` appear nowhere. Every multi-table write —
-  order placement, payment, stock, discounts — is non-atomic. This is the largest correctness
-  risk in the repo.
+- **No `withTransaction` helper** — but atomicity lives in `plpgsql` and mostly it is there.
+  Every repository function is a single SQL call, and the 80 functions in `docker/schema.sql`
+  each run in their own transaction. `neiist.new_order` takes `FOR UPDATE` locks before checking
+  stock, so **order placement and stock decrement are not racy** — do not claim otherwise. The
+  real gap is TypeScript sequencing two SQL calls, as `finalizePaidOrder` does. Keep multi-step
+  writes inside one SQL function.
 - **No migration path.** `docker/schema.sql` runs only on an empty data directory; there is no
   `docker/migrations/` and no `psql` step in either deploy script. Editing `schema.sql` does
   **not** change production, whose real schema is unmeasured.
