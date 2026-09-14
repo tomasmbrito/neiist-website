@@ -96,6 +96,42 @@ Corepack (as shipped with Node 24.11.1, and 0.36.0) looks for `bin/pnpm.cjs`; pn
 `~/.cache/node/corepack/`, which looks like a corrupted download and is not — clearing the cache
 and re-downloading changes nothing. Fix: `npm i -g --force pnpm@12.3.4`.
 
+### A live-tested database can carry duplicate function overloads from the archived fork
+
+- **Symptom.** `function neiist.set_order_state(unknown, unknown, unknown) is not unique`
+  (Postgres `42725`) when calling a function that plainly exists in `docker/schema.sql` with
+  that exact signature. Also seen for `add_product`, `add_valid_department_role`, and
+  `update_valid_department_role` (the last of which doesn't exist in current `schema.sql` at
+  all — both its overloads were pure leftovers).
+- **Root cause.** A different failure mode of the same trap as the two entries above: a local
+  database whose data directory predates the 2026-09-14 reset still has function overloads
+  from the archived old-fork schema (an optimistic-concurrency `set_order_state` with a 4th
+  `p_expected_status` arg, an audit-trailed `add_valid_department_role` with a `u_actor_istid`
+  arg, an old 9-arg `add_product` before `order_start`/`estimated_delivery`/`size_guide` were
+  added). Unlike the "cannot change return type" case, a **different argument list** doesn't
+  conflict with `CREATE OR REPLACE FUNCTION` — Postgres treats it as a distinct overload, so
+  applying `schema.sql` standalone adds the new signature *alongside* the stale one instead of
+  erroring. The ambiguity only surfaces later, at call time, when Postgres can't pick a best
+  candidate.
+- **Fix.** Not a code change. Found every duplicate with:
+  ```sql
+  SELECT n.nspname, p.proname, COUNT(*) FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'neiist' GROUP BY 1,2 HAVING COUNT(*) > 1;
+  ```
+  then for each, compared `pg_get_function_identity_arguments(oid)` against the signature in
+  `docker/schema.sql`, and `DROP FUNCTION` the one that didn't match (or, for
+  `update_valid_department_role`, both — it isn't called from `src/` at all). Confirmed via
+  `grep` that nothing in `src/` calls the dropped signature before dropping it.
+- **Worth knowing.** The systematic table/column diff done for the two entries above does not
+  catch this — it only compares column lists, not function overload sets. If a database has
+  ever run an older `schema.sql`, run the duplicate-overload query above before trusting that a
+  table/column diff alone proves the database is current.
+- **Guard.** None. Verified by hand on 2026-09-15 while live-testing PR #281 with a real
+  Fenix-authenticated session — `POST /api/shop/orders/:id/pay` was the first call in this
+  session to hit the ambiguous `set_order_state`, since the atomic-payment rewrite (#282) that
+  replaced it isn't merged to `main` yet.
+
 ### `pnpm build` fails with `DB Broadcaster Connection Error` for a function that exists
 
 A local dev database created before a given function landed in `docker/schema.sql` doesn't
