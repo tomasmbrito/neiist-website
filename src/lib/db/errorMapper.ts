@@ -93,11 +93,20 @@ export function parseDatabaseError(error: unknown): DatabaseError {
   if (message.includes("Invalid review status"))
     return new DatabaseError("Estado de revisão inválido", 400);
 
-  if (message.includes("Insufficient permissions for application"))
+  if (message.includes("Insufficient permissions for"))
     return new DatabaseError("Sem permissões para esta candidatura", 403);
 
   if (message.includes("not found") && message.includes("Application"))
     return new DatabaseError("Candidatura não encontrada", 404);
+
+  if (message.includes("is not applying to"))
+    return new DatabaseError("Esta candidatura não inclui essa equipa", 400);
+
+  if (message.includes("is already final"))
+    return new DatabaseError("Esta decisão já foi finalizada", 409);
+
+  if (message.includes("Invalid decision") || message.includes("Invalid side"))
+    return new DatabaseError("Pedido inválido", 400);
 
   // Generic Postgres codes
   if (dbError?.code === "P0001") return new DatabaseError("Pedido inválido", 400); // generic RAISE EXCEPTION

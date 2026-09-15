@@ -531,3 +531,28 @@ export function getAccountDeletionTemplate(name: string): string {
     </div>
   `;
 }
+
+export function getApplicationDecisionTemplate(
+  candidateName: string,
+  teamName: string,
+  outcome: "accepted" | "rejected"
+): string {
+  const logoUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/neiist_logo.svg`;
+
+  const title = outcome === "accepted" ? "Foste aceite!" : "Resultado da tua candidatura";
+  const message =
+    outcome === "accepted"
+      ? `Parabéns! A equipa de <strong>${teamName}</strong> aceitou a tua candidatura. Entraremos em contacto em breve com os próximos passos.`
+      : `Obrigado pelo teu interesse na equipa de <strong>${teamName}</strong>. Desta vez não foi possível avançar com a tua candidatura para esta equipa, mas esperamos ver-te numa próxima edição.`;
+
+  return `
+    <div style="font-family: 'Secular One', Arial, sans-serif; background: #F2F2F7; padding: 2rem; border-radius: 1rem; color: #333;">
+      <img src="${logoUrl}" alt="NEIIST Logo" style="height: 48px; margin-bottom: 1rem;" />
+      <h2 style="color: #2863FD; margin-bottom: 1rem;">${title}</h2>
+      <p style="font-size: 1.1rem;">Olá ${candidateName}!</p>
+      <p>${message}</p>
+      <hr style="margin: 2rem 0; border: none; border-top: 1px solid #e9ecef;" />
+      <p style="font-size: 0.9rem; color: #6c757d;">NEIIST &mdash; Núcleo Estudantil de Informática do IST</p>
+    </div>
+  `;
+}

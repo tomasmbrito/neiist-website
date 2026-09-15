@@ -98,6 +98,68 @@
   color: #555;
 }
 
+.decisionPending {
+  background: #e0e0e0;
+  color: #555;
+}
+
+.decisionAccepted {
+  background: rgba(16, 185, 129, 0.15);
+  color: #067a55;
+}
+
+.decisionRejected {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+}
+
+.teamDecisionRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #eef2f6;
+}
+
+.teamDecisionRow:last-child {
+  border-bottom: none;
+}
+
+.teamDecisionName {
+  font-weight: 600;
+}
+
+.teamDecisionSide {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.decisionButtons {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.decisionButton {
+  border: 1px solid #e0e0e0;
+  background: white;
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.decisionButton:hover:not(:disabled) {
+  border-color: var(--primary-colour);
+}
+
+.decisionButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .emptyState {
   padding: 3rem 1rem;
   text-align: center;

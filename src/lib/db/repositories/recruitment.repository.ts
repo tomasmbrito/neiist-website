@@ -3,11 +3,14 @@ import {
   DbApplication,
   DbApplicationReviewUpdate,
   DbRecruitmentEdition,
+  DbTeamDecisionUpdate,
+  DecisionSide,
   RecruitmentEdition,
   SubmitApplicationInput,
   mapDbApplication,
   mapDbApplicationReviewUpdate,
   mapDbRecruitmentEdition,
+  mapDbTeamDecisionUpdate,
 } from "@/types/recruitment";
 import { db_query } from "@/lib/db/connection";
 
@@ -103,4 +106,38 @@ export const setApplicationReviewStatus = async (
     [applicationId, status, note, actorIstid]
   );
   return row ? mapDbApplicationReviewUpdate(row) : null;
+};
+
+export const isRecruitmentBoardMember = async (istid: string): Promise<boolean> => {
+  const {
+    rows: [row],
+  } = await db_query<{ is_recruitment_board_member: boolean }>(
+    `SELECT neiist.is_recruitment_board_member($1)`,
+    [istid]
+  );
+  return row?.is_recruitment_board_member ?? false;
+};
+
+export const getMyCoordinatedTeams = async (istid: string): Promise<string[]> => {
+  const { rows } = await db_query<{ department_name: string }>(
+    `SELECT * FROM neiist.get_my_coordinated_teams($1)`,
+    [istid]
+  );
+  return rows.map((r) => r.department_name);
+};
+
+export const setTeamDecision = async (
+  applicationId: number,
+  departmentName: string,
+  side: DecisionSide,
+  decision: "accepted" | "rejected",
+  actorIstid: string
+): Promise<ReturnType<typeof mapDbTeamDecisionUpdate> | null> => {
+  const {
+    rows: [row],
+  } = await db_query<DbTeamDecisionUpdate>(
+    `SELECT * FROM neiist.set_team_decision($1,$2,$3,$4,$5)`,
+    [applicationId, departmentName, side, decision, actorIstid]
+  );
+  return row ? mapDbTeamDecisionUpdate(row) : null;
 };

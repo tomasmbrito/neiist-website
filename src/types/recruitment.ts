@@ -1,5 +1,17 @@
 export type ApplicationReviewStatus = "new" | "contacted" | "archived";
 export type ApplicationCampus = "Alameda" | "Taguspark";
+export type TeamDecision = "pending" | "accepted" | "rejected";
+export type DecisionSide = "coordinator" | "board";
+
+// Built by get_recruitment_pipeline's jsonb_build_object with these exact camelCase keys, so
+// this is both the DB row shape and the app-facing shape — no separate Db* type or mapper
+// needed for this nested part.
+export interface ApplicationTeamState {
+  name: string;
+  coordinatorDecision: TeamDecision;
+  boardDecision: TeamDecision;
+  outcome: TeamDecision;
+}
 
 export interface DbRecruitmentEdition {
   id: number;
@@ -32,7 +44,7 @@ export interface DbApplication {
   review_note: string | null;
   reviewed_by_istid: string | null;
   submitted_at: string;
-  teams: string[];
+  teams: ApplicationTeamState[];
 }
 
 export interface Application {
@@ -52,7 +64,7 @@ export interface Application {
   reviewNote: string | null;
   reviewedByIstid: string | null;
   submittedAt: Date | string;
-  teams: string[];
+  teams: ApplicationTeamState[];
 }
 
 export interface SubmitApplicationInput {
@@ -94,6 +106,30 @@ export function mapDbApplicationReviewUpdate(row: DbApplicationReviewUpdate) {
     reviewStatus: row.review_status,
     reviewNote: row.review_note,
     reviewedByIstid: row.reviewed_by_istid,
+  };
+}
+
+export interface DbTeamDecisionUpdate {
+  application_id: number;
+  department_name: string;
+  coordinator_decision: TeamDecision;
+  board_decision: TeamDecision;
+  outcome: TeamDecision;
+  just_finalized: boolean;
+  applicant_name: string;
+  applicant_email: string;
+}
+
+export function mapDbTeamDecisionUpdate(row: DbTeamDecisionUpdate) {
+  return {
+    applicationId: row.application_id,
+    departmentName: row.department_name,
+    coordinatorDecision: row.coordinator_decision,
+    boardDecision: row.board_decision,
+    outcome: row.outcome,
+    justFinalized: row.just_finalized,
+    applicantName: row.applicant_name,
+    applicantEmail: row.applicant_email,
   };
 }
 

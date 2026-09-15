@@ -450,15 +450,30 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_application_per_edition
 CREATE INDEX IF NOT EXISTS idx_applications_edition ON neiist.applications (edition_id, submitted_at);
 
 -- APPLICATION TEAMS TABLE
--- The per-team child row (1-3 teams per application). Kept from day one even though no
--- per-team outcome ships this round, so a later dual-approval slice is an additive column on
--- this table, not a migration of it.
+-- The per-team child row (1-3 teams per application).
 CREATE TABLE IF NOT EXISTS neiist.application_teams (
   application_id  INT NOT NULL REFERENCES neiist.applications(id) ON DELETE CASCADE,
   department_name VARCHAR(30) NOT NULL REFERENCES neiist.departments(name),
   PRIMARY KEY (application_id, department_name)
 );
 CREATE INDEX IF NOT EXISTS idx_application_teams_by_team ON neiist.application_teams (department_name);
+
+-- Dual-approval decision state (docs/ai-workflow/how-neiist-works.md §4): a team's coordinator
+-- and at least one Direção member must both accept before a decision email goes out for that
+-- team. Two independent sides, each own actor + timestamp. The combined outcome is computed in
+-- queries (CASE WHEN both accepted THEN 'accepted' WHEN either rejected THEN 'rejected' ELSE
+-- 'pending' END), never stored — a third column that must be kept in sync with the two decision
+-- columns is a bug class worth not creating.
+ALTER TABLE neiist.application_teams
+  ADD COLUMN IF NOT EXISTS coordinator_decision TEXT NOT NULL DEFAULT 'pending'
+    CHECK (coordinator_decision IN ('pending', 'accepted', 'rejected')),
+  ADD COLUMN IF NOT EXISTS coordinator_decided_by VARCHAR(10) REFERENCES neiist.users(istid),
+  ADD COLUMN IF NOT EXISTS coordinator_decided_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS board_decision TEXT NOT NULL DEFAULT 'pending'
+    CHECK (board_decision IN ('pending', 'accepted', 'rejected')),
+  ADD COLUMN IF NOT EXISTS board_decided_by VARCHAR(10) REFERENCES neiist.users(istid),
+  ADD COLUMN IF NOT EXISTS board_decided_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS decision_email_sent_at TIMESTAMPTZ;
 
 --Triggers
 
@@ -3948,6 +3963,46 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Reusable: is this person authorized to act as a team's coordinator for this department (or
+-- an admin, who can act for any team)? Factored out because set_team_decision needs exactly
+-- this check for its coordinator side, and it's the same logic get_recruitment_pipeline and
+-- set_application_review_status each inline separately (left as-is there — not worth the
+-- churn of refactoring already-shipped, tested functions for stylistic tidiness alone).
+CREATE OR REPLACE FUNCTION neiist.is_team_coordinator_or_admin(
+  u_istid VARCHAR(10),
+  p_department_name VARCHAR(30)
+) RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM neiist.membership m
+    JOIN neiist.valid_department_roles vdr
+      ON m.department_name = vdr.department_name AND m.role_name = vdr.role_name
+    WHERE m.user_istid = u_istid
+      AND (m.to_date IS NULL OR m.to_date > CURRENT_DATE)
+      AND vdr.active = TRUE
+      AND (vdr.access = 'admin' OR (vdr.access = 'coordinator' AND m.department_name = p_department_name))
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
+
+-- Who counts as "the board" for recruitment dual-approval (how-neiist-works.md §4): active
+-- Direção membership, any role, PLUS the Dev-Team coordinator specifically — confirmed with
+-- Tomás, deliberate, not the same population as is_admin (Diretor de Atividades holds
+-- access='coordinator', not 'admin', and must still count as board).
+CREATE OR REPLACE FUNCTION neiist.is_recruitment_board_member(u_istid VARCHAR(10))
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM neiist.membership m
+    WHERE m.user_istid = u_istid
+      AND m.department_name = 'Direção'
+      AND (m.to_date IS NULL OR m.to_date > CURRENT_DATE)
+  ) OR EXISTS (
+    SELECT 1 FROM neiist.membership m
+    WHERE m.user_istid = u_istid
+      AND m.department_name = 'Dev-Team'
+      AND m.role_name = 'Coordenador'
+      AND (m.to_date IS NULL OR m.to_date > CURRENT_DATE)
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
+
 -- Scoped pipeline read: takes the caller's istid and returns only what they may see. An admin
 -- sees every application in the edition; a coordinator sees only applications naming at least
 -- one team they coordinate. Candidate PII (phone, email) never reaches the browser for a team
@@ -3955,6 +4010,10 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- filtering, agreed with Tomás because this is candidate PII, not task assignments. Mirrors
 -- get_user's own admin/coordinator derivation (membership + valid_department_roles.access),
 -- so "who is an admin" is answered the same way everywhere in the schema.
+--
+-- teams is JSONB (name + both decision sides + computed outcome per team), not plain names —
+-- DROP first, since CREATE OR REPLACE refuses to change a function's return shape in place.
+DROP FUNCTION IF EXISTS neiist.get_recruitment_pipeline(VARCHAR(10), INT);
 CREATE OR REPLACE FUNCTION neiist.get_recruitment_pipeline(
   u_istid      VARCHAR(10),
   p_edition_id INT
@@ -3975,7 +4034,7 @@ CREATE OR REPLACE FUNCTION neiist.get_recruitment_pipeline(
   review_note       TEXT,
   reviewed_by_istid VARCHAR(10),
   submitted_at      TIMESTAMPTZ,
-  teams             VARCHAR(30)[]
+  teams             JSONB
 ) AS $$
 DECLARE
   v_is_admin BOOLEAN;
@@ -3994,10 +4053,20 @@ BEGIN
   SELECT a.id, a.applicant_istid, a.name, a.email, a.phone, a.campus, a.course,
          a.curricular_year, a.prior_experience, a.motivation, a.fun_fact, a.wants_waitlist,
          a.review_status, a.review_note, a.reviewed_by_istid, a.submitted_at,
-         ARRAY(
-           SELECT at2.department_name FROM neiist.application_teams at2
-           WHERE at2.application_id = a.id ORDER BY at2.department_name
-         )::VARCHAR(30)[] AS teams
+         (
+           SELECT jsonb_agg(jsonb_build_object(
+             'name', at2.department_name,
+             'coordinatorDecision', at2.coordinator_decision,
+             'boardDecision', at2.board_decision,
+             'outcome', CASE
+               WHEN at2.coordinator_decision = 'accepted' AND at2.board_decision = 'accepted' THEN 'accepted'
+               WHEN at2.coordinator_decision = 'rejected' OR at2.board_decision = 'rejected' THEN 'rejected'
+               ELSE 'pending'
+             END
+           ) ORDER BY at2.department_name)
+           FROM neiist.application_teams at2
+           WHERE at2.application_id = a.id
+         ) AS teams
   FROM neiist.applications a
   WHERE a.edition_id = p_edition_id
     AND (
@@ -4018,6 +4087,104 @@ BEGIN
   ORDER BY a.submitted_at DESC;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+
+-- Which active teams can this person decide the coordinator side for? An admin gets every
+-- active team (is_team_coordinator_or_admin is true for any department when admin); a
+-- coordinator gets only their own. Used by the pipeline UI to show decision buttons only for
+-- teams the caller can actually use them on, instead of showing every button and relying on
+-- the 403 from set_team_decision to explain why most of them don't work.
+CREATE OR REPLACE FUNCTION neiist.get_my_coordinated_teams(u_istid VARCHAR(10))
+RETURNS TABLE (department_name VARCHAR(30)) AS $$
+  SELECT d.name FROM neiist.departments d
+  WHERE d.department_type = 'team' AND d.active = TRUE
+    AND neiist.is_team_coordinator_or_admin(u_istid, d.name);
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
+
+-- Sets one side (coordinator or board) of a team's dual-approval decision. Editable until the
+-- other side has also voted; locked once both sides are non-pending. FOR UPDATE locks the row
+-- before checking finality, so a coordinator and a board member deciding in the same instant
+-- can't both read "not yet final" and both believe they were the one who finalized it (which
+-- would double-send the decision email). A rejection from either side wins over an acceptance
+-- from the other — "yes" needs both sides to agree, "no" from either side is enough.
+CREATE OR REPLACE FUNCTION neiist.set_team_decision(
+  p_application_id  INT,
+  p_department_name VARCHAR(30),
+  p_side            TEXT,
+  p_decision        TEXT,
+  p_actor_istid     VARCHAR(10)
+) RETURNS TABLE (
+  application_id       INT,
+  department_name       VARCHAR(30),
+  coordinator_decision  TEXT,
+  board_decision        TEXT,
+  outcome               TEXT,
+  just_finalized         BOOLEAN,
+  applicant_name         TEXT,
+  applicant_email        TEXT
+) AS $$
+DECLARE
+  v_authorized     BOOLEAN;
+  v_coord_decision TEXT;
+  v_board_decision TEXT;
+BEGIN
+  IF p_decision NOT IN ('accepted', 'rejected') THEN
+    RAISE EXCEPTION 'Invalid decision: %', p_decision;
+  END IF;
+  IF p_side NOT IN ('coordinator', 'board') THEN
+    RAISE EXCEPTION 'Invalid side: %', p_side;
+  END IF;
+
+  IF p_side = 'coordinator' THEN
+    SELECT neiist.is_team_coordinator_or_admin(p_actor_istid, p_department_name) INTO v_authorized;
+  ELSE
+    SELECT neiist.is_recruitment_board_member(p_actor_istid) INTO v_authorized;
+  END IF;
+  IF NOT v_authorized THEN
+    RAISE EXCEPTION 'Insufficient permissions for % decision on application % / %',
+      p_side, p_application_id, p_department_name;
+  END IF;
+
+  SELECT application_teams.coordinator_decision, application_teams.board_decision
+    INTO v_coord_decision, v_board_decision
+  FROM neiist.application_teams
+  WHERE application_teams.application_id = p_application_id
+    AND application_teams.department_name = p_department_name
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Application % is not applying to %', p_application_id, p_department_name;
+  END IF;
+
+  IF v_coord_decision <> 'pending' AND v_board_decision <> 'pending' THEN
+    RAISE EXCEPTION 'Decision for application % / % is already final', p_application_id, p_department_name;
+  END IF;
+
+  IF p_side = 'coordinator' THEN
+    UPDATE neiist.application_teams
+    SET coordinator_decision = p_decision, coordinator_decided_by = p_actor_istid, coordinator_decided_at = NOW()
+    WHERE application_teams.application_id = p_application_id
+      AND application_teams.department_name = p_department_name;
+  ELSE
+    UPDATE neiist.application_teams
+    SET board_decision = p_decision, board_decided_by = p_actor_istid, board_decided_at = NOW()
+    WHERE application_teams.application_id = p_application_id
+      AND application_teams.department_name = p_department_name;
+  END IF;
+
+  RETURN QUERY
+  SELECT at.application_id, at.department_name, at.coordinator_decision, at.board_decision,
+    CASE
+      WHEN at.coordinator_decision = 'accepted' AND at.board_decision = 'accepted' THEN 'accepted'
+      WHEN at.coordinator_decision = 'rejected' OR at.board_decision = 'rejected' THEN 'rejected'
+      ELSE 'pending'
+    END,
+    (at.coordinator_decision <> 'pending' AND at.board_decision <> 'pending'),
+    a.name, a.email
+  FROM neiist.application_teams at
+  JOIN neiist.applications a ON a.id = at.application_id
+  WHERE at.application_id = p_application_id AND at.department_name = p_department_name;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Manual review tracking — no automated transitions, no emails, just a status + note an admin
 -- or coordinator can set while looking at the pipeline. Scoped exactly like
