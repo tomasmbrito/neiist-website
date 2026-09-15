@@ -168,6 +168,58 @@ and re-downloading changes nothing. Fix: `npm i -g --force pnpm@12.3.4`.
   `\dt neiist.*` and eyeball for table names that don't appear in current `docker/schema.sql`
   before trusting a local database is clean.
 - **Guard.** None. Verified by hand on 2026-09-16 while building the recruitment schema.
+- **Update, same day.** The recruitment subsystem turned out to be the tip of it — see the next
+  entry. The local database's whole `internal_events`/`tasks`/`requirements`/`event_plans`
+  workspace was also still there, and has now been removed too.
+
+### The local dev database also carried the entire old-fork members-only workspace
+
+- **Symptom.** `comm -13 <(schema.sql tables) <(actual tables)` — comparing every
+  `CREATE TABLE` in current `docker/schema.sql` against `pg_tables` for the `neiist` schema —
+  listed 18 tables with no definition anywhere in current code:
+  `event_attendees`, `event_collaborating_teams`, `event_documents`, `event_locations`,
+  `event_plan_collaborators`, `event_plan_externals`, `event_plan_todos`, `event_plans`,
+  `event_relations`, `internal_events`, `requirement_brief_fields`, `requirement_checklist`,
+  `requirement_deliverables`, `requirements`, `task_assignees`, `tasks`,
+  `team_access_grants`, `team_links`.
+  65 functions and 5 triggers referenced them.
+- **Root cause.** The same class as the entry above, at the scale of the *whole* archived
+  members-only workspace (`CLAUDE.md` §0/§8), not just recruitment: events/meetings, the
+  requerimentos checklist system, tasks, and per-team link/access-grant tables from
+  `archive/fase-1`, never dropped when the local database's data directory carried forward
+  across the 2026-09-14 reset.
+- **The difference from every other entry here: four of these tables had real data**, not just
+  orphaned schema. `internal_events` (14 rows), `event_attendees` (59), `event_locations` (20),
+  and `event_collaborating_teams` (4) — every `internal_events` row had a `notion_page_id`,
+  meaning this was a genuine historical Notion import (Dev-Team and Direção meeting records),
+  not seed/test data. Asked Tomás before touching it rather than assuming it was disposable.
+  Exported with `pg_dump --table=...` for all four to
+  `~/Downloads/neiist-old-workspace-events-backup-2026-09-16.sql` (kept outside the repo —
+  `event_attendees` ties real istids to real people, not something to commit to a fork), row
+  counts verified against the dump before deleting anything.
+- **Fix.** Not a code change. Confirmed all 18 tables and all 65+5 functions/triggers were
+  unreferenced by current `src/`/`docker/` (function bodies searched via
+  `pg_get_functiondef(oid) ILIKE '%table_name%'`, table names searched with plain `grep`),
+  confirmed which tables had real rows, exported those, then dropped triggers → functions →
+  tables (`CASCADE`, since `tasks`/`requirements` had FKs into `internal_events`) inside one
+  transaction with `-v ON_ERROR_STOP=1`.
+- **Verified.** `comm -13` re-run after cleanup: zero tables left that aren't in
+  `docker/schema.sql`. Zero duplicate function overloads anywhere in the schema. Real data
+  intact (31 users, 31 memberships, 0 orders — matches pre-cleanup counts). A fresh-database
+  build (`schema.sql` + `init.sql`) still succeeds with no new errors. `pnpm dev` + live browser
+  check of `/about-us` (renders the renamed teams and their descriptions correctly, confirming
+  neither the department rename nor this cleanup regressed anything), `/voting` (correctly
+  redirects to Fenix login, proving route protection still works), and `/shop` (loads, no
+  console errors).
+- **Worth knowing.** `pnpm build` (not `pnpm dev`) failed separately during this check with
+  `all generateStaticParams functions must return at least one result` at
+  `src/app/[locale]/shop/[id]/page.tsx:11` — **unrelated to this cleanup**, caused by
+  `neiist.products` being empty (every test product from earlier sessions was cleaned up per
+  this repo's own "leave no test data behind" rule) under `cacheComponents`. A stricter variant
+  of the already-documented "`pnpm build` needs a live database" trap below: it needs a
+  database with *data in the right shape*, not just a reachable connection. `pnpm dev` doesn't
+  hit `generateStaticParams` at all, which is why the live-browser check above still worked.
+- **Guard.** None. Verified by hand on 2026-09-16.
 
 ### `pnpm build` fails with `DB Broadcaster Connection Error` for a function that exists
 
