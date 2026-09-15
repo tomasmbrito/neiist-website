@@ -7,6 +7,8 @@
     "menu": {
       "profile": "Profile",
       "my_orders": "My Orders",
+      "my_application": "My Application",
+      "manage_recruitment": "Manage Applications",
       "manage_orders": "Manage Orders",
       "manage_team": "Manage Team",
       "manage_photos": "Manage Member Photos",
@@ -335,6 +337,12 @@
     "campus_alt": "IST Campus",
     "student_alt": "Student",
     "title": "Computer Science Student Branch at Instituto Superior Técnico"
+  },
+
+  "recruitment_banner": {
+    "title": "We're recruiting!",
+    "subtitle": "Join one of our teams and become part of the NEIIST community.",
+    "cta": "Apply now"
   },
 
   "sinfo": {
@@ -1271,7 +1279,11 @@
     "error_load_interview_slots": "Couldn't load the interview slots.",
     "error_add_interview_slot": "Couldn't publish the slot.",
     "error_remove_interview_slot": "Couldn't remove the slot.",
-    "error_cancel_booking": "Couldn't cancel the booking."
+    "error_cancel_booking": "Couldn't cancel the booking.",
+    "interview_request_pending_label": "Request pending",
+    "interview_confirmed_label": "Confirmed",
+    "interview_confirm_button": "Confirm",
+    "error_confirm_booking": "Couldn't confirm the interview."
   },
 
   "photo_management": {
@@ -1441,8 +1453,30 @@
     "interview_slots_hint": "Choose an available slot for each team below.",
     "interview_book_button": "Book",
     "interview_booking": "Booking...",
-    "interview_booked_confirmation": "Interview booked for {date}.",
-    "error_book_interview": "Couldn't book the interview."
+    "interview_booked_confirmation": "Request sent for {date}. Waiting for the team to confirm.",
+    "error_book_interview": "Couldn't book the interview.",
+    "review_title": "My Application",
+    "review_description": "Review your application details and each team's status below.",
+    "edit_button": "Edit Application",
+    "cancel_edit_button": "Cancel",
+    "save_changes_button": "Save Changes",
+    "saving_changes": "Saving...",
+    "error_update": "Couldn't save the changes.",
+    "application_locked_notice": "Your application can no longer be edited because you already have a confirmed interview.",
+    "step_submitted": "Application Submitted",
+    "step_interview": "Interview",
+    "step_result": "Result",
+    "decision_coordinator_label": "Coordinator",
+    "decision_board_label": "Direção",
+    "decision_outcome_label": "Result",
+    "decision_pending": "Pending",
+    "decision_accepted": "Accepted",
+    "decision_rejected": "Rejected",
+    "interview_request_pending": "Request sent, waiting for the team to confirm",
+    "interview_confirmed_for": "Interview confirmed for {date}",
+    "interview_requested_for": "Requested for {date}",
+    "interview_cancel_button": "Cancel",
+    "error_cancel_interview": "Couldn't cancel."
   },
 
   "unauthorized": {

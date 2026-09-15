@@ -22,14 +22,19 @@ export async function DELETE(
 
   try {
     const result = await cancelInterviewBooking(slotId, userRoles.user!.istid);
+    const wasConfirmed = result.wasConfirmed ?? false;
+    const subject = wasConfirmed
+      ? `Entrevista cancelada - ${result.departmentName}`
+      : `Pedido de entrevista recusado - ${result.departmentName}`;
 
     sendEmail({
       to: result.applicantEmail,
-      subject: `Entrevista cancelada - ${result.departmentName}`,
+      subject,
       html: getInterviewCancelledTemplate(
         result.applicantName,
         result.departmentName,
-        result.startsAt
+        result.startsAt,
+        wasConfirmed
       ),
     }).catch((err) =>
       console.warn("Failed to send cancellation email to candidate", { slotId, err })
@@ -37,11 +42,12 @@ export async function DELETE(
 
     sendEmail({
       to: result.coordinatorEmail,
-      subject: `Entrevista cancelada - ${result.departmentName}`,
+      subject,
       html: getInterviewCancelledTemplate(
         result.coordinatorName,
         result.departmentName,
-        result.startsAt
+        result.startsAt,
+        wasConfirmed
       ),
     }).catch((err) =>
       console.warn("Failed to send cancellation email to coordinator", { slotId, err })

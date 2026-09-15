@@ -490,6 +490,12 @@ CREATE TABLE IF NOT EXISTS neiist.interview_slots (
   location               TEXT,
   booked_application_id  INT REFERENCES neiist.applications(id) ON DELETE SET NULL,
   booked_at              TIMESTAMPTZ,
+  -- Booking is a request, not a final interview (confirmed 2026-09-18): booked_at marks the
+  -- request, confirmed_at/confirmed_by (both NULL until the team's coordinator/admin acts)
+  -- mark the confirmation. A declined-or-withdrawn request just frees the slot -- same
+  -- mechanism as cancelling an already-confirmed one.
+  confirmed_at           TIMESTAMPTZ,
+  confirmed_by           VARCHAR(10) REFERENCES neiist.users(istid),
   CONSTRAINT interview_slot_ends_after_starts CHECK (ends_at > starts_at)
 );
 -- A slot can be booked by at most one application. Nothing stops the same candidate holding
@@ -4343,7 +4349,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- A coordinator's own team view: every slot, booked or not, with who booked it.
+-- A coordinator's own team view: every slot, booked or not, with who booked it and whether
+-- it's confirmed yet -- adds confirmed_at, so DROP first (return shape changed).
+DROP FUNCTION IF EXISTS neiist.get_interview_slots(VARCHAR(30), VARCHAR(10));
 CREATE OR REPLACE FUNCTION neiist.get_interview_slots(
   p_department_name VARCHAR(30),
   p_actor_istid VARCHAR(10)
@@ -4354,7 +4362,8 @@ CREATE OR REPLACE FUNCTION neiist.get_interview_slots(
   location               TEXT,
   booked_application_id  INT,
   booked_applicant_name  TEXT,
-  booked_at              TIMESTAMPTZ
+  booked_at              TIMESTAMPTZ,
+  confirmed_at           TIMESTAMPTZ
 ) AS $$
 BEGIN
   IF NOT neiist.is_team_coordinator_or_admin(p_actor_istid, p_department_name) THEN
@@ -4362,7 +4371,8 @@ BEGIN
   END IF;
 
   RETURN QUERY
-  SELECT s.id, s.starts_at, s.ends_at, s.location, s.booked_application_id, a.name, s.booked_at
+  SELECT s.id, s.starts_at, s.ends_at, s.location, s.booked_application_id, a.name, s.booked_at,
+         s.confirmed_at
   FROM neiist.interview_slots s
   LEFT JOIN neiist.applications a ON a.id = s.booked_application_id
   WHERE s.department_name = p_department_name
@@ -4484,7 +4494,10 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- reschedule is cancel-then-book (confirmed with Tomás, 2026-09-16) -- not a separate concept,
 -- so this is also the only path a rescheduled interview goes through. Names/emails are read
 -- into variables before the slot is freed, so the caller has what it needs to notify both
--- sides even though the booking itself no longer exists afterward.
+-- sides even though the booking itself no longer exists afterward. was_confirmed lets the
+-- caller pick "your request wasn't accepted" vs "your confirmed interview was cancelled" copy
+-- -- return shape changed (added was_confirmed), so DROP first.
+DROP FUNCTION IF EXISTS neiist.cancel_interview_booking(INT, VARCHAR(10));
 CREATE OR REPLACE FUNCTION neiist.cancel_interview_booking(
   p_slot_id INT,
   p_actor_istid VARCHAR(10)
@@ -4496,7 +4509,8 @@ CREATE OR REPLACE FUNCTION neiist.cancel_interview_booking(
   applicant_name       TEXT,
   applicant_email      TEXT,
   coordinator_name     TEXT,
-  coordinator_email   TEXT
+  coordinator_email   TEXT,
+  was_confirmed       BOOLEAN
 ) AS $$
 DECLARE
   v_department_name       VARCHAR(30);
@@ -4504,6 +4518,7 @@ DECLARE
   v_location               TEXT;
   v_booked_application_id INT;
   v_coordinator_istid     VARCHAR(10);
+  v_confirmed_at           TIMESTAMPTZ;
   v_applicant_istid       VARCHAR(10);
   v_applicant_name         TEXT;
   v_applicant_email       TEXT;
@@ -4511,8 +4526,10 @@ DECLARE
   v_coordinator_email     TEXT;
 BEGIN
   SELECT interview_slots.department_name, interview_slots.starts_at, interview_slots.location,
-         interview_slots.booked_application_id, interview_slots.coordinator_istid
-    INTO v_department_name, v_starts_at, v_location, v_booked_application_id, v_coordinator_istid
+         interview_slots.booked_application_id, interview_slots.coordinator_istid,
+         interview_slots.confirmed_at
+    INTO v_department_name, v_starts_at, v_location, v_booked_application_id, v_coordinator_istid,
+         v_confirmed_at
   FROM neiist.interview_slots
   WHERE interview_slots.id = p_slot_id
   FOR UPDATE;
@@ -4540,11 +4557,205 @@ BEGIN
   WHERE users.istid = v_coordinator_istid;
 
   UPDATE neiist.interview_slots
-  SET booked_application_id = NULL, booked_at = NULL
+  SET booked_application_id = NULL, booked_at = NULL, confirmed_at = NULL, confirmed_by = NULL
   WHERE interview_slots.id = p_slot_id;
 
   RETURN QUERY
   SELECT p_slot_id, v_department_name, v_starts_at, v_location,
-         v_applicant_name, v_applicant_email, v_coordinator_name, v_coordinator_email;
+         v_applicant_name, v_applicant_email, v_coordinator_name, v_coordinator_email,
+         (v_confirmed_at IS NOT NULL);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Coordinator/admin-only: turns a requested booking into a confirmed one. FOR UPDATE locked,
+-- same reasoning as book_interview_slot -- two coordinators confirming at once shouldn't both
+-- believe they were first.
+CREATE OR REPLACE FUNCTION neiist.confirm_interview_booking(
+  p_slot_id INT,
+  p_actor_istid VARCHAR(10)
+) RETURNS TABLE (
+  id                 INT,
+  department_name     VARCHAR(30),
+  starts_at           TIMESTAMPTZ,
+  ends_at             TIMESTAMPTZ,
+  location             TEXT,
+  applicant_name       TEXT,
+  applicant_email      TEXT,
+  coordinator_name     TEXT,
+  coordinator_email   TEXT
+) AS $$
+DECLARE
+  v_department_name       VARCHAR(30);
+  v_booked_application_id INT;
+  v_confirmed_at           TIMESTAMPTZ;
+  v_coordinator_istid     VARCHAR(10);
+BEGIN
+  SELECT interview_slots.department_name, interview_slots.booked_application_id,
+         interview_slots.confirmed_at, interview_slots.coordinator_istid
+    INTO v_department_name, v_booked_application_id, v_confirmed_at, v_coordinator_istid
+  FROM neiist.interview_slots
+  WHERE interview_slots.id = p_slot_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Interview slot % not found', p_slot_id;
+  END IF;
+
+  IF NOT neiist.is_team_coordinator_or_admin(p_actor_istid, v_department_name) THEN
+    RAISE EXCEPTION 'Insufficient permissions to confirm interview slot %', p_slot_id;
+  END IF;
+
+  IF v_booked_application_id IS NULL THEN
+    RAISE EXCEPTION 'Interview slot % is not booked', p_slot_id;
+  END IF;
+
+  IF v_confirmed_at IS NOT NULL THEN
+    RAISE EXCEPTION 'Interview slot % is already confirmed', p_slot_id;
+  END IF;
+
+  UPDATE neiist.interview_slots
+  SET confirmed_at = NOW(), confirmed_by = p_actor_istid
+  WHERE interview_slots.id = p_slot_id;
+
+  RETURN QUERY
+  SELECT s.id, s.department_name, s.starts_at, s.ends_at, s.location,
+         a.name, a.email, u.name, u.email
+  FROM neiist.interview_slots s
+  JOIN neiist.applications a ON a.id = v_booked_application_id
+  JOIN neiist.users u ON u.istid = s.coordinator_istid
+  WHERE s.id = p_slot_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- The candidate's own full application, for the self-service review page (confirmed with
+-- Tomás, 2026-09-18): every field, plus is_locked (true once any team has a confirmed
+-- interview -- the edit gate) and a per-team JSONB combining decision state with interview
+-- state, so the page can render the whole progress picture in one query.
+CREATE OR REPLACE FUNCTION neiist.get_my_application_full(
+  p_application_id  INT,
+  p_applicant_istid VARCHAR(10)
+) RETURNS TABLE (
+  id                INT,
+  applicant_istid   VARCHAR(10),
+  name              TEXT,
+  email             TEXT,
+  phone             TEXT,
+  campus            TEXT,
+  course            TEXT,
+  curricular_year   SMALLINT,
+  prior_experience  TEXT,
+  motivation        TEXT,
+  fun_fact          TEXT,
+  wants_waitlist    BOOLEAN,
+  review_status     TEXT,
+  submitted_at      TIMESTAMPTZ,
+  is_locked         BOOLEAN,
+  teams             JSONB
+) AS $$
+  SELECT a.id, a.applicant_istid, a.name, a.email, a.phone, a.campus, a.course,
+         a.curricular_year, a.prior_experience, a.motivation, a.fun_fact, a.wants_waitlist,
+         a.review_status, a.submitted_at,
+         EXISTS (
+           SELECT 1 FROM neiist.interview_slots
+           WHERE booked_application_id = a.id AND confirmed_at IS NOT NULL
+         ),
+         (
+           SELECT jsonb_agg(jsonb_build_object(
+             'name', at.department_name,
+             'coordinatorDecision', at.coordinator_decision,
+             'boardDecision', at.board_decision,
+             'outcome', CASE
+               WHEN at.coordinator_decision = 'accepted' AND at.board_decision = 'accepted' THEN 'accepted'
+               WHEN at.coordinator_decision = 'rejected' OR at.board_decision = 'rejected' THEN 'rejected'
+               ELSE 'pending'
+             END,
+             'interview', (
+               SELECT jsonb_build_object(
+                 'slotId', s.id,
+                 'startsAt', s.starts_at,
+                 'location', s.location,
+                 'status', CASE WHEN s.confirmed_at IS NOT NULL THEN 'confirmed' ELSE 'requested' END
+               )
+               FROM neiist.interview_slots s
+               WHERE s.booked_application_id = a.id AND s.department_name = at.department_name
+               LIMIT 1
+             )
+           ) ORDER BY at.department_name)
+           FROM neiist.application_teams at
+           WHERE at.application_id = a.id
+         )
+  FROM neiist.applications a
+  WHERE a.id = p_application_id AND a.applicant_istid = p_applicant_istid;
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
+
+-- Lets the candidate edit their own application -- personal fields and team choices -- for as
+-- long as it's not locked (see get_my_application_full). Team diffing mirrors submit_application:
+-- teams dropped from the new list are deleted (freeing any interview slot booked for them --
+-- safe, since the lock check above guarantees nothing dropped here was confirmed); teams that
+-- stay are left untouched so their decision state survives; new teams get a fresh pending row.
+CREATE OR REPLACE FUNCTION neiist.update_my_application(
+  p_application_id   INT,
+  p_applicant_istid  VARCHAR(10),
+  p_phone            TEXT,
+  p_campus           TEXT,
+  p_course           TEXT,
+  p_curricular_year  SMALLINT,
+  p_prior_experience TEXT,
+  p_motivation       TEXT,
+  p_fun_fact         TEXT,
+  p_wants_waitlist   BOOLEAN,
+  p_departments      VARCHAR(30)[]
+) RETURNS SETOF neiist.applications AS $$
+DECLARE
+  v_dept VARCHAR(30);
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM neiist.applications
+    WHERE applications.id = p_application_id AND applications.applicant_istid = p_applicant_istid
+  ) THEN
+    RAISE EXCEPTION 'Application % does not belong to caller', p_application_id;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM neiist.interview_slots
+    WHERE booked_application_id = p_application_id AND confirmed_at IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'Application % has a confirmed interview and can no longer be edited', p_application_id;
+  END IF;
+
+  IF p_departments IS NULL OR array_length(p_departments, 1) IS NULL
+     OR array_length(p_departments, 1) < 1 OR array_length(p_departments, 1) > 3 THEN
+    RAISE EXCEPTION 'Application requires 1 to 3 teams';
+  END IF;
+
+  FOREACH v_dept IN ARRAY p_departments LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM neiist.departments
+      WHERE name = v_dept AND active = TRUE AND department_type = 'team'
+    ) THEN
+      RAISE EXCEPTION 'department is not an active team: %', v_dept;
+    END IF;
+  END LOOP;
+
+  UPDATE neiist.applications
+  SET phone = p_phone, campus = p_campus, course = p_course, curricular_year = p_curricular_year,
+      prior_experience = p_prior_experience, motivation = p_motivation, fun_fact = p_fun_fact,
+      wants_waitlist = p_wants_waitlist
+  WHERE applications.id = p_application_id;
+
+  UPDATE neiist.interview_slots
+  SET booked_application_id = NULL, booked_at = NULL, confirmed_at = NULL, confirmed_by = NULL
+  WHERE booked_application_id = p_application_id
+    AND department_name <> ALL (p_departments);
+
+  DELETE FROM neiist.application_teams
+  WHERE application_id = p_application_id
+    AND department_name <> ALL (p_departments);
+
+  INSERT INTO neiist.application_teams (application_id, department_name)
+    SELECT DISTINCT p_application_id, d FROM unnest(p_departments) AS d
+    ON CONFLICT (application_id, department_name) DO NOTHING;
+
+  RETURN QUERY SELECT * FROM neiist.applications WHERE applications.id = p_application_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

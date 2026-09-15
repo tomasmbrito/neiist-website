@@ -568,31 +568,40 @@ function formatInterviewTime(startsAt: string | Date): string {
   });
 }
 
-// Sent together, synchronously, right after a booking succeeds -- one to the candidate, one to
-// the coordinator who published the slot. Any later change (cancellation, or a reschedule
-// modelled as cancel-then-rebook) goes through this same pair plus the cancellation pair below,
-// so both sides always get a fresh confirmation of whatever the interview's current state is.
+// Sent together, synchronously, right after a booking or a confirmation -- one to the
+// candidate, one to the coordinator. Booking a slot is only a request (confirmed with Tomás,
+// 2026-09-18): status "requested" fires right after book_interview_slot, "confirmed" fires
+// after the team's coordinator/admin calls confirm_interview_booking. A reschedule
+// (cancel-then-rebook) goes through the cancellation template below, then this one again with
+// status "requested" for the new slot.
 export function getInterviewBookedTemplate(
   recipientName: string,
   otherPartyName: string,
   teamName: string,
   startsAt: string | Date,
   location: string | null,
-  audience: "candidate" | "coordinator"
+  audience: "candidate" | "coordinator",
+  status: "requested" | "confirmed"
 ): string {
   const logoUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/neiist_logo.svg`;
   const whenText = formatInterviewTime(startsAt);
   const locationText = location ? ` em <strong>${location}</strong>` : "";
 
+  const title = status === "confirmed" ? "Entrevista Confirmada" : "Pedido de Entrevista Recebido";
+
   const message =
-    audience === "candidate"
-      ? `A tua entrevista com a equipa de <strong>${teamName}</strong> está marcada para <strong>${whenText}</strong>${locationText}.`
-      : `${otherPartyName} marcou uma entrevista contigo para a equipa de <strong>${teamName}</strong>, no dia <strong>${whenText}</strong>${locationText}.`;
+    status === "requested"
+      ? audience === "candidate"
+        ? `Pedimos o teu horário para a equipa de <strong>${teamName}</strong> no dia <strong>${whenText}</strong>${locationText}. Aguarda a confirmação da equipa.`
+        : `${otherPartyName} pediu um horário de entrevista contigo para a equipa de <strong>${teamName}</strong>, no dia <strong>${whenText}</strong>${locationText}. Confirma o pedido na página de gestão de candidaturas.`
+      : audience === "candidate"
+        ? `A tua entrevista com a equipa de <strong>${teamName}</strong> está confirmada para <strong>${whenText}</strong>${locationText}.`
+        : `A entrevista com ${otherPartyName} para a equipa de <strong>${teamName}</strong> está confirmada para <strong>${whenText}</strong>${locationText}.`;
 
   return `
     <div style="font-family: 'Secular One', Arial, sans-serif; background: #F2F2F7; padding: 2rem; border-radius: 1rem; color: #333;">
       <img src="${logoUrl}" alt="NEIIST Logo" style="height: 48px; margin-bottom: 1rem;" />
-      <h2 style="color: #2863FD; margin-bottom: 1rem;">Entrevista Marcada</h2>
+      <h2 style="color: #2863FD; margin-bottom: 1rem;">${title}</h2>
       <p style="font-size: 1.1rem;">Olá ${recipientName}!</p>
       <p>${message}</p>
       <hr style="margin: 2rem 0; border: none; border-top: 1px solid #e9ecef;" />
@@ -601,23 +610,32 @@ export function getInterviewBookedTemplate(
   `;
 }
 
-// Sent to both sides the moment a booking is cancelled -- including a reschedule, which is
-// cancel-then-rebook, so it also fires this template before the fresh getInterviewBookedTemplate
-// pair for the new slot (confirmed with Tomás, 2026-09-16: every change notifies both parties).
+// Sent to both sides the moment a booking is cancelled -- including a declined request (a
+// coordinator cancelling a not-yet-confirmed request) and a reschedule (cancel-then-rebook),
+// which also fires this template before the fresh getInterviewBookedTemplate pair for the new
+// slot (confirmed with Tomás, 2026-09-16: every change notifies both parties). wasConfirmed
+// picks whether this reads as "your confirmed interview was cancelled" or "your request
+// wasn't accepted" -- the two are different news for the candidate.
 export function getInterviewCancelledTemplate(
   recipientName: string,
   teamName: string,
-  startsAt: string | Date
+  startsAt: string | Date,
+  wasConfirmed: boolean
 ): string {
   const logoUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/neiist_logo.svg`;
   const whenText = formatInterviewTime(startsAt);
 
+  const title = wasConfirmed ? "Entrevista Cancelada" : "Pedido de Entrevista Recusado";
+  const message = wasConfirmed
+    ? `A entrevista com a equipa de <strong>${teamName}</strong>, marcada para <strong>${whenText}</strong>, foi cancelada.`
+    : `O pedido de entrevista com a equipa de <strong>${teamName}</strong>, para <strong>${whenText}</strong>, não foi aceite. Podes escolher outro horário disponível.`;
+
   return `
     <div style="font-family: 'Secular One', Arial, sans-serif; background: #F2F2F7; padding: 2rem; border-radius: 1rem; color: #333;">
       <img src="${logoUrl}" alt="NEIIST Logo" style="height: 48px; margin-bottom: 1rem;" />
-      <h2 style="color: #2863FD; margin-bottom: 1rem;">Entrevista Cancelada</h2>
+      <h2 style="color: #2863FD; margin-bottom: 1rem;">${title}</h2>
       <p style="font-size: 1.1rem;">Olá ${recipientName}!</p>
-      <p>A entrevista com a equipa de <strong>${teamName}</strong>, marcada para <strong>${whenText}</strong>, foi cancelada.</p>
+      <p>${message}</p>
       <hr style="margin: 2rem 0; border: none; border-top: 1px solid #e9ecef;" />
       <p style="font-size: 0.9rem; color: #6c757d;">NEIIST &mdash; Núcleo Estudantil de Informática do IST</p>
     </div>

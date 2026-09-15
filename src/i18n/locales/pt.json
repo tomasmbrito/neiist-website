@@ -7,6 +7,8 @@
     "menu": {
       "profile": "Perfil",
       "my_orders": "As Minhas Encomendas",
+      "my_application": "A Minha Candidatura",
+      "manage_recruitment": "Gerir Candidaturas",
       "manage_orders": "Gerir Encomendas",
       "manage_team": "Gerir Equipa",
       "manage_photos": "Gerir Fotos Membros",
@@ -335,6 +337,12 @@
     "campus_alt": "Campus do IST",
     "student_alt": "Estudante",
     "title": "Núcleo Estudantil de Informática do Instituto Superior Técnico"
+  },
+
+  "recruitment_banner": {
+    "title": "Estamos a recrutar!",
+    "subtitle": "Junta-te a uma das nossas equipas e faz parte da comunidade NEIIST.",
+    "cta": "Candidata-te"
   },
 
   "sinfo": {
@@ -1271,7 +1279,11 @@
     "error_load_interview_slots": "Não foi possível carregar os horários.",
     "error_add_interview_slot": "Não foi possível publicar o horário.",
     "error_remove_interview_slot": "Não foi possível remover o horário.",
-    "error_cancel_booking": "Não foi possível cancelar a reserva."
+    "error_cancel_booking": "Não foi possível cancelar a reserva.",
+    "interview_request_pending_label": "Pedido pendente",
+    "interview_confirmed_label": "Confirmada",
+    "interview_confirm_button": "Confirmar",
+    "error_confirm_booking": "Não foi possível confirmar a entrevista."
   },
 
   "photo_management": {
@@ -1441,8 +1453,30 @@
     "interview_slots_hint": "Escolhe um horário disponível para cada equipa abaixo.",
     "interview_book_button": "Marcar",
     "interview_booking": "A marcar...",
-    "interview_booked_confirmation": "Entrevista marcada para {date}.",
-    "error_book_interview": "Não foi possível marcar a entrevista."
+    "interview_booked_confirmation": "Pedido enviado para {date}. Aguarda a confirmação da equipa.",
+    "error_book_interview": "Não foi possível marcar a entrevista.",
+    "review_title": "A Minha Candidatura",
+    "review_description": "Revê os dados da tua candidatura e o estado de cada equipa abaixo.",
+    "edit_button": "Editar Candidatura",
+    "cancel_edit_button": "Cancelar",
+    "save_changes_button": "Guardar Alterações",
+    "saving_changes": "A guardar...",
+    "error_update": "Não foi possível guardar as alterações.",
+    "application_locked_notice": "A tua candidatura já não pode ser editada porque já tens uma entrevista confirmada.",
+    "step_submitted": "Candidatura Submetida",
+    "step_interview": "Entrevista",
+    "step_result": "Resultado",
+    "decision_coordinator_label": "Coordenador",
+    "decision_board_label": "Direção",
+    "decision_outcome_label": "Resultado",
+    "decision_pending": "Pendente",
+    "decision_accepted": "Aceite",
+    "decision_rejected": "Rejeitado",
+    "interview_request_pending": "Pedido enviado, aguarda confirmação da equipa",
+    "interview_confirmed_for": "Entrevista confirmada para {date}",
+    "interview_requested_for": "Pedido para {date}",
+    "interview_cancel_button": "Cancelar",
+    "error_cancel_interview": "Não foi possível cancelar."
   },
 
   "unauthorized": {
