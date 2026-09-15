@@ -1256,7 +1256,22 @@
     "decision_accept_button": "Aceitar",
     "decision_reject_button": "Rejeitar",
     "decision_outcome_label": "Resultado",
-    "error_decision": "Não foi possível registar a decisão."
+    "error_decision": "Não foi possível registar a decisão.",
+    "interviews_title": "Entrevistas",
+    "interview_starts_label": "Data e Hora",
+    "interview_location_label": "Local",
+    "interview_location_placeholder": "Ex: Sala de Reuniões NEIIST",
+    "interview_publish_button": "Publicar Horário",
+    "interview_publishing": "A publicar...",
+    "interview_no_slots": "Ainda não há horários publicados para esta equipa.",
+    "interview_free_label": "Livre",
+    "interview_booked_by_label": "Reservado por",
+    "interview_remove_button": "Remover",
+    "interview_cancel_booking_button": "Cancelar Reserva",
+    "error_load_interview_slots": "Não foi possível carregar os horários.",
+    "error_add_interview_slot": "Não foi possível publicar o horário.",
+    "error_remove_interview_slot": "Não foi possível remover o horário.",
+    "error_cancel_booking": "Não foi possível cancelar a reserva."
   },
 
   "photo_management": {
@@ -1421,7 +1436,13 @@
     "error_too_many_teams": "Podes escolher no máximo 3 equipas.",
     "error_submit": "Não foi possível submeter a candidatura. Tenta novamente.",
     "success_title": "Candidatura enviada!",
-    "success_description": "Obrigado pela tua candidatura. Entraremos em contacto em breve."
+    "success_description": "Obrigado pela tua candidatura. Entraremos em contacto em breve.",
+    "interview_slots_title": "Marca a tua entrevista",
+    "interview_slots_hint": "Escolhe um horário disponível para cada equipa abaixo.",
+    "interview_book_button": "Marcar",
+    "interview_booking": "A marcar...",
+    "interview_booked_confirmation": "Entrevista marcada para {date}.",
+    "error_book_interview": "Não foi possível marcar a entrevista."
   },
 
   "unauthorized": {

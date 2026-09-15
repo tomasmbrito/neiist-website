@@ -1,14 +1,23 @@
 import {
   Application,
+  BookableInterviewSlot,
   DbApplication,
   DbApplicationReviewUpdate,
+  DbBookableInterviewSlot,
+  DbInterviewBookingResult,
+  DbInterviewSlot,
   DbRecruitmentEdition,
   DbTeamDecisionUpdate,
   DecisionSide,
+  InterviewBookingResult,
+  InterviewSlot,
   RecruitmentEdition,
   SubmitApplicationInput,
   mapDbApplication,
   mapDbApplicationReviewUpdate,
+  mapDbBookableInterviewSlot,
+  mapDbInterviewBookingResult,
+  mapDbInterviewSlot,
   mapDbRecruitmentEdition,
   mapDbTeamDecisionUpdate,
 } from "@/types/recruitment";
@@ -140,4 +149,74 @@ export const setTeamDecision = async (
     [applicationId, departmentName, side, decision, actorIstid]
   );
   return row ? mapDbTeamDecisionUpdate(row) : null;
+};
+
+export const addInterviewSlot = async (
+  departmentName: string,
+  actorIstid: string,
+  startsAt: Date | string,
+  location: string | null
+): Promise<InterviewSlot> => {
+  const {
+    rows: [row],
+  } = await db_query<DbInterviewSlot>(`SELECT * FROM neiist.add_interview_slot($1,$2,$3,$4)`, [
+    departmentName,
+    actorIstid,
+    startsAt,
+    location,
+  ]);
+  return mapDbInterviewSlot(row);
+};
+
+export const removeInterviewSlot = async (slotId: number, actorIstid: string): Promise<void> => {
+  await db_query(`SELECT neiist.remove_interview_slot($1, $2)`, [slotId, actorIstid]);
+};
+
+export const getInterviewSlots = async (
+  departmentName: string,
+  actorIstid: string
+): Promise<InterviewSlot[]> => {
+  const { rows } = await db_query<DbInterviewSlot>(
+    `SELECT * FROM neiist.get_interview_slots($1, $2)`,
+    [departmentName, actorIstid]
+  );
+  return rows.map(mapDbInterviewSlot);
+};
+
+export const getBookableInterviewSlots = async (
+  applicationId: number,
+  applicantIstid: string
+): Promise<BookableInterviewSlot[]> => {
+  const { rows } = await db_query<DbBookableInterviewSlot>(
+    `SELECT * FROM neiist.get_bookable_interview_slots($1, $2)`,
+    [applicationId, applicantIstid]
+  );
+  return rows.map(mapDbBookableInterviewSlot);
+};
+
+export const bookInterviewSlot = async (
+  slotId: number,
+  applicationId: number,
+  applicantIstid: string
+): Promise<InterviewBookingResult> => {
+  const {
+    rows: [row],
+  } = await db_query<DbInterviewBookingResult>(
+    `SELECT * FROM neiist.book_interview_slot($1, $2, $3)`,
+    [slotId, applicationId, applicantIstid]
+  );
+  return mapDbInterviewBookingResult(row);
+};
+
+export const cancelInterviewBooking = async (
+  slotId: number,
+  actorIstid: string
+): Promise<InterviewBookingResult> => {
+  const {
+    rows: [row],
+  } = await db_query<DbInterviewBookingResult>(
+    `SELECT * FROM neiist.cancel_interview_booking($1, $2)`,
+    [slotId, actorIstid]
+  );
+  return mapDbInterviewBookingResult(row);
 };

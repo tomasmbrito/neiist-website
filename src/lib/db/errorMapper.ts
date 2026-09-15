@@ -108,6 +108,28 @@ export function parseDatabaseError(error: unknown): DatabaseError {
   if (message.includes("Invalid decision") || message.includes("Invalid side"))
     return new DatabaseError("Pedido inválido", 400);
 
+  // Interview slot errors
+  if (message.includes("Insufficient permissions to") && message.includes("slot"))
+    return new DatabaseError("Sem permissões para esta ação", 403);
+
+  if (message.includes("Interview slot") && message.includes("not found"))
+    return new DatabaseError("Horário de entrevista não encontrado", 404);
+
+  if (message.includes("is already booked"))
+    return new DatabaseError("Este horário já está reservado", 409);
+
+  if (message.includes("Interview slot") && message.includes("is not booked"))
+    return new DatabaseError("Este horário ainda não foi reservado", 409);
+
+  if (message.includes("does not belong to caller"))
+    return new DatabaseError("Candidatura não encontrada", 403);
+
+  if (message.includes("did not apply to"))
+    return new DatabaseError("A candidatura não se aplicou a esta equipa", 400);
+
+  if (message.includes("already holds a slot for"))
+    return new DatabaseError("Já tens um horário marcado para esta equipa", 409);
+
   // Generic Postgres codes
   if (dbError?.code === "P0001") return new DatabaseError("Pedido inválido", 400); // generic RAISE EXCEPTION
 

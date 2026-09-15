@@ -25,7 +25,14 @@ async function RecruitmentContent({ params }: { params: LocaleParams }) {
 
   const existing = await getMyApplication(user.istid, edition.id);
   if (existing) {
-    return <AlreadyApplied dict={dict} />;
+    return (
+      <AlreadyApplied
+        applicationId={existing.id}
+        applicantIstid={user.istid}
+        dict={dict}
+        locale={locale}
+      />
+    );
   }
 
   const teams = (await getAllTeams()).filter((t) => t.active);

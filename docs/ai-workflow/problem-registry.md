@@ -280,3 +280,45 @@ standalone-`CREATE OR REPLACE FUNCTION` technique documented in `CLAUDE.md` §4 
   'pending'`) and gated both button sets on `!isTeamLocked(team)`.
 - **Guard.** None. Caught only by live-testing the actual click flow with a real session, not
   by any gate — worth re-checking by hand if this component is touched again.
+
+## Fixed, 2026-09-17 — interview scheduling (#298)
+
+### Adjacent JSX string expressions merge into one DOM text node, silently defeating a flex `gap`
+
+- **Symptom.** Live-tested in browser: a slot's location and its status label rendered glued
+  together with no space — `"Sala NEIISTLivre"` — even though the parent `<span>` is
+  `display: flex; gap: 0.5rem`.
+- **Root cause.** `{slot.location}{dict.interview_free_label}` — two adjacent JSX expressions
+  with no element between them — become a *single* DOM text node once React renders them (React
+  concatenates adjacent string/number children into one text run). A flex `gap` only applies
+  *between* sibling elements; one merged text node is one item, so there's nothing to put a gap
+  between.
+- **Fix.** Wrap each independently-varying piece of text in its own element (`<span>{...}</span>`)
+  so each becomes a real flex item. Applies generally: any time two JSX expressions that render
+  plain strings sit side by side inside a flex/gap container, wrap each in its own element rather
+  than assuming the gap will separate them.
+- **Guard.** None. Caught only by a live screenshot, not by any gate — the compiled output was
+  valid HTML/CSS, just visually wrong.
+
+### The blanket `/api/recruitment/*` rate limit (5 requests/hour/user) throttles the admin UI, not just public submission
+
+- **Symptom.** Live-tested in browser: publishing an interview slot, then cancelling a booking,
+  each triggered a "Too many requests" toast on the very next reload — well within a single
+  short test session, as an authenticated admin.
+- **Root cause.** `getRateLimitRule` in `src/lib/security/rateLimitRules.ts` matches
+  `pathname.startsWith("/api/recruitment/")` and applies `{ limit: 5, windowMs: 60 * MIN,
+  useUser: true }` to *every* route under that prefix. That limit was sized for the public,
+  unauthenticated application-submission endpoint (stopping spam candidates), but the prefix
+  match also covers the admin/coordinator pipeline, decisions, and interview-slot routes — which
+  legitimately make several GETs per modal open and per action (this round's interview-slot UI
+  makes it much more visible than the decisions UI did, but the decisions UI was already subject
+  to the same limit).
+- **Fix.** Flagged to Tomás as a security-adjacent config change rather than fixed unilaterally
+  (rate-limit rules are shared infrastructure, not scoped to this feature); confirmed 2026-09-17.
+  Split the rule in `getRateLimitRule`: `pathname === "/api/recruitment/applications"` (the
+  exact public submission route) keeps `{ limit: 5, windowMs: 60 * MIN, useUser: true }`; every
+  other `/api/recruitment/` route now gets `{ limit: 30, windowMs: MIN, useUser: true }`, the
+  same allowance as `/api/admin/`.
+- **Guard.** None. Worth testing by hand again if this rule changes further — restarting the dev
+  server clears the in-memory counter (`src/lib/security/rateLimitUtils.ts`'s `store` is a
+  process-local `Map`), which is how this was worked around during testing.
