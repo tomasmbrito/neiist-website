@@ -85,7 +85,7 @@ CREATE INDEX IF NOT EXISTS idx_interview_slots_team ON neiist.interview_slots (d
 | function | notes |
 |---|---|
 | `is_recruitment_board_member(u_istid)` | the Direção-or-Dev-Team-coordinator check above. `LANGUAGE sql STABLE`, reused everywhere board-side authorization is needed. |
-| `add_interview_slot(department_name, coordinator_istid, starts_at, ends_at, location)` | authorization: `canManageDepartment`-equivalent check inside SQL (mirrors the pattern already in `get_recruitment_pipeline`/`set_application_review_status` — a coordinator for that team, or an admin). |
+| `add_interview_slot(department_name, coordinator_istid, starts_at, location)` | fixed 30-minute duration — `ends_at` is computed inside the function, not a parameter. Authorization: `canManageDepartment`-equivalent check inside SQL (mirrors the pattern already in `get_recruitment_pipeline`/`set_application_review_status` — a coordinator for that team, or an admin). |
 | `remove_interview_slot(slot_id, actor_istid)` | only the owning coordinator or an admin; raises if already booked (cancel the booking first, don't silently orphan a candidate's confirmed slot). |
 | `get_interview_slots(department_name)` | all slots (booked and free) for a team — the coordinator's own view. Scoped like the functions above. |
 | `get_bookable_interview_slots(application_id, applicant_istid)` | free slots for teams *this specific application* applied to. Ownership-checked (the caller's istid must match `applicant_istid`), so a candidate only ever sees slots for their own application. |
@@ -134,24 +134,22 @@ coming, not more than that.
 
 Proposed as two PRs in that order, same size discipline as the last four.
 
-## Open questions for you
+## Open questions — resolved 2026-09-16
 
-1. **Onboarding/`@neiist.pt` still deferred?** Confirming — your message asked about
-   interviews and email specifically, nothing about onboarding, so I've scoped this plan to
-   stop there. Say so if you actually want that folded in now instead of a third round.
-2. **Slot granularity** — fixed-length slots a coordinator publishes one at a time (what's
-   modelled above), or a start/end availability window the candidate picks any point within
-   (closer to literal Crabfit, more UI work, no clean "double-booking" prevention without
-   picking a slot length anyway)? I'd default to fixed slots — simpler, and it's what "the
-   slot locks automatically" in your own description implies.
-3. **Cancellation notifications** — the plan lets either side cancel a booking but doesn't
-   email the other side about it (kept it to the two "básico" emails you'd expect: booked,
-   decided). Worth adding, or fine to leave silent for now and add later if it's actually a
-   problem in practice?
-4. **Decision UI**: should a coordinator/board member be able to *change* a decision after
-   setting it (e.g. correct a mis-click) once the other side hasn't voted yet, or is a decision
-   final the moment it's set? Leaning toward: editable until the other side also decides, locked
-   (only an admin can override) once both sides are in and the email has gone out — since
-   un-sending an email isn't possible.
+1. **Onboarding/`@neiist.pt`** — explained separately in chat (what it is, what it wouldn't
+   automate, size). **Deferred to a third round**, revisited once dual-approval and interviews
+   are actually in use.
+2. **Slot granularity — fixed, 30 minutes.** `add_interview_slot` drops the `ends_at`
+   parameter entirely; a coordinator picks only a start time, the function computes
+   `ends_at = starts_at + INTERVAL '30 minutes'` itself. Simpler UI (one datetime field, not
+   two) and there is no per-slot length to get wrong.
+3. **Any interview change notifies both sides** — not just cancellation. A reschedule is
+   modelled as cancel-then-rebook (two existing operations, not a new "reschedule" concept or
+   email template), which already produces a cancellation email and a fresh booking-confirmed
+   email to both sides — functionally the same outcome as a dedicated "rescheduled" email,
+   without adding one.
+4. **Decision UI editability** — no objection raised, going with the plan's own default:
+   editable until the other side has also voted, locked once both sides are in and the email
+   has sent (only an admin can override after that, since un-sending an email isn't possible).
 
-Nothing here gets implemented until you've reviewed this and the board issues below.
+Implementation starts now, in the two PRs sliced above.
