@@ -80,6 +80,22 @@ export function parseDatabaseError(error: unknown): DatabaseError {
   if (message.includes("Email already in use"))
     return new DatabaseError("Este email já está em uso", 409);
 
+  // Recruitment errors
+  if (message.includes("No open recruitment edition"))
+    return new DatabaseError("As candidaturas não estão abertas de momento", 409);
+
+  if (message.includes("Application requires 1 to 3 teams"))
+    return new DatabaseError("Escolhe entre 1 e 3 equipas", 400);
+
+  if (message.includes("department is not an active team"))
+    return new DatabaseError("Equipa inválida", 400);
+
+  if (message.includes("Invalid review status"))
+    return new DatabaseError("Estado de revisão inválido", 400);
+
+  if (message.includes("not found") && message.includes("Application"))
+    return new DatabaseError("Candidatura não encontrada", 404);
+
   // Generic Postgres codes
   if (dbError?.code === "P0001") return new DatabaseError("Pedido inválido", 400); // generic RAISE EXCEPTION
 

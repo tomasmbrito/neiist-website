@@ -404,6 +404,62 @@ CREATE INDEX IF NOT EXISTS idx_order_items_product_id ON neiist.order_items(prod
 -- Index to speed up lookups by user on orders
 CREATE INDEX IF NOT EXISTS idx_orders_user_istid ON neiist.orders(user_istid);
 
+-- RECRUITMENT EDITIONS TABLE
+-- One row per recruitment window. Explicit, not a hardcoded date range — Direção opens/closes
+-- it from the admin page, no deploy needed.
+CREATE TABLE IF NOT EXISTS neiist.recruitment_editions (
+  id         SERIAL PRIMARY KEY,
+  name       TEXT NOT NULL UNIQUE CHECK (btrim(name) <> ''),
+  opens_at   TIMESTAMPTZ NOT NULL,
+  closes_at  TIMESTAMPTZ NOT NULL,
+  created_by VARCHAR(10) REFERENCES neiist.users(istid),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT edition_closes_after_opens CHECK (closes_at > opens_at)
+);
+
+-- APPLICATIONS TABLE
+CREATE TABLE IF NOT EXISTS neiist.applications (
+  id                 SERIAL PRIMARY KEY,
+  edition_id         INT NOT NULL REFERENCES neiist.recruitment_editions(id) ON DELETE RESTRICT,
+  applicant_istid    VARCHAR(10) NOT NULL REFERENCES neiist.users(istid),
+  -- Fenix name/email/course can change after the fact; snapshot what the applicant saw and
+  -- confirmed at submission time, same reasoning as an order's customer_name.
+  name               TEXT NOT NULL CHECK (btrim(name) <> ''),
+  email              TEXT NOT NULL CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'),
+  phone              TEXT NOT NULL,
+  campus             TEXT NOT NULL CHECK (campus IN ('Alameda', 'Taguspark')),
+  course             TEXT NOT NULL,
+  curricular_year    SMALLINT NOT NULL CHECK (curricular_year BETWEEN 1 AND 5),
+  prior_experience   TEXT CHECK (prior_experience IS NULL OR length(prior_experience) <= 2000),
+  motivation         TEXT NOT NULL CHECK (length(motivation) <= 3000),
+  fun_fact           TEXT NOT NULL CHECK (length(fun_fact) <= 1000),
+  wants_waitlist     BOOLEAN NOT NULL DEFAULT TRUE,
+  -- Manual tracking only this round — no automated decision pipeline yet (deferred, see
+  -- docs/ai-workflow/how-neiist-works.md §4-5 and .claude/plans/recruitment-applications.md).
+  review_status      TEXT NOT NULL DEFAULT 'new'
+                      CHECK (review_status IN ('new', 'contacted', 'archived')),
+  review_note        TEXT CHECK (review_note IS NULL OR length(review_note) <= 2000),
+  reviewed_by_istid  VARCHAR(10) REFERENCES neiist.users(istid),
+  submitted_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- One application per person per edition — a second interview slot burned is worse than an
+-- unhelpful error message.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_application_per_edition
+  ON neiist.applications (edition_id, applicant_istid);
+CREATE INDEX IF NOT EXISTS idx_applications_edition ON neiist.applications (edition_id, submitted_at);
+
+-- APPLICATION TEAMS TABLE
+-- The per-team child row (1-3 teams per application). Kept from day one even though no
+-- per-team outcome ships this round, so a later dual-approval slice is an additive column on
+-- this table, not a migration of it.
+CREATE TABLE IF NOT EXISTS neiist.application_teams (
+  application_id  INT NOT NULL REFERENCES neiist.applications(id) ON DELETE CASCADE,
+  department_name VARCHAR(30) NOT NULL REFERENCES neiist.departments(name),
+  PRIMARY KEY (application_id, department_name)
+);
+CREATE INDEX IF NOT EXISTS idx_application_teams_by_team ON neiist.application_teams (department_name);
+
 --Triggers
 
 --Resotck Limited stock items on order cancellation
@@ -3804,5 +3860,187 @@ BEGIN
   WHERE user_istid IS NULL
     AND created_at < NOW() - INTERVAL '10 years'
     AND customer_name IS DISTINCT FROM 'Guest';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- RECRUITMENT
+-- See .claude/plans/recruitment-applications.md for the full design and open questions.
+
+-- Get the currently open recruitment edition, if any. Public read (the apply page checks this
+-- before showing the form at all).
+CREATE OR REPLACE FUNCTION neiist.get_open_recruitment_edition()
+RETURNS TABLE (id INT, name TEXT, opens_at TIMESTAMPTZ, closes_at TIMESTAMPTZ) AS $$
+  SELECT id, name, opens_at, closes_at FROM neiist.recruitment_editions
+  WHERE NOW() BETWEEN opens_at AND closes_at
+  ORDER BY opens_at DESC LIMIT 1;
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
+
+-- Submit an application: inserts the parent row + 1-3 team rows atomically (one plpgsql call,
+-- one implicit transaction — the multi-write pattern this schema uses instead of a
+-- withTransaction helper, per CLAUDE.md §4).
+CREATE OR REPLACE FUNCTION neiist.submit_application(
+  p_applicant_istid  VARCHAR(10),
+  p_name             TEXT,
+  p_email            TEXT,
+  p_phone            TEXT,
+  p_campus           TEXT,
+  p_course           TEXT,
+  p_curricular_year  SMALLINT,
+  p_prior_experience TEXT,
+  p_motivation       TEXT,
+  p_fun_fact         TEXT,
+  p_wants_waitlist   BOOLEAN,
+  p_departments      VARCHAR(30)[]
+) RETURNS INTEGER AS $$
+DECLARE
+  v_edition_id     INT;
+  v_application_id INT;
+  v_dept           VARCHAR(30);
+BEGIN
+  SELECT id INTO v_edition_id FROM neiist.recruitment_editions
+    WHERE NOW() BETWEEN opens_at AND closes_at ORDER BY opens_at DESC LIMIT 1;
+  IF v_edition_id IS NULL THEN
+    RAISE EXCEPTION 'No open recruitment edition';
+  END IF;
+
+  IF p_departments IS NULL OR array_length(p_departments, 1) IS NULL
+     OR array_length(p_departments, 1) < 1 OR array_length(p_departments, 1) > 3 THEN
+    RAISE EXCEPTION 'Application requires 1 to 3 teams';
+  END IF;
+
+  FOREACH v_dept IN ARRAY p_departments LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM neiist.departments
+      WHERE name = v_dept AND active = TRUE AND department_type = 'team'
+    ) THEN
+      RAISE EXCEPTION 'department is not an active team: %', v_dept;
+    END IF;
+  END LOOP;
+
+  INSERT INTO neiist.applications (
+    edition_id, applicant_istid, name, email, phone, campus, course,
+    curricular_year, prior_experience, motivation, fun_fact, wants_waitlist
+  ) VALUES (
+    v_edition_id, p_applicant_istid, p_name, p_email, p_phone, p_campus, p_course,
+    p_curricular_year, p_prior_experience, p_motivation, p_fun_fact, p_wants_waitlist
+  ) RETURNING id INTO v_application_id;
+
+  INSERT INTO neiist.application_teams (application_id, department_name)
+    SELECT DISTINCT v_application_id, d FROM unnest(p_departments) AS d;
+
+  RETURN v_application_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Scoped pipeline read: takes the caller's istid and returns only what they may see. An admin
+-- sees every application in the edition; a coordinator sees only applications naming at least
+-- one team they coordinate. Candidate PII (phone, email) never reaches the browser for a team
+-- the caller doesn't coordinate — deliberately stricter than team-management's app-side
+-- filtering, agreed with Tomás because this is candidate PII, not task assignments. Mirrors
+-- get_user's own admin/coordinator derivation (membership + valid_department_roles.access),
+-- so "who is an admin" is answered the same way everywhere in the schema.
+CREATE OR REPLACE FUNCTION neiist.get_recruitment_pipeline(
+  u_istid      VARCHAR(10),
+  p_edition_id INT
+) RETURNS TABLE (
+  id                INT,
+  applicant_istid   VARCHAR(10),
+  name              TEXT,
+  email             TEXT,
+  phone             TEXT,
+  campus            TEXT,
+  course            TEXT,
+  curricular_year   SMALLINT,
+  prior_experience  TEXT,
+  motivation        TEXT,
+  fun_fact          TEXT,
+  wants_waitlist    BOOLEAN,
+  review_status     TEXT,
+  review_note       TEXT,
+  reviewed_by_istid VARCHAR(10),
+  submitted_at      TIMESTAMPTZ,
+  teams             VARCHAR(30)[]
+) AS $$
+DECLARE
+  v_is_admin BOOLEAN;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM neiist.membership m
+    JOIN neiist.valid_department_roles vdr
+      ON m.department_name = vdr.department_name AND m.role_name = vdr.role_name
+    WHERE m.user_istid = u_istid
+      AND (m.to_date IS NULL OR m.to_date > CURRENT_DATE)
+      AND vdr.active = TRUE
+      AND vdr.access = 'admin'
+  ) INTO v_is_admin;
+
+  RETURN QUERY
+  SELECT a.id, a.applicant_istid, a.name, a.email, a.phone, a.campus, a.course,
+         a.curricular_year, a.prior_experience, a.motivation, a.fun_fact, a.wants_waitlist,
+         a.review_status, a.review_note, a.reviewed_by_istid, a.submitted_at,
+         ARRAY(
+           SELECT at2.department_name FROM neiist.application_teams at2
+           WHERE at2.application_id = a.id ORDER BY at2.department_name
+         )::VARCHAR(30)[] AS teams
+  FROM neiist.applications a
+  WHERE a.edition_id = p_edition_id
+    AND (
+      v_is_admin
+      OR EXISTS (
+        SELECT 1 FROM neiist.application_teams at1
+        JOIN neiist.membership m
+          ON m.department_name = at1.department_name
+        JOIN neiist.valid_department_roles vdr
+          ON m.department_name = vdr.department_name AND m.role_name = vdr.role_name
+        WHERE at1.application_id = a.id
+          AND m.user_istid = u_istid
+          AND (m.to_date IS NULL OR m.to_date > CURRENT_DATE)
+          AND vdr.active = TRUE
+          AND vdr.access = 'coordinator'
+      )
+    )
+  ORDER BY a.submitted_at DESC;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+
+-- Manual review tracking — no automated transitions, no emails, just a status + note an admin
+-- or coordinator can set while looking at the pipeline.
+CREATE OR REPLACE FUNCTION neiist.set_application_review_status(
+  p_application_id INT,
+  p_status         TEXT,
+  p_note           TEXT,
+  p_actor_istid    VARCHAR(10)
+) RETURNS SETOF neiist.applications AS $$
+BEGIN
+  IF p_status NOT IN ('new', 'contacted', 'archived') THEN
+    RAISE EXCEPTION 'Invalid review status: %', p_status;
+  END IF;
+
+  RETURN QUERY
+  UPDATE neiist.applications
+  SET review_status = p_status, review_note = p_note, reviewed_by_istid = p_actor_istid
+  WHERE id = p_application_id
+  RETURNING *;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Application % not found', p_application_id;
+  END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Admin-only: open a new recruitment window.
+CREATE OR REPLACE FUNCTION neiist.create_recruitment_edition(
+  p_name        TEXT,
+  p_opens_at    TIMESTAMPTZ,
+  p_closes_at   TIMESTAMPTZ,
+  p_actor_istid VARCHAR(10)
+) RETURNS INTEGER AS $$
+DECLARE
+  v_id INT;
+BEGIN
+  INSERT INTO neiist.recruitment_editions (name, opens_at, closes_at, created_by)
+  VALUES (p_name, p_opens_at, p_closes_at, p_actor_istid)
+  RETURNING id INTO v_id;
+  RETURN v_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
