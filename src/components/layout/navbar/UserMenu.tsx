@@ -2,7 +2,14 @@ import Image from "next/image";
 import React, { useState, useRef, useEffect } from "react";
 import { IconType } from "react-icons";
 import { GoSignOut, GoPeople, GoPerson, GoOrganization } from "react-icons/go";
-import { LuFileText, LuShoppingBag, LuPackage, LuVote } from "react-icons/lu";
+import {
+  LuFileText,
+  LuShoppingBag,
+  LuPackage,
+  LuVote,
+  LuClipboardCheck,
+  LuClipboardList,
+} from "react-icons/lu";
 import { FiCamera } from "react-icons/fi";
 import { UserMenuItem } from "@/components/layout/navbar/NavItem";
 import styles from "@/styles/components/layout/navbar/UserMenu.module.css";
@@ -89,6 +96,24 @@ const UserMenu: React.FC<UserMenuProps> = ({ userData, logout, dict, basePath })
         UserRole._COORDINATOR,
         UserRole._ADMIN,
       ],
+    },
+    {
+      href: `${basePath}/recruitment`,
+      label: dict.my_application,
+      icon: LuClipboardCheck,
+      roles: [
+        UserRole._GUEST,
+        UserRole._MEMBER,
+        UserRole._SHOP_MANAGER,
+        UserRole._COORDINATOR,
+        UserRole._ADMIN,
+      ],
+    },
+    {
+      href: `${basePath}/recruitment/manage`,
+      label: dict.manage_recruitment,
+      icon: LuClipboardList,
+      roles: [UserRole._COORDINATOR, UserRole._ADMIN],
     },
     {
       href: `${basePath}/orders`,
