@@ -16,6 +16,9 @@ export function getRateLimitRule(pathname: string): RateLimitRule | null {
   if (pathname.startsWith("/api/user/verify-email/")) {
     return { limit: 3, windowMs: 15 * MIN };
   }
+  if (pathname.startsWith("/api/recruitment/")) {
+    return { limit: 5, windowMs: 60 * MIN, useUser: true };
+  }
   if (pathname.startsWith("/api/admin/")) {
     return { limit: 30, windowMs: MIN, useUser: true };
   }

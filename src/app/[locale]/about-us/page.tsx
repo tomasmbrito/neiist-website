@@ -171,7 +171,7 @@ async function AboutUsContent({ params, searchParams }: PageProps) {
         description={dict.hero.description.replace("{count}", String(uniqueIstids.length))}
       />
       <Campuses dict={dict.campuses} />
-      <JoinUs dict={dict.join_us} />
+      <JoinUs dict={dict.join_us} locale={locale} />
       <YearSelector
         years={allAcademicYears}
         selectedYear={selectedYear}

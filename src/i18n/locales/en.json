@@ -611,8 +611,7 @@
     "join_us": {
       "title": "Join Us!",
       "description": "NEIIST is recruiting for the 1st Phase 26/27! Come develop your soft skills and contribute to our community by joining one of our teams External Relations, Human Resources, Dev-Team, Logistics, Marketing & Design.\nRegister until September 30th (23:59).",
-      "apply": "Apply Now",
-      "apply_link": "https://docs.google.com/forms/d/e/1FAIpQLSf_XLoqJ2crdiySnrlIUzvna4V-QHBHDeSfhpCfh27DVIfdKQ/viewform"
+      "apply": "Apply Now"
     },
 
     "campuses": {
@@ -1338,6 +1337,47 @@
       "start_label": "Start",
       "end_label": "End"
     }
+  },
+
+  "recruitment": {
+    "title": "Apply to NEIIST",
+    "subtitle": "Join one of our teams and become part of the community.",
+    "closed_title": "Applications closed",
+    "closed_description": "There's no open recruitment edition right now. Check back soon!",
+    "already_applied_title": "You've already applied!",
+    "already_applied_description": "We received your application. We'll be in touch soon.",
+    "section_teams": "Choose up to 3 teams",
+    "teams_hint": "Select the teams you'd like to join and show your talent.",
+    "teams_max_hint": "You've already picked the maximum of 3 teams.",
+    "section_about_you": "About you",
+    "name_label": "Name",
+    "istid_label": "IST-ID",
+    "email_label": "Email",
+    "phone_label": "Phone Number",
+    "phone_placeholder": "+351 9XX XXX XXX",
+    "campus_label": "Campus",
+    "course_label": "Course",
+    "course_placeholder": "Ex: LEIC, MEIC",
+    "year_label": "Year",
+    "year_1": "1st Year",
+    "year_2": "2nd Year",
+    "year_3": "3rd Year",
+    "year_4": "4th Year",
+    "year_5": "5th Year",
+    "section_more": "Tell us more",
+    "experience_label": "Do you have any prior experience in the area(s) you'd like to work in?",
+    "experience_placeholder": "Optional — if so, tell us about it.",
+    "motivation_label": "Why do you want to join NEIIST?",
+    "fun_fact_label": "Besides classes and code, what are you passionate about?",
+    "waitlist_label": "Want to stay on our radar?",
+    "waitlist_hint": "If your chosen teams don't have room, are you interested in being contacted about another team?",
+    "submit": "Apply",
+    "submitting": "Submitting...",
+    "error_no_teams": "Choose at least one team.",
+    "error_too_many_teams": "You can choose at most 3 teams.",
+    "error_submit": "Couldn't submit your application. Please try again.",
+    "success_title": "Application submitted!",
+    "success_description": "Thanks for applying. We'll be in touch soon."
   },
 
   "unauthorized": {

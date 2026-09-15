@@ -611,8 +611,7 @@
     "join_us": {
       "title": "Junta-te a Nós!",
       "description": "O NEIIST está a recrutar para a 1ª Fase 26/27! Vem desenvolver as tuas soft skills e contribuir para a nossa comunidade integrando uma das nossas equipas External Relations, Human Resources, Dev-Team, Logistics, Marketing & Design.\nInscreve-te até dia 30 de setembro (23H59).",
-      "apply": "Candidata-te",
-      "apply_link": "https://docs.google.com/forms/d/e/1FAIpQLSf_XLoqJ2crdiySnrlIUzvna4V-QHBHDeSfhpCfh27DVIfdKQ/viewform"
+      "apply": "Candidata-te"
     },
 
     "campuses": {
@@ -1338,6 +1337,47 @@
       "start_label": "Início",
       "end_label": "Fim"
     }
+  },
+
+  "recruitment": {
+    "title": "Candidata-te ao NEIIST",
+    "subtitle": "Junta-te a uma das nossas equipas e faz parte da comunidade.",
+    "closed_title": "Candidaturas fechadas",
+    "closed_description": "De momento não há nenhuma edição de recrutamento aberta. Volta a verificar em breve!",
+    "already_applied_title": "Já te candidataste!",
+    "already_applied_description": "Recebemos a tua candidatura. Entraremos em contacto em breve.",
+    "section_teams": "Escolhe até 3 equipas",
+    "teams_hint": "Seleciona as equipas onde gostarias de participar e mostrar o teu talento.",
+    "teams_max_hint": "Já escolheste o máximo de 3 equipas.",
+    "section_about_you": "Sobre ti",
+    "name_label": "Nome",
+    "istid_label": "IST-ID",
+    "email_label": "Email",
+    "phone_label": "Número de Telemóvel",
+    "phone_placeholder": "+351 9XX XXX XXX",
+    "campus_label": "Campus",
+    "course_label": "Curso",
+    "course_placeholder": "Ex: LEIC, MEIC",
+    "year_label": "Ano",
+    "year_1": "1º Ano",
+    "year_2": "2º Ano",
+    "year_3": "3º Ano",
+    "year_4": "4º Ano",
+    "year_5": "5º Ano",
+    "section_more": "Conta-nos mais",
+    "experience_label": "Tens alguma experiência prévia na(s) área(s) em que gostavas de trabalhar?",
+    "experience_placeholder": "Opcional — se sim, diz qual.",
+    "motivation_label": "Porque é que te queres juntar ao NEIIST?",
+    "fun_fact_label": "Para além das aulas e do código, o que é que te apaixona?",
+    "waitlist_label": "Queres ficar no nosso radar?",
+    "waitlist_hint": "Caso as equipas escolhidas não tenham vagas, tens interesse em receber um contacto para integrar outra equipa?",
+    "submit": "Candidatar-me",
+    "submitting": "A enviar...",
+    "error_no_teams": "Escolhe pelo menos uma equipa.",
+    "error_too_many_teams": "Podes escolher no máximo 3 equipas.",
+    "error_submit": "Não foi possível submeter a candidatura. Tenta novamente.",
+    "success_title": "Candidatura enviada!",
+    "success_description": "Obrigado pela tua candidatura. Entraremos em contacto em breve."
   },
 
   "unauthorized": {
