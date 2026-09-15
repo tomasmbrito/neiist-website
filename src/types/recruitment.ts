@@ -133,6 +133,107 @@ export function mapDbTeamDecisionUpdate(row: DbTeamDecisionUpdate) {
   };
 }
 
+// The coordinator's own team view — every published slot, booked or not.
+export interface DbInterviewSlot {
+  id: number;
+  starts_at: string;
+  ends_at: string;
+  location: string | null;
+  booked_application_id: number | null;
+  booked_applicant_name: string | null;
+  booked_at: string | null;
+}
+
+export interface InterviewSlot {
+  id: number;
+  startsAt: Date | string;
+  endsAt: Date | string;
+  location: string | null;
+  bookedApplicationId: number | null;
+  bookedApplicantName: string | null;
+  bookedAt: Date | string | null;
+}
+
+export function mapDbInterviewSlot(row: DbInterviewSlot): InterviewSlot {
+  return {
+    id: row.id,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    location: row.location,
+    bookedApplicationId: row.booked_application_id,
+    bookedApplicantName: row.booked_applicant_name,
+    bookedAt: row.booked_at,
+  };
+}
+
+// The candidate's own bookable view — unbooked, future slots for teams their application
+// actually applied to.
+export interface DbBookableInterviewSlot {
+  id: number;
+  department_name: string;
+  starts_at: string;
+  ends_at: string;
+  location: string | null;
+}
+
+export interface BookableInterviewSlot {
+  id: number;
+  departmentName: string;
+  startsAt: Date | string;
+  endsAt: Date | string;
+  location: string | null;
+}
+
+export function mapDbBookableInterviewSlot(row: DbBookableInterviewSlot): BookableInterviewSlot {
+  return {
+    id: row.id,
+    departmentName: row.department_name,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    location: row.location,
+  };
+}
+
+// book_interview_slot / cancel_interview_booking both return everything an API route needs to
+// email both sides, without a second query.
+export interface DbInterviewBookingResult {
+  id: number;
+  department_name: string;
+  starts_at: string;
+  ends_at?: string;
+  location: string | null;
+  applicant_name: string;
+  applicant_email: string;
+  coordinator_name: string;
+  coordinator_email: string;
+}
+
+export interface InterviewBookingResult {
+  id: number;
+  departmentName: string;
+  startsAt: Date | string;
+  endsAt: Date | string | null;
+  location: string | null;
+  applicantName: string;
+  applicantEmail: string;
+  coordinatorName: string;
+  coordinatorEmail: string;
+}
+
+export function mapDbInterviewBookingResult(row: DbInterviewBookingResult): InterviewBookingResult {
+  return {
+    id: row.id,
+    departmentName: row.department_name,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at ?? null,
+    location: row.location,
+    applicantName: row.applicant_name,
+    applicantEmail: row.applicant_email,
+    coordinatorName: row.coordinator_name,
+    coordinatorEmail: row.coordinator_email,
+  };
+}
+
 export function mapDbApplication(row: DbApplication): Application {
   return {
     id: row.id,

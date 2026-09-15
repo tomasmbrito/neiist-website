@@ -1256,7 +1256,22 @@
     "decision_accept_button": "Accept",
     "decision_reject_button": "Reject",
     "decision_outcome_label": "Outcome",
-    "error_decision": "Couldn't record the decision."
+    "error_decision": "Couldn't record the decision.",
+    "interviews_title": "Interviews",
+    "interview_starts_label": "Date & Time",
+    "interview_location_label": "Location",
+    "interview_location_placeholder": "e.g. NEIIST Meeting Room",
+    "interview_publish_button": "Publish Slot",
+    "interview_publishing": "Publishing...",
+    "interview_no_slots": "No slots published for this team yet.",
+    "interview_free_label": "Free",
+    "interview_booked_by_label": "Booked by",
+    "interview_remove_button": "Remove",
+    "interview_cancel_booking_button": "Cancel Booking",
+    "error_load_interview_slots": "Couldn't load the interview slots.",
+    "error_add_interview_slot": "Couldn't publish the slot.",
+    "error_remove_interview_slot": "Couldn't remove the slot.",
+    "error_cancel_booking": "Couldn't cancel the booking."
   },
 
   "photo_management": {
@@ -1421,7 +1436,13 @@
     "error_too_many_teams": "You can choose at most 3 teams.",
     "error_submit": "Couldn't submit your application. Please try again.",
     "success_title": "Application submitted!",
-    "success_description": "Thanks for applying. We'll be in touch soon."
+    "success_description": "Thanks for applying. We'll be in touch soon.",
+    "interview_slots_title": "Book your interview",
+    "interview_slots_hint": "Choose an available slot for each team below.",
+    "interview_book_button": "Book",
+    "interview_booking": "Booking...",
+    "interview_booked_confirmation": "Interview booked for {date}.",
+    "error_book_interview": "Couldn't book the interview."
   },
 
   "unauthorized": {

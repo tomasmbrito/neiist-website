@@ -475,6 +475,29 @@ ALTER TABLE neiist.application_teams
   ADD COLUMN IF NOT EXISTS board_decided_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS decision_email_sent_at TIMESTAMPTZ;
 
+-- INTERVIEW SLOTS TABLE (docs/ai-workflow/how-neiist-works.md §5): self-service booking, no
+-- dependency on a general "events" system (none exists in this codebase; internal_events was
+-- archived-and-removed this same week). A coordinator publishes slots for their own team; a
+-- candidate books one for a team they actually applied to. Fixed 30-minute duration (confirmed
+-- with Tomás, 2026-09-16) is enforced by add_interview_slot, not a table constraint, so
+-- ends_at stays a plain stored value the booking/read queries can use directly.
+CREATE TABLE IF NOT EXISTS neiist.interview_slots (
+  id                     SERIAL PRIMARY KEY,
+  department_name        VARCHAR(30) NOT NULL REFERENCES neiist.departments(name),
+  coordinator_istid       VARCHAR(10) NOT NULL REFERENCES neiist.users(istid),
+  starts_at              TIMESTAMPTZ NOT NULL,
+  ends_at                TIMESTAMPTZ NOT NULL,
+  location               TEXT,
+  booked_application_id  INT REFERENCES neiist.applications(id) ON DELETE SET NULL,
+  booked_at              TIMESTAMPTZ,
+  CONSTRAINT interview_slot_ends_after_starts CHECK (ends_at > starts_at)
+);
+-- A slot can be booked by at most one application. Nothing stops the same candidate holding
+-- slots for two different teams at once -- they may have applied to up to 3.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_interview_slot_booking
+  ON neiist.interview_slots (booked_application_id) WHERE booked_application_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_interview_slots_team ON neiist.interview_slots (department_name, starts_at);
+
 --Triggers
 
 --Resotck Limited stock items on order cancellation
@@ -4260,5 +4283,268 @@ BEGIN
   VALUES (p_name, p_opens_at, p_closes_at, p_actor_istid)
   RETURNING id INTO v_id;
   RETURN v_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- INTERVIEW SLOTS (docs/ai-workflow/how-neiist-works.md §5): self-service scheduling. A
+-- coordinator publishes a slot with a fixed 30-minute duration (confirmed with Tomás,
+-- 2026-09-16 -- one start-time field, no per-slot length to get wrong); a candidate books one
+-- for a team they actually applied to; the slot locks automatically. Authorization mirrors
+-- set_team_decision's coordinator side (is_team_coordinator_or_admin).
+CREATE OR REPLACE FUNCTION neiist.add_interview_slot(
+  p_department_name VARCHAR(30),
+  p_actor_istid VARCHAR(10),
+  p_starts_at TIMESTAMPTZ,
+  p_location TEXT
+) RETURNS neiist.interview_slots AS $$
+DECLARE
+  v_slot neiist.interview_slots;
+BEGIN
+  IF NOT neiist.is_team_coordinator_or_admin(p_actor_istid, p_department_name) THEN
+    RAISE EXCEPTION 'Insufficient permissions to publish a slot for %', p_department_name;
+  END IF;
+
+  INSERT INTO neiist.interview_slots (department_name, coordinator_istid, starts_at, ends_at, location)
+  VALUES (p_department_name, p_actor_istid, p_starts_at, p_starts_at + INTERVAL '30 minutes', NULLIF(BTRIM(p_location), ''))
+  RETURNING * INTO v_slot;
+
+  RETURN v_slot;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Only the owning team's coordinator or an admin, and only while unbooked -- a booked slot
+-- must be cancelled first so the candidate who claimed it is never silently orphaned.
+CREATE OR REPLACE FUNCTION neiist.remove_interview_slot(
+  p_slot_id INT,
+  p_actor_istid VARCHAR(10)
+) RETURNS VOID AS $$
+DECLARE
+  v_department_name VARCHAR(30);
+  v_booked BOOLEAN;
+BEGIN
+  SELECT interview_slots.department_name, interview_slots.booked_application_id IS NOT NULL
+    INTO v_department_name, v_booked
+  FROM neiist.interview_slots
+  WHERE interview_slots.id = p_slot_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Interview slot % not found', p_slot_id;
+  END IF;
+
+  IF NOT neiist.is_team_coordinator_or_admin(p_actor_istid, v_department_name) THEN
+    RAISE EXCEPTION 'Insufficient permissions to remove interview slot %', p_slot_id;
+  END IF;
+
+  IF v_booked THEN
+    RAISE EXCEPTION 'Interview slot % is already booked, cancel the booking first', p_slot_id;
+  END IF;
+
+  DELETE FROM neiist.interview_slots WHERE id = p_slot_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- A coordinator's own team view: every slot, booked or not, with who booked it.
+CREATE OR REPLACE FUNCTION neiist.get_interview_slots(
+  p_department_name VARCHAR(30),
+  p_actor_istid VARCHAR(10)
+) RETURNS TABLE (
+  id                     INT,
+  starts_at              TIMESTAMPTZ,
+  ends_at                TIMESTAMPTZ,
+  location               TEXT,
+  booked_application_id  INT,
+  booked_applicant_name  TEXT,
+  booked_at              TIMESTAMPTZ
+) AS $$
+BEGIN
+  IF NOT neiist.is_team_coordinator_or_admin(p_actor_istid, p_department_name) THEN
+    RAISE EXCEPTION 'Insufficient permissions to view interview slots for %', p_department_name;
+  END IF;
+
+  RETURN QUERY
+  SELECT s.id, s.starts_at, s.ends_at, s.location, s.booked_application_id, a.name, s.booked_at
+  FROM neiist.interview_slots s
+  LEFT JOIN neiist.applications a ON a.id = s.booked_application_id
+  WHERE s.department_name = p_department_name
+  ORDER BY s.starts_at;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+
+-- A candidate's own bookable view: unbooked, future slots for teams this specific application
+-- applied to, minus teams it already holds a slot for. Ownership-checked so a candidate only
+-- ever sees slots reachable through their own application.
+CREATE OR REPLACE FUNCTION neiist.get_bookable_interview_slots(
+  p_application_id INT,
+  p_applicant_istid VARCHAR(10)
+) RETURNS TABLE (
+  id              INT,
+  department_name VARCHAR(30),
+  starts_at       TIMESTAMPTZ,
+  ends_at         TIMESTAMPTZ,
+  location        TEXT
+) AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM neiist.applications
+    WHERE applications.id = p_application_id AND applications.applicant_istid = p_applicant_istid
+  ) THEN
+    RAISE EXCEPTION 'Application % does not belong to caller', p_application_id;
+  END IF;
+
+  RETURN QUERY
+  SELECT s.id, s.department_name, s.starts_at, s.ends_at, s.location
+  FROM neiist.interview_slots s
+  WHERE s.booked_application_id IS NULL
+    AND s.starts_at > NOW()
+    AND EXISTS (
+      SELECT 1 FROM neiist.application_teams at
+      WHERE at.application_id = p_application_id AND at.department_name = s.department_name
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM neiist.interview_slots booked
+      WHERE booked.booked_application_id = p_application_id
+        AND booked.department_name = s.department_name
+    )
+  ORDER BY s.starts_at;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+
+-- FOR UPDATE locks the slot row before checking whether it's already booked -- same pattern as
+-- neiist.new_order's stock check -- so two candidates racing the same slot cannot both win it;
+-- the second sees "already booked" once the first commits, never a silent overwrite.
+CREATE OR REPLACE FUNCTION neiist.book_interview_slot(
+  p_slot_id INT,
+  p_application_id INT,
+  p_applicant_istid VARCHAR(10)
+) RETURNS TABLE (
+  id                 INT,
+  department_name     VARCHAR(30),
+  starts_at           TIMESTAMPTZ,
+  ends_at             TIMESTAMPTZ,
+  location             TEXT,
+  applicant_name       TEXT,
+  applicant_email      TEXT,
+  coordinator_name     TEXT,
+  coordinator_email   TEXT
+) AS $$
+DECLARE
+  v_department_name       VARCHAR(30);
+  v_booked_application_id INT;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM neiist.applications
+    WHERE applications.id = p_application_id AND applications.applicant_istid = p_applicant_istid
+  ) THEN
+    RAISE EXCEPTION 'Application % does not belong to caller', p_application_id;
+  END IF;
+
+  SELECT interview_slots.department_name, interview_slots.booked_application_id
+    INTO v_department_name, v_booked_application_id
+  FROM neiist.interview_slots
+  WHERE interview_slots.id = p_slot_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Interview slot % not found', p_slot_id;
+  END IF;
+
+  IF v_booked_application_id IS NOT NULL THEN
+    RAISE EXCEPTION 'Interview slot % is already booked', p_slot_id;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM neiist.application_teams at
+    WHERE at.application_id = p_application_id AND at.department_name = v_department_name
+  ) THEN
+    RAISE EXCEPTION 'Application % did not apply to %', p_application_id, v_department_name;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM neiist.interview_slots booked
+    WHERE booked.booked_application_id = p_application_id AND booked.department_name = v_department_name
+  ) THEN
+    RAISE EXCEPTION 'Application % already holds a slot for %', p_application_id, v_department_name;
+  END IF;
+
+  UPDATE neiist.interview_slots
+  SET booked_application_id = p_application_id, booked_at = NOW()
+  WHERE interview_slots.id = p_slot_id;
+
+  RETURN QUERY
+  SELECT s.id, s.department_name, s.starts_at, s.ends_at, s.location,
+         a.name, a.email, u.name, u.email
+  FROM neiist.interview_slots s
+  JOIN neiist.applications a ON a.id = p_application_id
+  JOIN neiist.users u ON u.istid = s.coordinator_istid
+  WHERE s.id = p_slot_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Either the candidate who booked it, or the owning team's coordinator/admin, can cancel. A
+-- reschedule is cancel-then-book (confirmed with Tomás, 2026-09-16) -- not a separate concept,
+-- so this is also the only path a rescheduled interview goes through. Names/emails are read
+-- into variables before the slot is freed, so the caller has what it needs to notify both
+-- sides even though the booking itself no longer exists afterward.
+CREATE OR REPLACE FUNCTION neiist.cancel_interview_booking(
+  p_slot_id INT,
+  p_actor_istid VARCHAR(10)
+) RETURNS TABLE (
+  id                 INT,
+  department_name     VARCHAR(30),
+  starts_at           TIMESTAMPTZ,
+  location             TEXT,
+  applicant_name       TEXT,
+  applicant_email      TEXT,
+  coordinator_name     TEXT,
+  coordinator_email   TEXT
+) AS $$
+DECLARE
+  v_department_name       VARCHAR(30);
+  v_starts_at              TIMESTAMPTZ;
+  v_location               TEXT;
+  v_booked_application_id INT;
+  v_coordinator_istid     VARCHAR(10);
+  v_applicant_istid       VARCHAR(10);
+  v_applicant_name         TEXT;
+  v_applicant_email       TEXT;
+  v_coordinator_name       TEXT;
+  v_coordinator_email     TEXT;
+BEGIN
+  SELECT interview_slots.department_name, interview_slots.starts_at, interview_slots.location,
+         interview_slots.booked_application_id, interview_slots.coordinator_istid
+    INTO v_department_name, v_starts_at, v_location, v_booked_application_id, v_coordinator_istid
+  FROM neiist.interview_slots
+  WHERE interview_slots.id = p_slot_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Interview slot % not found', p_slot_id;
+  END IF;
+
+  IF v_booked_application_id IS NULL THEN
+    RAISE EXCEPTION 'Interview slot % is not booked', p_slot_id;
+  END IF;
+
+  SELECT applications.applicant_istid, applications.name, applications.email
+    INTO v_applicant_istid, v_applicant_name, v_applicant_email
+  FROM neiist.applications
+  WHERE applications.id = v_booked_application_id;
+
+  IF p_actor_istid <> v_applicant_istid
+     AND NOT neiist.is_team_coordinator_or_admin(p_actor_istid, v_department_name) THEN
+    RAISE EXCEPTION 'Insufficient permissions to cancel interview slot %', p_slot_id;
+  END IF;
+
+  SELECT users.name, users.email INTO v_coordinator_name, v_coordinator_email
+  FROM neiist.users
+  WHERE users.istid = v_coordinator_istid;
+
+  UPDATE neiist.interview_slots
+  SET booked_application_id = NULL, booked_at = NULL
+  WHERE interview_slots.id = p_slot_id;
+
+  RETURN QUERY
+  SELECT p_slot_id, v_department_name, v_starts_at, v_location,
+         v_applicant_name, v_applicant_email, v_coordinator_name, v_coordinator_email;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

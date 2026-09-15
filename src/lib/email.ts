@@ -556,3 +556,70 @@ export function getApplicationDecisionTemplate(
     </div>
   `;
 }
+
+function formatInterviewTime(startsAt: string | Date): string {
+  const dt = new Date(startsAt);
+  return dt.toLocaleString("pt-PT", {
+    weekday: "long",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+// Sent together, synchronously, right after a booking succeeds -- one to the candidate, one to
+// the coordinator who published the slot. Any later change (cancellation, or a reschedule
+// modelled as cancel-then-rebook) goes through this same pair plus the cancellation pair below,
+// so both sides always get a fresh confirmation of whatever the interview's current state is.
+export function getInterviewBookedTemplate(
+  recipientName: string,
+  otherPartyName: string,
+  teamName: string,
+  startsAt: string | Date,
+  location: string | null,
+  audience: "candidate" | "coordinator"
+): string {
+  const logoUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/neiist_logo.svg`;
+  const whenText = formatInterviewTime(startsAt);
+  const locationText = location ? ` em <strong>${location}</strong>` : "";
+
+  const message =
+    audience === "candidate"
+      ? `A tua entrevista com a equipa de <strong>${teamName}</strong> está marcada para <strong>${whenText}</strong>${locationText}.`
+      : `${otherPartyName} marcou uma entrevista contigo para a equipa de <strong>${teamName}</strong>, no dia <strong>${whenText}</strong>${locationText}.`;
+
+  return `
+    <div style="font-family: 'Secular One', Arial, sans-serif; background: #F2F2F7; padding: 2rem; border-radius: 1rem; color: #333;">
+      <img src="${logoUrl}" alt="NEIIST Logo" style="height: 48px; margin-bottom: 1rem;" />
+      <h2 style="color: #2863FD; margin-bottom: 1rem;">Entrevista Marcada</h2>
+      <p style="font-size: 1.1rem;">Olá ${recipientName}!</p>
+      <p>${message}</p>
+      <hr style="margin: 2rem 0; border: none; border-top: 1px solid #e9ecef;" />
+      <p style="font-size: 0.9rem; color: #6c757d;">NEIIST &mdash; Núcleo Estudantil de Informática do IST</p>
+    </div>
+  `;
+}
+
+// Sent to both sides the moment a booking is cancelled -- including a reschedule, which is
+// cancel-then-rebook, so it also fires this template before the fresh getInterviewBookedTemplate
+// pair for the new slot (confirmed with Tomás, 2026-09-16: every change notifies both parties).
+export function getInterviewCancelledTemplate(
+  recipientName: string,
+  teamName: string,
+  startsAt: string | Date
+): string {
+  const logoUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/neiist_logo.svg`;
+  const whenText = formatInterviewTime(startsAt);
+
+  return `
+    <div style="font-family: 'Secular One', Arial, sans-serif; background: #F2F2F7; padding: 2rem; border-radius: 1rem; color: #333;">
+      <img src="${logoUrl}" alt="NEIIST Logo" style="height: 48px; margin-bottom: 1rem;" />
+      <h2 style="color: #2863FD; margin-bottom: 1rem;">Entrevista Cancelada</h2>
+      <p style="font-size: 1.1rem;">Olá ${recipientName}!</p>
+      <p>A entrevista com a equipa de <strong>${teamName}</strong>, marcada para <strong>${whenText}</strong>, foi cancelada.</p>
+      <hr style="margin: 2rem 0; border: none; border-top: 1px solid #e9ecef;" />
+      <p style="font-size: 0.9rem; color: #6c757d;">NEIIST &mdash; Núcleo Estudantil de Informática do IST</p>
+    </div>
+  `;
+}

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import styles from "@/styles/components/recruitment/RecruitmentPipeline.module.css";
+import TeamInterviewSlots from "@/components/recruitment/TeamInterviewSlots";
 import type { Dictionary } from "@/i18n/dictionaries";
 import type {
   Application,
@@ -413,6 +414,13 @@ export default function RecruitmentPipeline({
                     {dict[`decision_${team.outcome}`]}
                   </span>
                 </span>
+
+                {canDecideCoordinator(team.name) && (
+                  <>
+                    <span className={styles.teamDecisionName}>{dict.interviews_title}</span>
+                    <TeamInterviewSlots departmentName={team.name} dict={dict} locale={locale} />
+                  </>
+                )}
               </div>
             ))}
 
