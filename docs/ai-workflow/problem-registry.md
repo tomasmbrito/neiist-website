@@ -313,12 +313,12 @@ standalone-`CREATE OR REPLACE FUNCTION` technique documented in `CLAUDE.md` §4 
   legitimately make several GETs per modal open and per action (this round's interview-slot UI
   makes it much more visible than the decisions UI did, but the decisions UI was already subject
   to the same limit).
-- **Not fixed here.** Rate-limit rules are shared security infrastructure, not scoped to this
-  feature — changing them wasn't part of the approved plan for #297/#298, so this was left as a
-  finding rather than changed unilaterally. The fix, when approved, is to split the rule: keep
-  `{ limit: 5, windowMs: 60 * MIN }` scoped to just the public `POST /api/recruitment/applications`
-  submission route, and give the authenticated admin/coordinator recruitment routes an allowance
-  closer to `/api/admin/`'s `{ limit: 30, windowMs: MIN, useUser: true }`.
-- **Guard.** None. Worth testing by hand again once the rule is split — restarting the dev
+- **Fix.** Flagged to Tomás as a security-adjacent config change rather than fixed unilaterally
+  (rate-limit rules are shared infrastructure, not scoped to this feature); confirmed 2026-09-17.
+  Split the rule in `getRateLimitRule`: `pathname === "/api/recruitment/applications"` (the
+  exact public submission route) keeps `{ limit: 5, windowMs: 60 * MIN, useUser: true }`; every
+  other `/api/recruitment/` route now gets `{ limit: 30, windowMs: MIN, useUser: true }`, the
+  same allowance as `/api/admin/`.
+- **Guard.** None. Worth testing by hand again if this rule changes further — restarting the dev
   server clears the in-memory counter (`src/lib/security/rateLimitUtils.ts`'s `store` is a
   process-local `Map`), which is how this was worked around during testing.
