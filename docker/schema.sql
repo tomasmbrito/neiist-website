@@ -3875,6 +3875,15 @@ RETURNS TABLE (id INT, name TEXT, opens_at TIMESTAMPTZ, closes_at TIMESTAMPTZ) A
   ORDER BY opens_at DESC LIMIT 1;
 $$ LANGUAGE sql SECURITY DEFINER STABLE;
 
+-- Does this person already have an application for this edition? Server-side only — the caller
+-- always passes their own session istid, never client input, so this carries no IDOR risk.
+CREATE OR REPLACE FUNCTION neiist.get_my_application(u_istid VARCHAR(10), p_edition_id INT)
+RETURNS TABLE (id INT, submitted_at TIMESTAMPTZ) AS $$
+  SELECT id, submitted_at FROM neiist.applications
+  WHERE applicant_istid = u_istid AND edition_id = p_edition_id
+  LIMIT 1;
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
+
 -- Submit an application: inserts the parent row + 1-3 team rows atomically (one plpgsql call,
 -- one implicit transaction — the multi-write pattern this schema uses instead of a
 -- withTransaction helper, per CLAUDE.md §4).

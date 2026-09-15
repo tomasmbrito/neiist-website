@@ -1,0 +1,36 @@
+.container {
+  min-height: calc(100vh - 8rem - 16rem);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background-colour);
+  padding: 1rem;
+}
+
+.card {
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  padding: 2em;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  box-sizing: border-box;
+  max-width: 32rem;
+}
+
+.icon {
+  font-size: 2.5rem;
+  color: var(--primary-colour);
+}
+
+.title {
+  font-size: 2.2rem;
+  color: var(--secondary-colour);
+}
+
+.message {
+  font-size: 1.1rem;
+}

@@ -18,6 +18,19 @@ export const getOpenRecruitmentEdition = async (): Promise<RecruitmentEdition | 
   return row ? mapDbRecruitmentEdition(row) : null;
 };
 
+export const getMyApplication = async (
+  applicantIstid: string,
+  editionId: number
+): Promise<{ id: number; submittedAt: string } | null> => {
+  const {
+    rows: [row],
+  } = await db_query<{ id: number; submitted_at: string }>(
+    `SELECT * FROM neiist.get_my_application($1, $2)`,
+    [applicantIstid, editionId]
+  );
+  return row ? { id: row.id, submittedAt: row.submitted_at } : null;
+};
+
 export const createRecruitmentEdition = async (
   name: string,
   opensAt: Date | string,
