@@ -105,6 +105,24 @@ export default function TeamInterviewSlots({
     }
   };
 
+  const handleConfirm = async (slotId: number) => {
+    setBusySlotId(slotId);
+    try {
+      const res = await fetch(`/api/recruitment/interview-slots/${slotId}/confirm`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || dict.error_confirm_booking);
+      await loadSlots();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : dict.error_confirm_booking, {
+        closeButton: true,
+      });
+    } finally {
+      setBusySlotId(null);
+    }
+  };
+
   const formatSlotTime = (value: Date | string) =>
     new Date(value).toLocaleString(locale === "en" ? "en-GB" : "pt-PT", {
       weekday: "short",
@@ -129,6 +147,19 @@ export default function TeamInterviewSlots({
                   <span>
                     {dict.interview_booked_by_label}: {slot.bookedApplicantName}
                   </span>
+                  <span>
+                    {slot.confirmedAt
+                      ? dict.interview_confirmed_label
+                      : dict.interview_request_pending_label}
+                  </span>
+                  {!slot.confirmedAt && (
+                    <button
+                      className={styles.decisionButton}
+                      disabled={busySlotId === slot.id}
+                      onClick={() => handleConfirm(slot.id)}>
+                      {dict.interview_confirm_button}
+                    </button>
+                  )}
                   <button
                     className={styles.decisionButton}
                     disabled={busySlotId === slot.id}

@@ -1,0 +1,251 @@
+.container {
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+.card {
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  padding: 2.5rem;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.icon {
+  font-size: 2rem;
+  color: var(--primary-colour);
+}
+
+.title {
+  font-size: 2rem;
+  color: var(--secondary-colour);
+  margin: 0;
+}
+
+.description {
+  color: #666;
+  margin: 0 0 1.5rem 0;
+}
+
+.lockedNotice {
+  background: #fff3cd;
+  color: #7a5b00;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+}
+
+.actionsRow {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.editButton {
+  background: var(--primary-colour);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.6rem 1.2rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.secondaryButton {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 0.6rem 1.2rem;
+  cursor: pointer;
+}
+
+.secondaryButton:disabled,
+.editButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.detailField dt {
+  font-size: 0.75rem;
+  color: #666;
+}
+
+.detailField dd {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.detailFull {
+  grid-column: 1 / -1;
+}
+
+.divider {
+  height: 1px;
+  background: #e0e0e0;
+  margin: 1.5rem 0;
+}
+
+.teamSection {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #eef2f6;
+}
+
+.teamSection:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
+.teamName {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0 0 0.75rem 0;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: #999;
+}
+
+.stepDot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: #e0e0e0;
+  flex-shrink: 0;
+}
+
+.stepDone {
+  color: #333;
+}
+
+.stepDone .stepDot {
+  background: #10b981;
+}
+
+.stepActive {
+  color: #333;
+  font-weight: 600;
+}
+
+.stepActive .stepDot {
+  background: var(--primary-colour);
+}
+
+.stepRejected .stepDot {
+  background: #ef4444;
+}
+
+.stepConnector {
+  width: 1.5rem;
+  height: 2px;
+  background: #e0e0e0;
+}
+
+.decisionRow {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+  align-items: center;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.25rem 0.65rem;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  margin-left: 0.35rem;
+}
+
+.badgePending {
+  background: #e0e0e0;
+  color: #555;
+}
+
+.badgeAccepted {
+  background: rgba(16, 185, 129, 0.15);
+  color: #067a55;
+}
+
+.badgeRejected {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+}
+
+.interviewBox {
+  background: #f7f7f9;
+  border-radius: 10px;
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.interviewSlotRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #eef2f6;
+}
+
+.interviewSlotRow:last-child {
+  border-bottom: none;
+}
+
+.smallButton {
+  background: var(--primary-colour);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.smallButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .card {
+    padding: 1.5rem;
+  }
+}

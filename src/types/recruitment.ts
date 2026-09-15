@@ -142,6 +142,7 @@ export interface DbInterviewSlot {
   booked_application_id: number | null;
   booked_applicant_name: string | null;
   booked_at: string | null;
+  confirmed_at: string | null;
 }
 
 export interface InterviewSlot {
@@ -152,6 +153,7 @@ export interface InterviewSlot {
   bookedApplicationId: number | null;
   bookedApplicantName: string | null;
   bookedAt: Date | string | null;
+  confirmedAt: Date | string | null;
 }
 
 export function mapDbInterviewSlot(row: DbInterviewSlot): InterviewSlot {
@@ -163,6 +165,7 @@ export function mapDbInterviewSlot(row: DbInterviewSlot): InterviewSlot {
     bookedApplicationId: row.booked_application_id,
     bookedApplicantName: row.booked_applicant_name,
     bookedAt: row.booked_at,
+    confirmedAt: row.confirmed_at,
   };
 }
 
@@ -194,8 +197,10 @@ export function mapDbBookableInterviewSlot(row: DbBookableInterviewSlot): Bookab
   };
 }
 
-// book_interview_slot / cancel_interview_booking both return everything an API route needs to
-// email both sides, without a second query.
+// book_interview_slot / confirm_interview_booking / cancel_interview_booking all return
+// everything an API route needs to email both sides, without a second query. was_confirmed is
+// only present on cancel_interview_booking's result (picks "request declined" vs "confirmed
+// interview cancelled" email copy).
 export interface DbInterviewBookingResult {
   id: number;
   department_name: string;
@@ -206,6 +211,7 @@ export interface DbInterviewBookingResult {
   applicant_email: string;
   coordinator_name: string;
   coordinator_email: string;
+  was_confirmed?: boolean;
 }
 
 export interface InterviewBookingResult {
@@ -218,6 +224,7 @@ export interface InterviewBookingResult {
   applicantEmail: string;
   coordinatorName: string;
   coordinatorEmail: string;
+  wasConfirmed: boolean | null;
 }
 
 export function mapDbInterviewBookingResult(row: DbInterviewBookingResult): InterviewBookingResult {
@@ -231,6 +238,7 @@ export function mapDbInterviewBookingResult(row: DbInterviewBookingResult): Inte
     applicantEmail: row.applicant_email,
     coordinatorName: row.coordinator_name,
     coordinatorEmail: row.coordinator_email,
+    wasConfirmed: row.was_confirmed ?? null,
   };
 }
 
@@ -254,4 +262,91 @@ export function mapDbApplication(row: DbApplication): Application {
     submittedAt: row.submitted_at,
     teams: row.teams ?? [],
   };
+}
+
+export type InterviewRequestStatus = "requested" | "confirmed";
+
+export interface ApplicationTeamInterview {
+  slotId: number;
+  startsAt: string;
+  location: string | null;
+  status: InterviewRequestStatus;
+}
+
+// get_my_application_full's per-team JSONB — ApplicationTeamState plus the interview sub-object
+// (null when the candidate hasn't booked a slot for that team yet), built with the same
+// camelCase-keys-match-the-app-shape approach as ApplicationTeamState itself.
+export interface ApplicationTeamFullState extends ApplicationTeamState {
+  interview: ApplicationTeamInterview | null;
+}
+
+export interface DbMyApplicationFull {
+  id: number;
+  applicant_istid: string;
+  name: string;
+  email: string;
+  phone: string;
+  campus: ApplicationCampus;
+  course: string;
+  curricular_year: number;
+  prior_experience: string | null;
+  motivation: string;
+  fun_fact: string;
+  wants_waitlist: boolean;
+  review_status: ApplicationReviewStatus;
+  submitted_at: string;
+  is_locked: boolean;
+  teams: ApplicationTeamFullState[];
+}
+
+export interface MyApplicationFull {
+  id: number;
+  applicantIstid: string;
+  name: string;
+  email: string;
+  phone: string;
+  campus: ApplicationCampus;
+  course: string;
+  curricularYear: number;
+  priorExperience: string | null;
+  motivation: string;
+  funFact: string;
+  wantsWaitlist: boolean;
+  reviewStatus: ApplicationReviewStatus;
+  submittedAt: Date | string;
+  isLocked: boolean;
+  teams: ApplicationTeamFullState[];
+}
+
+export function mapDbMyApplicationFull(row: DbMyApplicationFull): MyApplicationFull {
+  return {
+    id: row.id,
+    applicantIstid: row.applicant_istid,
+    name: row.name,
+    email: row.email,
+    phone: row.phone,
+    campus: row.campus,
+    course: row.course,
+    curricularYear: row.curricular_year,
+    priorExperience: row.prior_experience,
+    motivation: row.motivation,
+    funFact: row.fun_fact,
+    wantsWaitlist: row.wants_waitlist,
+    reviewStatus: row.review_status,
+    submittedAt: row.submitted_at,
+    isLocked: row.is_locked,
+    teams: row.teams ?? [],
+  };
+}
+
+export interface UpdateMyApplicationInput {
+  phone: string;
+  campus: ApplicationCampus;
+  course: string;
+  curricularYear: number;
+  priorExperience?: string | null;
+  motivation: string;
+  funFact: string;
+  wantsWaitlist: boolean;
+  departments: string[];
 }

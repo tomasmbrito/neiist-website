@@ -44,27 +44,29 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     sendEmail({
       to: result.applicantEmail,
-      subject: `Entrevista marcada - ${result.departmentName}`,
+      subject: `Pedido de entrevista recebido - ${result.departmentName}`,
       html: getInterviewBookedTemplate(
         result.applicantName,
         result.coordinatorName,
         result.departmentName,
         result.startsAt,
         result.location,
-        "candidate"
+        "candidate",
+        "requested"
       ),
     }).catch((err) => console.warn("Failed to send booking email to candidate", { slotId, err }));
 
     sendEmail({
       to: result.coordinatorEmail,
-      subject: `Entrevista marcada - ${result.departmentName}`,
+      subject: `Pedido de entrevista - ${result.departmentName}`,
       html: getInterviewBookedTemplate(
         result.coordinatorName,
         result.applicantName,
         result.departmentName,
         result.startsAt,
         result.location,
-        "coordinator"
+        "coordinator",
+        "requested"
       ),
     }).catch((err) => console.warn("Failed to send booking email to coordinator", { slotId, err }));
 

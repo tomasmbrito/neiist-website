@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import ApplicationForm from "@/components/recruitment/ApplicationForm";
 import RecruitmentClosed from "@/components/recruitment/RecruitmentClosed";
-import AlreadyApplied from "@/components/recruitment/AlreadyApplied";
+import ApplicationReview from "@/components/recruitment/ApplicationReview";
 import { requireUser } from "@/lib/auth";
 import {
   getOpenRecruitmentEdition,
@@ -23,19 +23,20 @@ async function RecruitmentContent({ params }: { params: LocaleParams }) {
     return <RecruitmentClosed dict={dict} />;
   }
 
+  const teams = (await getAllTeams()).filter((t) => t.active);
+
   const existing = await getMyApplication(user.istid, edition.id);
   if (existing) {
     return (
-      <AlreadyApplied
+      <ApplicationReview
         applicationId={existing.id}
         applicantIstid={user.istid}
+        teams={teams}
         dict={dict}
         locale={locale}
       />
     );
   }
-
-  const teams = (await getAllTeams()).filter((t) => t.active);
 
   return <ApplicationForm user={user} teams={teams} editionId={edition.id} dict={dict} />;
 }

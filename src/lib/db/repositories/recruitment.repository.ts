@@ -6,18 +6,22 @@ import {
   DbBookableInterviewSlot,
   DbInterviewBookingResult,
   DbInterviewSlot,
+  DbMyApplicationFull,
   DbRecruitmentEdition,
   DbTeamDecisionUpdate,
   DecisionSide,
   InterviewBookingResult,
   InterviewSlot,
+  MyApplicationFull,
   RecruitmentEdition,
   SubmitApplicationInput,
+  UpdateMyApplicationInput,
   mapDbApplication,
   mapDbApplicationReviewUpdate,
   mapDbBookableInterviewSlot,
   mapDbInterviewBookingResult,
   mapDbInterviewSlot,
+  mapDbMyApplicationFull,
   mapDbRecruitmentEdition,
   mapDbTeamDecisionUpdate,
 } from "@/types/recruitment";
@@ -219,4 +223,50 @@ export const cancelInterviewBooking = async (
     [slotId, actorIstid]
   );
   return mapDbInterviewBookingResult(row);
+};
+
+export const confirmInterviewBooking = async (
+  slotId: number,
+  actorIstid: string
+): Promise<InterviewBookingResult> => {
+  const {
+    rows: [row],
+  } = await db_query<DbInterviewBookingResult>(
+    `SELECT * FROM neiist.confirm_interview_booking($1, $2)`,
+    [slotId, actorIstid]
+  );
+  return mapDbInterviewBookingResult(row);
+};
+
+export const getMyApplicationFull = async (
+  applicationId: number,
+  applicantIstid: string
+): Promise<MyApplicationFull | null> => {
+  const {
+    rows: [row],
+  } = await db_query<DbMyApplicationFull>(`SELECT * FROM neiist.get_my_application_full($1, $2)`, [
+    applicationId,
+    applicantIstid,
+  ]);
+  return row ? mapDbMyApplicationFull(row) : null;
+};
+
+export const updateMyApplication = async (
+  applicationId: number,
+  applicantIstid: string,
+  input: UpdateMyApplicationInput
+): Promise<void> => {
+  await db_query(`SELECT neiist.update_my_application($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [
+    applicationId,
+    applicantIstid,
+    input.phone,
+    input.campus,
+    input.course,
+    input.curricularYear,
+    input.priorExperience ?? null,
+    input.motivation,
+    input.funFact,
+    input.wantsWaitlist,
+    input.departments,
+  ]);
 };

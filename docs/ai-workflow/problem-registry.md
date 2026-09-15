@@ -322,3 +322,24 @@ standalone-`CREATE OR REPLACE FUNCTION` technique documented in `CLAUDE.md` §4 
 - **Guard.** None. Worth testing by hand again if this rule changes further — restarting the dev
   server clears the in-memory counter (`src/lib/security/rateLimitUtils.ts`'s `store` is a
   process-local `Map`), which is how this was worked around during testing.
+
+## Testing technique note, 2026-09-18 — a checkbox `form_input` doesn't always reach React state
+
+- **Symptom.** Testing the candidate self-edit form's team-add path (#304): the browser
+  automation's `form_input` tool set a team checkbox to checked, a screenshot confirmed it
+  looked checked, but the subsequent submit only sent the *original* team list — the newly
+  "checked" team was silently missing, even though nothing in the request failed.
+- **Root cause.** Not a product bug. `form_input` on a checkbox appears to set the DOM
+  `checked` property (and it renders checked) without reliably firing the native event React's
+  controlled-component `onChange` listens for, so React's own state (here,
+  `ApplicationEditForm`'s `selectedTeams`) never actually updated — the checkbox was visually
+  checked but functionally inert. A genuine mouse click (`computer` tool, `left_click` on the
+  checkbox's coordinates) reproduced the real user flow correctly on the first try.
+- **Fix.** N/A — no code changed. The lesson is procedural: for a React-controlled checkbox
+  (or likely any controlled input), verify with a real click, not `form_input`, before
+  concluding a feature is broken. Text inputs and `datetime-local` fields via `form_input`
+  behaved correctly throughout this session (used successfully for interview slot dates and
+  locations) — this appears specific to checkboxes.
+- **Guard.** None (a testing-technique gotcha, not a runtime one). Worth remembering next time a
+  checkbox-driven form's automated test shows a value "stuck" despite an apparently-successful
+  interaction.

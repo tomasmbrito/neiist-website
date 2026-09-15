@@ -194,6 +194,21 @@ select.input {
   cursor: not-allowed;
 }
 
+.buttonRow {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.buttonRow .submitButton {
+  margin-top: 1rem;
+}
+
+.cancelButton {
+  background: white;
+  color: #333;
+  border: 1px solid #e0e0e0;
+}
+
 .successCard {
   background: white;
   border-radius: 20px;
