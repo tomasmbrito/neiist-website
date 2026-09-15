@@ -132,6 +132,43 @@ and re-downloading changes nothing. Fix: `npm i -g --force pnpm@12.3.4`.
   session to hit the ambiguous `set_order_state`, since the atomic-payment rewrite (#282) that
   replaced it isn't merged to `main` yet.
 
+### The local dev database carried a whole orphaned old-fork recruitment subsystem
+
+- **Symptom.** Creating `neiist.recruitment_editions`/`applications`/`application_teams` for the
+  new recruitment feature hit `relation "recruitment_editions" already exists` and, worse,
+  `cannot change return type of existing function` for `get_open_recruitment_edition()` — a
+  function this session had not written yet.
+- **Root cause.** The local dev database predates the 2026-09-14 reset and still carried the
+  **entire old-fork recruitment pipeline**: tables `recruitment_applications`,
+  `recruitment_application_teams`, `recruitment_application_approvals`,
+  `recruitment_decision_notifications`, `recruitment_onboarding`, `interview_slots`,
+  `interview_invites`, plus **29 functions** (interview booking, dual-approval, onboarding
+  tokens, decision-notification queueing) and 3 triggers, all from the old fork's
+  `archive/fase-1:.claude/plans/recruitment-and-onboarding.md`. `recruitment_editions` itself
+  also pre-existed, with an old shape missing the `created_by` column this round's design adds.
+  None of it is a duplicate-signature case like the earlier finding — these are genuinely
+  different tables/functions from a different, larger feature that was fully built in the old
+  fork and never removed when the fork was reset onto upstream.
+- **Fix.** Not a code change. Verified every old object was unreferenced by current `src/` or
+  `docker/schema.sql` (`grep`, both by name and by function body via
+  `pg_get_functiondef(oid) ILIKE '%old_table_name%'` to catch functions that reference a table
+  without the table's name appearing in the function's own name) and that all the tables were
+  empty (`SELECT COUNT(*)`), then dropped the triggers, the 29 functions (signatures generated
+  programmatically from `pg_get_function_identity_arguments` to avoid a hand-typed mismatch),
+  and the 7 orphaned tables inside one transaction, then `ALTER TABLE ADD COLUMN` for
+  `recruitment_editions`. Re-applied this round's schema cleanly afterward — zero errors, zero
+  duplicate overloads anywhere in the schema (checked with the query from the entry below).
+- **Worth knowing — this is bigger than recruitment.** The same local database also has
+  `internal_events`, `tasks`, `requirements`, `event_plans` and their triggers — the rest of the
+  old fork's members-only workspace, equally orphaned, equally unreferenced by current code.
+  Left alone for now (out of scope for the recruitment work), but the same cleanup — confirm
+  unreferenced, confirm empty, drop in dependency order — applies whenever someone touches that
+  area next. **A database created before the reset is not just "maybe has stale function
+  signatures" (the earlier two entries) — it may have entire orphaned feature subsystems.** Run
+  `\dt neiist.*` and eyeball for table names that don't appear in current `docker/schema.sql`
+  before trusting a local database is clean.
+- **Guard.** None. Verified by hand on 2026-09-16 while building the recruitment schema.
+
 ### `pnpm build` fails with `DB Broadcaster Connection Error` for a function that exists
 
 A local dev database created before a given function landed in `docker/schema.sql` doesn't
