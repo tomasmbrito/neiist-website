@@ -11,7 +11,7 @@ export const guestRoutes = [
   "/recruitment",
 ];
 export const memberRoutes = ["/orders"];
-export const coordRoutes = ["/team-management", "/photo-management"];
+export const coordRoutes = ["/team-management", "/photo-management", "/recruitment/manage"];
 export const adminRoutes = [
   "/users-management",
   "/departments-management",

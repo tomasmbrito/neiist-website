@@ -93,6 +93,9 @@ export function parseDatabaseError(error: unknown): DatabaseError {
   if (message.includes("Invalid review status"))
     return new DatabaseError("Estado de revisão inválido", 400);
 
+  if (message.includes("Insufficient permissions for application"))
+    return new DatabaseError("Sem permissões para esta candidatura", 403);
+
   if (message.includes("not found") && message.includes("Application"))
     return new DatabaseError("Candidatura não encontrada", 404);
 

@@ -3875,6 +3875,13 @@ RETURNS TABLE (id INT, name TEXT, opens_at TIMESTAMPTZ, closes_at TIMESTAMPTZ) A
   ORDER BY opens_at DESC LIMIT 1;
 $$ LANGUAGE sql SECURITY DEFINER STABLE;
 
+-- Every edition, newest first — the admin/coordinator pipeline still needs to review
+-- applications after an edition closes, not just while it's open.
+CREATE OR REPLACE FUNCTION neiist.get_all_recruitment_editions()
+RETURNS TABLE (id INT, name TEXT, opens_at TIMESTAMPTZ, closes_at TIMESTAMPTZ) AS $$
+  SELECT id, name, opens_at, closes_at FROM neiist.recruitment_editions ORDER BY opens_at DESC;
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
+
 -- Does this person already have an application for this edition? Server-side only — the caller
 -- always passes their own session istid, never client input, so this carries no IDOR risk.
 CREATE OR REPLACE FUNCTION neiist.get_my_application(u_istid VARCHAR(10), p_edition_id INT)
@@ -4013,16 +4020,51 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
 
 -- Manual review tracking — no automated transitions, no emails, just a status + note an admin
--- or coordinator can set while looking at the pipeline.
+-- or coordinator can set while looking at the pipeline. Scoped exactly like
+-- get_recruitment_pipeline: an admin may update any application; a coordinator only one naming
+-- at least one team they coordinate. Without this, any coordinator could edit any candidate's
+-- review status regardless of team — the same PII-protection reasoning as the read side, just
+-- on the write side too.
 CREATE OR REPLACE FUNCTION neiist.set_application_review_status(
   p_application_id INT,
   p_status         TEXT,
   p_note           TEXT,
   p_actor_istid    VARCHAR(10)
 ) RETURNS SETOF neiist.applications AS $$
+DECLARE
+  v_is_admin BOOLEAN;
+  v_is_team_coordinator BOOLEAN;
 BEGIN
   IF p_status NOT IN ('new', 'contacted', 'archived') THEN
     RAISE EXCEPTION 'Invalid review status: %', p_status;
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1 FROM neiist.membership m
+    JOIN neiist.valid_department_roles vdr
+      ON m.department_name = vdr.department_name AND m.role_name = vdr.role_name
+    WHERE m.user_istid = p_actor_istid
+      AND (m.to_date IS NULL OR m.to_date > CURRENT_DATE)
+      AND vdr.active = TRUE
+      AND vdr.access = 'admin'
+  ) INTO v_is_admin;
+
+  IF NOT v_is_admin THEN
+    SELECT EXISTS (
+      SELECT 1 FROM neiist.application_teams at1
+      JOIN neiist.membership m ON m.department_name = at1.department_name
+      JOIN neiist.valid_department_roles vdr
+        ON m.department_name = vdr.department_name AND m.role_name = vdr.role_name
+      WHERE at1.application_id = p_application_id
+        AND m.user_istid = p_actor_istid
+        AND (m.to_date IS NULL OR m.to_date > CURRENT_DATE)
+        AND vdr.active = TRUE
+        AND vdr.access = 'coordinator'
+    ) INTO v_is_team_coordinator;
+
+    IF NOT v_is_team_coordinator THEN
+      RAISE EXCEPTION 'Insufficient permissions for application %', p_application_id;
+    END IF;
   END IF;
 
   RETURN QUERY

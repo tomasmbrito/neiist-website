@@ -9,6 +9,32 @@ archived fork (tag `archive/fase-1`) and are not authoritative here.
 
 ---
 
+## 2026-09-16 — Scoped `set_application_review_status` by team, matching the read side
+
+**Decision.** `neiist.set_application_review_status` (merged earlier the same day in #292)
+gained the same admin/coordinator authorization check `get_recruitment_pipeline` already had:
+an admin may update any application; a coordinator only one naming at least one team they
+coordinate. Caught and fixed while building the admin review page (#291), before the function
+was ever reachable from an API route — nothing shipped exploitable, but the merged commit did
+briefly carry the gap.
+
+**Context.** The original version updated any `application_id` with no ownership check at all.
+Once wired to `PATCH /api/recruitment/applications/[id]`, any coordinator — of any team, not
+just one the candidate applied to — would have been able to relabel or annotate any candidate's
+review status. The read side (`get_recruitment_pipeline`) already enforced this scoping; the
+write side didn't, which is the more consequential half to miss.
+
+**Verified.** Throwaway-database test with three real-shaped accounts (a Marketing coordinator,
+an External Relations coordinator, an admin) against one application naming only Marketing:
+the External Relations coordinator's update attempt raised `Insufficient permissions for
+application N`; the Marketing coordinator's and the admin's both succeeded. Applied to the
+local dev database and to `docker/schema.sql` only after this passed.
+
+**Worth knowing.** When adding a second SQL function against the same table a scoped reader
+already exists for, check whether the writer needs the identical scoping — it's easy to scope
+the read (where a miss just over-shows data) and forget the write (where a miss lets someone
+act on data they shouldn't even see).
+
 ## 2026-09-16 — Renamed six departments to the 26/27 recruitment branding
 
 **Decision.** Renamed six `neiist.departments` rows to match the names NEIIST is actually using
