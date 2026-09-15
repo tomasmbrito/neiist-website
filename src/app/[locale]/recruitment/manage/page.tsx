@@ -6,6 +6,8 @@ import {
   getOpenRecruitmentEdition,
   getAllRecruitmentEditions,
   getRecruitmentPipeline,
+  getMyCoordinatedTeams,
+  isRecruitmentBoardMember,
 } from "@/lib/db/repositories/recruitment.repository";
 import { getAllTeams } from "@/lib/db/repositories/team.repository";
 import GlobalLoading from "@/app/loading";
@@ -19,10 +21,12 @@ async function RecruitmentManageContent({ params }: { params: LocaleParams }) {
   const dict = getDictionary(locale);
   const isAdmin = roles.includes(UserRole._ADMIN);
 
-  const [openEdition, editions, teams] = await Promise.all([
+  const [openEdition, editions, teams, coordinatedTeams, isBoardMember] = await Promise.all([
     getOpenRecruitmentEdition(),
     getAllRecruitmentEditions(),
     getAllTeams(),
+    getMyCoordinatedTeams(user.istid),
+    isRecruitmentBoardMember(user.istid),
   ]);
 
   const edition = openEdition ?? editions[0] ?? null;
@@ -34,6 +38,8 @@ async function RecruitmentManageContent({ params }: { params: LocaleParams }) {
       initialApplications={applications}
       teamNames={teams.filter((t) => t.active).map((t) => t.name)}
       isAdmin={isAdmin}
+      coordinatedTeams={coordinatedTeams}
+      isBoardMember={isBoardMember}
       dict={dict.recruitment_management}
       recruitmentDict={dict.recruitment}
       locale={locale}

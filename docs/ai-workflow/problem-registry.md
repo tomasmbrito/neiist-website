@@ -231,3 +231,52 @@ exist` during `pnpm build`/`pnpm dev`, even though that exact function is right 
 file. Not a code bug — the function needs applying to *this* database once, the same
 standalone-`CREATE OR REPLACE FUNCTION` technique documented in `CLAUDE.md` §4 for
 `mark_order_paid`.
+
+## Fixed, 2026-09-16 — `set_team_decision` (recruitment dual-approval, #297)
+
+### PL/pgSQL: a `RETURNS TABLE` output column name shadows the same-named table column
+
+- **Symptom.** Throwaway-DB test of `set_team_decision` failed to compile/run correctly when
+  reading current state with `SELECT coordinator_decision, board_decision INTO ... FROM
+  neiist.application_teams`, because both names are simultaneously a table column *and* a
+  `RETURNS TABLE` output column of the same function — PL/pgSQL resolved the bare reference
+  to the OUT parameter, not the column, inside the function body.
+- **Root cause.** Postgres/PL/pgSQL does not error on this ambiguity at the point of writing
+  the function; it silently prefers the OUT parameter, so the bug only shows up as wrong data
+  at runtime, not a compile failure.
+- **Fix.** Fully qualify every reference with the table (alias): `SELECT
+  application_teams.coordinator_decision, application_teams.board_decision INTO ...`. Applies
+  to any future `plpgsql` function whose `RETURNS TABLE` column list reuses a name that also
+  appears as a real column on a table read inside the body — qualify defensively rather than
+  relying on it happening to work.
+- **Guard.** None (no tests). Caught by throwaway-database testing before the real dev DB or
+  production were touched — exactly the case that testing technique exists for.
+
+### A `docker/schema.sql` column-only change was applied to the throwaway DB but not the real local dev DB
+
+- **Symptom.** `set_team_decision` failed live against the user's own real test application
+  with `column coordinator_decision does not exist`, despite having been fully verified against
+  a throwaway database first.
+- **Root cause.** The throwaway-DB check (`CLAUDE.md` §2) ran the *entire* modified
+  `schema.sql`, including the new `ALTER TABLE ... ADD COLUMN` statements on
+  `application_teams`. The follow-up application to the real local dev DB only re-ran the new
+  *function* bodies (the sanctioned standalone-function technique from `CLAUDE.md` §4) and
+  skipped the `ALTER TABLE`, since table/column changes aren't covered by that technique and
+  were missed rather than deliberately deferred.
+- **Fix.** Ran the missing `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...` directly against the
+  real `neiist` database.
+- **Guard.** None. When a schema-touching change bundles both new columns and new/changed
+  functions, apply *both* parts to the real dev database by hand — the standalone-function
+  technique in `CLAUDE.md` §4 only ever covered the function half.
+
+### UI: "decide" buttons must stay visible until *both* sides have voted, not just the caller's own side
+
+- **Symptom.** Live-tested in browser: clicking "Aceitar" on the coordinator side immediately
+  hid the coordinator's own Accept/Reject buttons for that team, even though the
+  user-approved rule is that a decision stays editable until the *other* side has also voted.
+- **Root cause.** Initial visibility check only tested the caller's own side's decision
+  (`coordinatorDecision === 'pending'`), not whether the pairing as a whole was final.
+- **Fix.** Added `isTeamLocked(team)` (`coordinatorDecision !== 'pending' && boardDecision !==
+  'pending'`) and gated both button sets on `!isTeamLocked(team)`.
+- **Guard.** None. Caught only by live-testing the actual click flow with a real session, not
+  by any gate — worth re-checking by hand if this component is touched again.

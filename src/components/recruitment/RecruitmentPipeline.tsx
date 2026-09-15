@@ -4,17 +4,31 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import styles from "@/styles/components/recruitment/RecruitmentPipeline.module.css";
 import type { Dictionary } from "@/i18n/dictionaries";
-import type { Application, ApplicationReviewStatus, RecruitmentEdition } from "@/types/recruitment";
+import type {
+  Application,
+  ApplicationReviewStatus,
+  DecisionSide,
+  RecruitmentEdition,
+  TeamDecision,
+} from "@/types/recruitment";
 
 interface RecruitmentPipelineProps {
   edition: RecruitmentEdition | null;
   initialApplications: Application[];
   teamNames: string[];
   isAdmin: boolean;
+  coordinatedTeams: string[];
+  isBoardMember: boolean;
   dict: Dictionary["recruitment_management"];
   recruitmentDict: Dictionary["recruitment"];
   locale: string;
 }
+
+const DECISION_BADGE_CLASS: Record<TeamDecision, string> = {
+  pending: "decisionPending",
+  accepted: "decisionAccepted",
+  rejected: "decisionRejected",
+};
 
 const STATUS_BADGE_CLASS: Record<ApplicationReviewStatus, string> = {
   new: "statusNew",
@@ -27,6 +41,8 @@ export default function RecruitmentPipeline({
   initialApplications,
   teamNames,
   isAdmin,
+  coordinatedTeams,
+  isBoardMember,
   dict,
   recruitmentDict,
   locale,
@@ -39,6 +55,15 @@ export default function RecruitmentPipeline({
   const [reviewStatus, setReviewStatus] = useState<ApplicationReviewStatus>("new");
   const [reviewNote, setReviewNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [decidingKey, setDecidingKey] = useState<string | null>(null);
+
+  const canDecideCoordinator = (teamName: string) => isAdmin || coordinatedTeams.includes(teamName);
+
+  // Editable until BOTH sides have voted (locked once final), not "until my own side has
+  // voted" — otherwise a coordinator could never correct a mis-click while the board side is
+  // still pending, contradicting the whole point of the editable-until-final rule.
+  const isTeamLocked = (team: { coordinatorDecision: TeamDecision; boardDecision: TeamDecision }) =>
+    team.coordinatorDecision !== "pending" && team.boardDecision !== "pending";
 
   const [newEditionName, setNewEditionName] = useState("");
   const [newOpensAt, setNewOpensAt] = useState("");
@@ -56,7 +81,7 @@ export default function RecruitmentPipeline({
     return applications.filter((app) => {
       if (q && !app.name.toLowerCase().includes(q) && !app.email.toLowerCase().includes(q))
         return false;
-      if (teamFilter && !app.teams.includes(teamFilter)) return false;
+      if (teamFilter && !app.teams.some((t) => t.name === teamFilter)) return false;
       if (statusFilter && app.reviewStatus !== statusFilter) return false;
       return true;
     });
@@ -90,6 +115,48 @@ export default function RecruitmentPipeline({
       toast.error(err instanceof Error ? err.message : dict.error_save, { closeButton: true });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDecision = async (
+    departmentName: string,
+    side: DecisionSide,
+    decision: "accepted" | "rejected"
+  ) => {
+    if (!selected) return;
+    const key = `${side}:${departmentName}`;
+    setDecidingKey(key);
+    try {
+      const res = await fetch(`/api/recruitment/applications/${selected.id}/decisions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ departmentName, side, decision }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || dict.error_decision);
+
+      const updateTeams = (app: Application) => ({
+        ...app,
+        teams: app.teams.map((t) =>
+          t.name === departmentName
+            ? {
+                ...t,
+                coordinatorDecision: data.coordinatorDecision,
+                boardDecision: data.boardDecision,
+                outcome: data.outcome,
+              }
+            : t
+        ),
+      });
+
+      setApplications((prev) =>
+        prev.map((app) => (app.id === selected.id ? updateTeams(app) : app))
+      );
+      setSelected((prev) => (prev ? updateTeams(prev) : prev));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : dict.error_decision, { closeButton: true });
+    } finally {
+      setDecidingKey(null);
     }
   };
 
@@ -198,7 +265,7 @@ export default function RecruitmentPipeline({
               {filtered.map((app) => (
                 <tr key={app.id} className={styles.row} onClick={() => openDetail(app)}>
                   <td>{app.name}</td>
-                  <td>{app.teams.join(", ")}</td>
+                  <td>{app.teams.map((t) => t.name).join(", ")}</td>
                   <td>{app.campus}</td>
                   <td>{app.course}</td>
                   <td>{app.curricularYear}</td>
@@ -268,10 +335,6 @@ export default function RecruitmentPipeline({
                 <dt>{recruitmentDict.year_label}</dt>
                 <dd>{selected.curricularYear}</dd>
               </div>
-              <div className={`${styles.detailField} ${styles.detailFull}`}>
-                <dt>{dict.col_teams}</dt>
-                <dd>{selected.teams.join(", ")}</dd>
-              </div>
               {selected.priorExperience && (
                 <div className={`${styles.detailField} ${styles.detailFull}`}>
                   <dt>{recruitmentDict.experience_label}</dt>
@@ -287,6 +350,71 @@ export default function RecruitmentPipeline({
                 <dd>{selected.funFact}</dd>
               </div>
             </dl>
+
+            <div className={styles.divider} />
+
+            <h3 className={styles.createEditionTitle}>{dict.decisions_title}</h3>
+            {selected.teams.map((team) => (
+              <div key={team.name} className={styles.teamDecisionRow}>
+                <span className={styles.teamDecisionName}>{team.name}</span>
+
+                <span className={styles.teamDecisionSide}>
+                  {dict.decision_coordinator_label}:
+                  <span
+                    className={`${styles.statusBadge} ${styles[DECISION_BADGE_CLASS[team.coordinatorDecision]]}`}>
+                    {dict[`decision_${team.coordinatorDecision}`]}
+                  </span>
+                  {!isTeamLocked(team) && canDecideCoordinator(team.name) && (
+                    <span className={styles.decisionButtons}>
+                      <button
+                        className={styles.decisionButton}
+                        disabled={decidingKey === `coordinator:${team.name}`}
+                        onClick={() => handleDecision(team.name, "coordinator", "accepted")}>
+                        {dict.decision_accept_button}
+                      </button>
+                      <button
+                        className={styles.decisionButton}
+                        disabled={decidingKey === `coordinator:${team.name}`}
+                        onClick={() => handleDecision(team.name, "coordinator", "rejected")}>
+                        {dict.decision_reject_button}
+                      </button>
+                    </span>
+                  )}
+                </span>
+
+                <span className={styles.teamDecisionSide}>
+                  {dict.decision_board_label}:
+                  <span
+                    className={`${styles.statusBadge} ${styles[DECISION_BADGE_CLASS[team.boardDecision]]}`}>
+                    {dict[`decision_${team.boardDecision}`]}
+                  </span>
+                  {!isTeamLocked(team) && isBoardMember && (
+                    <span className={styles.decisionButtons}>
+                      <button
+                        className={styles.decisionButton}
+                        disabled={decidingKey === `board:${team.name}`}
+                        onClick={() => handleDecision(team.name, "board", "accepted")}>
+                        {dict.decision_accept_button}
+                      </button>
+                      <button
+                        className={styles.decisionButton}
+                        disabled={decidingKey === `board:${team.name}`}
+                        onClick={() => handleDecision(team.name, "board", "rejected")}>
+                        {dict.decision_reject_button}
+                      </button>
+                    </span>
+                  )}
+                </span>
+
+                <span className={styles.teamDecisionSide}>
+                  {dict.decision_outcome_label}:
+                  <span
+                    className={`${styles.statusBadge} ${styles[DECISION_BADGE_CLASS[team.outcome]]}`}>
+                    {dict[`decision_${team.outcome}`]}
+                  </span>
+                </span>
+              </div>
+            ))}
 
             <div className={styles.divider} />
 

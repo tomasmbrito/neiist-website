@@ -1246,7 +1246,17 @@
     "save_button": "Guardar",
     "saving": "A guardar...",
     "close_button": "Fechar",
-    "error_save": "Não foi possível guardar."
+    "error_save": "Não foi possível guardar.",
+    "decisions_title": "Decisão por Equipa",
+    "decision_coordinator_label": "Coordenador",
+    "decision_board_label": "Direção",
+    "decision_pending": "Pendente",
+    "decision_accepted": "Aceite",
+    "decision_rejected": "Rejeitado",
+    "decision_accept_button": "Aceitar",
+    "decision_reject_button": "Rejeitar",
+    "decision_outcome_label": "Resultado",
+    "error_decision": "Não foi possível registar a decisão."
   },
 
   "photo_management": {
