@@ -1,5 +1,32 @@
 # neiist
 
+## [3.1.0](https://github.com/tomasmbrito/neiist-website/compare/v3.0.0...v3.1.0) (2026-09-15)
+
+
+### Features
+
+* **recruitment:** admin/coordinator review page at /recruitment/manage ([#295](https://github.com/tomasmbrito/neiist-website/issues/295)) ([61a4cf1](https://github.com/tomasmbrito/neiist-website/commit/61a4cf1bb74c7ced267d872db597412a7b1a8612))
+* **recruitment:** dual-approval team decisions ([#297](https://github.com/tomasmbrito/neiist-website/issues/297)) ([#300](https://github.com/tomasmbrito/neiist-website/issues/300)) ([587488e](https://github.com/tomasmbrito/neiist-website/commit/587488ef34fab074e04c64e0df67c61cf5c8fc05))
+* **recruitment:** public application page at /recruitment ([#294](https://github.com/tomasmbrito/neiist-website/issues/294)) ([9e7b8e4](https://github.com/tomasmbrito/neiist-website/commit/9e7b8e452ba86bf7c2ff20de5ccbbb3907eebcee))
+* **recruitment:** schema, SQL functions and repository for applications ([#292](https://github.com/tomasmbrito/neiist-website/issues/292)) ([d0d43aa](https://github.com/tomasmbrito/neiist-website/commit/d0d43aa3e5fe91e1bc95e4a01680f2950517ec4e))
+* **recruitment:** self-service interview scheduling ([#298](https://github.com/tomasmbrito/neiist-website/issues/298)) ([#301](https://github.com/tomasmbrito/neiist-website/issues/301)) ([31b52a8](https://github.com/tomasmbrito/neiist-website/commit/31b52a8ebb6cc3ebd7fea69956ed6ed6f88175a1))
+* **ui:** refactor all components and clean up ([293b87b](https://github.com/tomasmbrito/neiist-website/commit/293b87b7cd6de2df4f8d18a2ba0b1ff728c0edb0))
+
+
+### Bug Fixes
+
+* **admin:** stop plain members from listing every user's email and phone ([#276](https://github.com/tomasmbrito/neiist-website/issues/276)) ([23c0d2e](https://github.com/tomasmbrito/neiist-website/commit/23c0d2e3699f7827995d47b67be2b70d422387cd))
+* **calendar:** reject Notion webhook requests when unconfigured, don't accept them ([#278](https://github.com/tomasmbrito/neiist-website/issues/278)) ([a611d46](https://github.com/tomasmbrito/neiist-website/commit/a611d46cf27682553b4bc241026ee06be2583836))
+* **search:** fix three bugs in useSearch and stop reindexing on every keystroke ([#279](https://github.com/tomasmbrito/neiist-website/issues/279)) ([8fec7ae](https://github.com/tomasmbrito/neiist-website/commit/8fec7aeb46dd7cd404703de0f760b42c81bd3a78))
+* **security:** protect dotted API routes without breaking static asset serving ([#280](https://github.com/tomasmbrito/neiist-website/issues/280)) ([8f37dd1](https://github.com/tomasmbrito/neiist-website/commit/8f37dd10dbd6b6d3a70ef0b01e21898b6896a6d9))
+* **security:** stop rate limiting from trusting the client's own IP claim ([#277](https://github.com/tomasmbrito/neiist-website/issues/277)) ([a4ff845](https://github.com/tomasmbrito/neiist-website/commit/a4ff845431d8b407c493edb4111278ff04407315))
+* **shop:** make marking an order paid a single atomic operation ([#282](https://github.com/tomasmbrito/neiist-website/issues/282)) ([9a6be35](https://github.com/tomasmbrito/neiist-website/commit/9a6be3515d3949a2077e6d488645af3e21faaa50))
+* **shop:** reject a SumUp checkout that isn't the one for this order ([#274](https://github.com/tomasmbrito/neiist-website/issues/274)) ([2893b44](https://github.com/tomasmbrito/neiist-website/commit/2893b44b9a1a1f5145f6b2b881c1477c8148d520))
+* **shop:** reject invalid order status transitions ([#281](https://github.com/tomasmbrito/neiist-website/issues/281)) ([ee42c18](https://github.com/tomasmbrito/neiist-website/commit/ee42c18632aaeccc2b320ffa39fa303093e8dde3))
+* **shop:** require shop-staff auth for product image uploads ([#273](https://github.com/tomasmbrito/neiist-website/issues/273)) ([2d3271b](https://github.com/tomasmbrito/neiist-website/commit/2d3271b3add06a833674af7155411acaae4703b5))
+* **shop:** stop any logged-in user from assigning an order to someone else ([#275](https://github.com/tomasmbrito/neiist-website/issues/275)) ([0a161ba](https://github.com/tomasmbrito/neiist-website/commit/0a161bacbcf25956d68133b8a128f1d475ac96c7))
+* **shop:** verify SumUp reader payment before marking an order paid ([#272](https://github.com/tomasmbrito/neiist-website/issues/272)) ([cbe51d9](https://github.com/tomasmbrito/neiist-website/commit/cbe51d9c4dd12b8a900edd0d77e25fafb8c4483b))
+
 ## [3.0.0](https://github.com/neiist-dev/neiist-website/compare/v2.0.0...v3.0.0) (2026-09-08)
 
 
