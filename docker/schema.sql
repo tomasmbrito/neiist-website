@@ -693,6 +693,54 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Rename a department (team or admin body), repointing every dependent row. Not an UPDATE on
+-- departments.name directly: none of the FKs into it are ON UPDATE CASCADE, and membership's FK
+-- is the composite (department_name, role_name) into valid_department_roles, so the new pair
+-- must exist before membership can be repointed to it. Insert-then-repoint-then-delete avoids
+-- needing deferrable constraints.
+CREATE OR REPLACE FUNCTION neiist.rename_department(
+  p_old_name VARCHAR(30),
+  p_new_name VARCHAR(30)
+) RETURNS VOID AS $$
+DECLARE
+  v_type TEXT;
+  v_description TEXT;
+BEGIN
+  SELECT department_type INTO v_type FROM neiist.departments WHERE name = p_old_name;
+  IF v_type IS NULL THEN
+    RAISE EXCEPTION 'O departamento "%" não existe.', p_old_name;
+  END IF;
+  IF EXISTS (SELECT 1 FROM neiist.departments WHERE name = p_new_name) THEN
+    RAISE EXCEPTION 'O departamento "%" já existe.', p_new_name;
+  END IF;
+
+  INSERT INTO neiist.departments (name, active, department_type)
+    SELECT p_new_name, active, department_type FROM neiist.departments WHERE name = p_old_name;
+
+  IF v_type = 'team' THEN
+    SELECT description INTO v_description FROM neiist.teams WHERE name = p_old_name;
+    INSERT INTO neiist.teams (name, description) VALUES (p_new_name, v_description);
+  ELSE
+    INSERT INTO neiist.admin_bodies (name) VALUES (p_new_name);
+  END IF;
+
+  INSERT INTO neiist.valid_department_roles (department_name, role_name, access, active)
+    SELECT p_new_name, role_name, access, active
+    FROM neiist.valid_department_roles WHERE department_name = p_old_name;
+
+  UPDATE neiist.membership SET department_name = p_new_name WHERE department_name = p_old_name;
+  UPDATE neiist.department_role_order SET department_name = p_new_name WHERE department_name = p_old_name;
+
+  DELETE FROM neiist.valid_department_roles WHERE department_name = p_old_name;
+  IF v_type = 'team' THEN
+    DELETE FROM neiist.teams WHERE name = p_old_name;
+  ELSE
+    DELETE FROM neiist.admin_bodies WHERE name = p_old_name;
+  END IF;
+  DELETE FROM neiist.departments WHERE name = p_old_name;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- Add valid department role
 CREATE OR REPLACE FUNCTION neiist.add_valid_department_role(
   u_department_name VARCHAR(30),

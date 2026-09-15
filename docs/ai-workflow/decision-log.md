@@ -9,6 +9,41 @@ archived fork (tag `archive/fase-1`) and are not authoritative here.
 
 ---
 
+## 2026-09-16 — Renamed six departments to the 26/27 recruitment branding
+
+**Decision.** Renamed six `neiist.departments` rows to match the names NEIIST is actually using
+for the 2026/27 recruitment cycle: Contacto → External Relations, Controlo & Qualidade → Human
+Resources, Divulgação → Marketing, Fotografia → Photography, Visuais → Design, Organização de
+Eventos → Logistics. `Dev-Team` was already correct. Team descriptions updated to match the
+current recruitment form's copy. Applied to the local dev database and to `docker/init.sql` (so
+a fresh database seeds with the right names); `docker/schema.sql` gained a new
+`neiist.rename_department(old_name, new_name)` function as the mechanism, in case a department
+needs renaming again later without a developer hand-editing rows.
+
+**Context.** This is a prerequisite for the recruitment-applications feature
+(`.claude/plans/recruitment-applications.md`): the public application form needs to reference
+real `neiist.departments` rows, not a parallel English-name list that would need a translation
+layer — exactly the "value authorized vs. value written" bug class that caused #180 in the old
+fork and the duplicate-function-overload drift found earlier this week. Confirmed with Tomás
+that the English names are this year's real branding (already on the recruitment poster and
+Google Form) and the Portuguese names in the database were what had gone stale, not the reverse.
+
+**Why not a plain `UPDATE departments SET name = ...`.** None of the four FKs into
+`departments.name` (`teams`, `admin_bodies`, `valid_department_roles`, `department_role_order`)
+are `ON UPDATE CASCADE`, and `membership`'s FK is the *composite*
+`(department_name, role_name)` into `valid_department_roles` — so the new
+`(new_name, role_name)` pair has to exist before `membership` can be repointed to it, and the
+old pair can't be renamed in place while `membership` still references it. First attempt tried
+`UPDATE valid_department_roles` before `UPDATE membership` and hit exactly this: "still
+referenced from table membership." Fixed by testing against a throwaway database first (per
+`CLAUDE.md` §2.8) and restructuring to INSERT the new rows, repoint `membership`, then DELETE
+the old rows — no `ON UPDATE CASCADE`, no deferrable constraints needed.
+
+**Verified.** Throwaway-database dry run with a real membership row before trusting it against
+the local dev database; then applied for real and confirmed row counts matched exactly
+before/after (22 memberships across the six renamed teams, 31 users total, old names completely
+gone) — not just "no error," actual count equality.
+
 ## 2026-09-15 — Did not implement CSP nonces; `unsafe-inline` stays
 
 **Decision.** Investigated implementing per-request CSP nonces (issue #269, `script-src
