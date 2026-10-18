@@ -107,7 +107,8 @@ export default function VotingSessionDetailOverlay({
     }
   };
 
-  const totalVotes = results.reduce((acc, result) => acc + result.voteCount, 0);
+  // Relative to voters (not votes), so percentages stay meaningful with multiple choices
+  const totalVoters = session.totalVotes || results.reduce((acc, r) => acc + r.voteCount, 0);
   const topResults = results.slice(0, 3);
 
   return (
@@ -144,6 +145,16 @@ export default function VotingSessionDetailOverlay({
             </Text>
             <Text size="md">{formatDate(session.endAt, locale)}</Text>
           </div>
+          {session.maxChoices > 1 && (
+            <div className={styles.infoItem}>
+              <Text size="sm" variant="muted">
+                {dict.details.max_choices}
+              </Text>
+              <Text size="md">
+                {dict.details.max_choices_value.replace("{count}", String(session.maxChoices))}
+              </Text>
+            </div>
+          )}
         </div>
 
         <section className={styles.section}>
@@ -162,7 +173,7 @@ export default function VotingSessionDetailOverlay({
           ) : (
             <div className={styles.candidateList}>
               {topResults.map((result) => {
-                const percentage = totalVotes > 0 ? (result.voteCount / totalVotes) * 100 : 0;
+                const percentage = totalVoters > 0 ? (result.voteCount / totalVoters) * 100 : 0;
                 return (
                   <div key={result.nomineeId} className={styles.candidate}>
                     <div className={styles.candidateInfo}>

@@ -1495,7 +1495,15 @@
     "session_default_name": "Sessão {number}",
     "view_details": "Ver detalhes",
     "close": "Fechar",
-    "rank_format": "{rank}º"
+    "rank_format": "{rank}º",
+    "choose_up_to": "Escolhe até {max} opções — todas valem o mesmo.",
+    "choose": "Escolher",
+    "remove_choice": "Remover escolha",
+    "choices_selected": "{count} de {max} escolhidas",
+    "submit_votes": "Submeter votos",
+    "update_votes": "Atualizar votos",
+    "max_choices_reached": "Já escolheste {max} opções. Remove uma para escolher outra.",
+    "your_ballot": "O teu boletim"
   },
 
   "voting_management": {
@@ -1518,7 +1526,7 @@
       "title": "Título",
       "type": "Tipo",
       "period": "Período",
-      "voters": "Votos",
+      "voters": "Votantes",
       "status": "Estado",
       "empty": "Nenhuma sessão encontrada."
     },
@@ -1565,7 +1573,9 @@
       "finish_error": "Erro ao fechar votação.",
       "publish_success": "Resultados publicados com sucesso.",
       "hide_success": "Resultados ocultados com sucesso.",
-      "toggle_publish_error": "Erro ao alterar visibilidade dos resultados."
+      "toggle_publish_error": "Erro ao alterar visibilidade dos resultados.",
+      "max_choices": "Escolhas por votante",
+      "max_choices_value": "Até {count}"
     },
     "form": {
       "back": "Voltar",
@@ -1607,7 +1617,11 @@
       "error_image_size": "A imagem não pode ter mais de 5MB.",
       "error_image_type": "Apenas formatos JPEG, PNG e WebP são permitidos.",
       "error_create": "Erro ao criar sessão de votação.",
-      "error_upload": "Erro ao carregar imagens."
+      "error_upload": "Erro ao carregar imagens.",
+      "max_choices_label": "Escolhas por votante",
+      "max_choices_hint": "Número máximo de opções em que cada pessoa pode votar, todas com o mesmo peso. Usa 1 para voto único.",
+      "max_choices_error_min": "Tem de ser um número inteiro igual ou superior a 1.",
+      "max_choices_error_max": "Não pode ser maior que o número de opções ({count})."
     }
   },
 

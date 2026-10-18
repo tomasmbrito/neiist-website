@@ -127,6 +127,7 @@ export default function VotingSessionForm({
     endTime: "",
     selectedNominees: [] as string[],
     selectedActivityId: "",
+    maxChoices: "1",
   }));
 
   const set = useCallback(<K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
@@ -143,6 +144,7 @@ export default function VotingSessionForm({
     endTime,
     selectedNominees,
     selectedActivityId,
+    maxChoices,
   } = form;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputsRef = useRef<Record<string, HTMLInputElement | null>>({});
@@ -331,7 +333,16 @@ export default function VotingSessionForm({
       customOptions.every((o) => o.name.trim().length > 0 && Boolean(o.file || o.previewUrl)));
   const isActivityValid = type !== VOTING_TYPES.ACTIVITY || Boolean(selectedActivityId);
   const isUsersValid = type !== VOTING_TYPES.USERS || selectedNominees.length > 0;
-  const isFormValid = name.trim().length > 0 && isActivityValid && isUsersValid && isCustomValid;
+  const optionCount = type === VOTING_TYPES.CUSTOM ? customOptions.length : selectedNominees.length;
+  const maxChoicesValue = Number(maxChoices);
+  const maxChoicesError =
+    !Number.isInteger(maxChoicesValue) || maxChoicesValue < 1
+      ? dict.max_choices_error_min
+      : optionCount > 0 && maxChoicesValue > optionCount
+        ? dict.max_choices_error_max.replace("{count}", String(optionCount))
+        : undefined;
+  const isFormValid =
+    name.trim().length > 0 && isActivityValid && isUsersValid && isCustomValid && !maxChoicesError;
 
   const typeTabs: TabItem[] = useMemo(
     () => [
@@ -522,6 +533,7 @@ export default function VotingSessionForm({
       formData.set("type", type);
       formData.set("name", name.trim());
       if (description.trim()) formData.set("description", description.trim());
+      formData.set("maxChoices", String(maxChoicesValue));
 
       if (startDate) formData.set("startAt", formatIsoDateTime(startDate, startTime));
 
@@ -622,6 +634,25 @@ export default function VotingSessionForm({
               onChange={(e) => set("description", e.target.value)}
               placeholder={dict.desc_placeholder}
               rows={3}
+            />
+          </Field>
+
+          <Field
+            label={dict.max_choices_label}
+            htmlFor="maxChoices"
+            description={dict.max_choices_hint}
+            error={maxChoicesError}>
+            <Input
+              id="maxChoices"
+              name="maxChoices"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={optionCount > 0 ? optionCount : undefined}
+              step={1}
+              value={maxChoices}
+              onChange={(e) => set("maxChoices", e.target.value)}
+              className={styles.maxChoicesInput}
             />
           </Field>
 

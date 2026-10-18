@@ -20,8 +20,9 @@ interface VotingGridProps {
   sessionDescription?: string | null;
   sessionType?: VotingType;
   nominees: VotingNominee[];
-  selectedNomineeId?: string | null;
-  onVote?: (_nomineeId: string) => Promise<void> | void;
+  maxChoices?: number;
+  selectedNomineeIds?: string[];
+  onVote?: (_nomineeIds: string[]) => Promise<void> | void;
   dict: Dictionary["voting"];
 }
 
@@ -33,15 +34,34 @@ export default function VotingGrid({
   sessionDescription,
   sessionType,
   nominees,
-  selectedNomineeId,
+  maxChoices = 1,
+  selectedNomineeIds = [],
   onVote,
   dict,
 }: VotingGridProps) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [modalNominee, setModalNominee] = useState<VotingNominee | null>(null);
+  // Multiple-choice sessions build a ballot locally and submit it in one go
+  const [draftIds, setDraftIds] = useState<string[]>(selectedNomineeIds);
 
   const isUserType = isUserVotingType(sessionType);
+  const isMultiChoice = maxChoices > 1;
+  const selectedNomineeId = selectedNomineeIds[0] ?? null;
+  const isBallotFull = draftIds.length >= maxChoices;
+  const isBallotUnchanged =
+    draftIds.length === selectedNomineeIds.length &&
+    draftIds.every((id) => selectedNomineeIds.includes(id));
+
+  const toggleChoice = (nomineeId: string) => {
+    if (draftIds.includes(nomineeId)) {
+      setDraftIds(draftIds.filter((id) => id !== nomineeId));
+    } else if (isBallotFull) {
+      Alert.info(dict.max_choices_reached.replace("{max}", String(maxChoices)));
+    } else {
+      setDraftIds([...draftIds, nomineeId]);
+    }
+  };
 
   const {
     results: filteredNominees,
@@ -60,14 +80,14 @@ export default function VotingGrid({
   const visibleNominees = filteredNominees.slice(0, visibleCount);
   const hasMore = filteredNominees.length > visibleCount;
 
-  const handleCastVote = async (nomineeId: string) => {
+  const handleCastVote = async (nomineeIds: string[]) => {
     try {
       if (onVote) {
-        await onVote(nomineeId);
+        await onVote(nomineeIds);
       } else {
         const formData = new FormData();
         formData.set("sessionId", String(sessionId));
-        formData.set("nomineeId", nomineeId);
+        nomineeIds.forEach((id) => formData.append("nomineeId", id));
         await submitVoteAction(formData);
       }
     } catch (err) {
@@ -75,6 +95,9 @@ export default function VotingGrid({
       Alert.error(err instanceof Error ? err.message : dict.vote_error);
     }
   };
+
+  const handlePick = (nomineeId: string) =>
+    isMultiChoice ? toggleChoice(nomineeId) : handleCastVote([nomineeId]);
 
   return (
     <section className={styles.wrapper}>
@@ -90,7 +113,7 @@ export default function VotingGrid({
         ]}
         getItemKey={(n) => n.id}
         getItemLabel={(n) => (isUserType ? `${getFirstAndLastName(n.name)} (${n.id})` : n.name)}
-        onSelect={(n) => handleCastVote(n.id)}
+        onSelect={(n) => handlePick(n.id)}
       />
 
       <header className={styles.header}>
@@ -105,6 +128,11 @@ export default function VotingGrid({
               {sessionDescription}
             </ReactMarkdown>
           </div>
+        )}
+        {isMultiChoice && (
+          <p className={styles.choiceHint}>
+            {dict.choose_up_to.replace("{max}", String(maxChoices))}
+          </p>
         )}
       </header>
 
@@ -131,27 +159,41 @@ export default function VotingGrid({
 
       <div className={styles.grid}>
         {visibleNominees.map((nominee) => {
-          const isSelected = selectedNomineeId === nominee.id;
+          const isSelected = isMultiChoice
+            ? draftIds.includes(nominee.id)
+            : selectedNomineeId === nominee.id;
+          const isUnavailable = isMultiChoice && isBallotFull && !isSelected;
           const displayName = isUserType ? getFirstAndLastName(nominee.name) : nominee.name;
           const hasPhoto = Boolean(nominee.photoPath);
           const hasDetails =
             !isUserType && (Boolean(nominee.description) || Boolean(nominee.descriptionPhotoPath));
-          const ctaLabel = isSelected
-            ? dict.current_vote
-            : selectedNomineeId
-              ? dict.change_vote
-              : dict.vote;
+          const ctaLabel = isMultiChoice
+            ? dict.choose
+            : isSelected
+              ? dict.current_vote
+              : selectedNomineeId
+                ? dict.change_vote
+                : dict.vote;
+          const cardStateClass = isMultiChoice
+            ? `${isSelected ? styles.chosenCard : ""} ${isUnavailable ? styles.unavailableCard : ""}`
+            : isSelected
+              ? styles.selectedCard
+              : "";
 
           return (
             <div key={nominee.id} className={styles.gridItem}>
               <button
                 type="button"
-                onClick={
-                  hasDetails ? () => setModalNominee(nominee) : () => handleCastVote(nominee.id)
-                }
+                onClick={hasDetails ? () => setModalNominee(nominee) : () => handlePick(nominee.id)}
                 aria-label={displayName}
-                className={`${styles.card} ${isSelected ? styles.selectedCard : ""}`}>
+                aria-pressed={isMultiChoice ? isSelected : undefined}
+                className={`${styles.card} ${cardStateClass}`}>
                 <div className={styles.imageCard}>
+                  {isMultiChoice && isSelected && (
+                    <span className={styles.choiceBadge} aria-hidden="true">
+                      <FaCheck />
+                    </span>
+                  )}
                   {hasPhoto ? (
                     <Image
                       src={nominee.photoPath!}
@@ -181,7 +223,7 @@ export default function VotingGrid({
                       {isSelected ? (
                         <>
                           <FaCheck className={styles.ctaIcon} />
-                          <span>{dict.current_vote}</span>
+                          <span>{isMultiChoice ? dict.remove_choice : dict.current_vote}</span>
                         </>
                       ) : hasDetails ? (
                         dict.view_details
@@ -239,9 +281,15 @@ export default function VotingGrid({
               onClick={async () => {
                 const id = modalNominee.id;
                 setModalNominee(null);
-                await handleCastVote(id);
+                await handlePick(id);
               }}>
-              {selectedNomineeId === modalNominee.id ? (
+              {isMultiChoice ? (
+                draftIds.includes(modalNominee.id) ? (
+                  dict.remove_choice
+                ) : (
+                  dict.choose
+                )
+              ) : selectedNomineeId === modalNominee.id ? (
                 <>
                   <FaCheck className={styles.checkIcon} />
                   {dict.current_vote}
@@ -262,6 +310,30 @@ export default function VotingGrid({
             onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}>
             {isUserType ? dict.show_more_nominees : dict.show_more_options}
           </button>
+        </div>
+      )}
+
+      {isMultiChoice && (
+        <div className={styles.ballotBar} role="region" aria-label={dict.your_ballot}>
+          <div className={styles.ballotInfo}>
+            <span className={styles.ballotCount}>
+              {draftIds.length}/{maxChoices}
+            </span>
+            <span className={styles.ballotLabel}>
+              {dict.choices_selected
+                .replace("{count}", String(draftIds.length))
+                .replace("{max}", String(maxChoices))}
+            </span>
+          </div>
+          <Button
+            variant="primary"
+            type="button"
+            shape="pill"
+            className={styles.ballotSubmit}
+            disabled={draftIds.length === 0 || isBallotUnchanged}
+            onClick={() => handleCastVote(draftIds)}>
+            {selectedNomineeIds.length > 0 ? dict.update_votes : dict.submit_votes}
+          </Button>
         </div>
       )}
     </section>

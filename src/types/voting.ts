@@ -31,6 +31,7 @@ export interface DbVotingSession {
   created_at: string;
   updated_at: string;
   show_results?: boolean;
+  max_choices?: number;
 }
 
 export interface DbVotingNominee {
@@ -89,6 +90,7 @@ export interface VotingSession {
   createdAt: Date | string;
   updatedAt: Date | string;
   showResults?: boolean;
+  maxChoices: number;
   nomineeIds?: string[];
   customOptions?: CustomOptionInput[];
 }
@@ -143,6 +145,7 @@ export function mapDbVotingSession(row: DbVotingSession): VotingSession {
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
     showResults: row.show_results ?? false,
+    maxChoices: row.max_choices ?? 1,
   };
 }
 
@@ -151,6 +154,7 @@ export interface ActiveVotingSession {
   sessionName: string;
   sessionDescription?: string;
   sessionType?: VotingType;
+  maxChoices: number;
   nominees: VotingNominee[];
 }
 

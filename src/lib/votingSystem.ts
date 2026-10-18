@@ -140,18 +140,32 @@ const extractors: Record<VotingType, Extractor> = {
   [VOTING_TYPES.CUSTOM]: async (fd) => ({ customOptions: await extractCustomOptions(fd) }),
 };
 
+function parseMaxChoices(value: FormDataEntryValue | null): number {
+  if (value === null || value === "") return 1;
+  const parsed = requireInt(value, "maxChoices");
+  if (parsed < 1) throw new Error("O número máximo de escolhas tem de ser pelo menos 1.");
+  return parsed;
+}
+
 async function extractVotingSessionData(fd: FormData): Promise<Partial<VotingSession>> {
   const type = requireString(fd.get("type"), "type");
   if (!Object.hasOwn(extractors, type)) throw new Error(`Unsupported voting type: ${type}`);
 
-  return {
+  const data: Partial<VotingSession> = {
     name: requireString(fd.get("name"), "name"),
     description: optionalString(fd.get("description")),
     type: type as VotingType,
     startAt: optionalString(fd.get("startAt")),
     endAt: optionalString(fd.get("endAt")),
+    maxChoices: parseMaxChoices(fd.get("maxChoices")),
     ...(await extractors[type as VotingType](fd)),
   };
+
+  const optionCount = data.customOptions?.length ?? data.nomineeIds?.length ?? 0;
+  if (optionCount > 0 && (data.maxChoices ?? 1) > optionCount)
+    throw new Error("O número máximo de escolhas não pode ser maior que o número de opções.");
+
+  return data;
 }
 
 export async function createVotingSessionAction(
@@ -200,9 +214,10 @@ export async function submitVoteAction(formData: FormData): Promise<void> {
   const { user } = await requireUser();
 
   const sessionId = requireInt(formData.get("sessionId"), "sessionId");
-  const nomineeId = requireString(formData.get("nomineeId"), "nomineeId");
+  const nomineeIds = formData.getAll("nomineeId").map((value) => requireString(value, "nomineeId"));
+  if (nomineeIds.length === 0) throw new Error("nomineeId is required");
 
-  await submitVote(sessionId, user.istid, nomineeId);
+  await submitVote(sessionId, user.istid, nomineeIds);
 }
 
 export async function togglePublishResultsAction(formData: FormData): Promise<void> {

@@ -27,7 +27,7 @@ export const addVotingSession = async (
   const {
     rows: [row],
   } = await db_query<DbVotingSession>(
-    `SELECT * FROM neiist.create_voting_session($1, $2, $3, $4::JSONB, $5, $6, $7)`,
+    `SELECT * FROM neiist.create_voting_session($1, $2, $3, $4::JSONB, $5, $6, $7, $8)`,
     [
       input.name,
       input.description ?? null,
@@ -36,6 +36,7 @@ export const addVotingSession = async (
       input.activityId ?? null,
       input.startAt ?? null,
       input.endAt ?? null,
+      input.maxChoices ?? 1,
     ]
   );
   return row ? mapDbVotingSession(row) : null;
@@ -73,9 +74,13 @@ export const startVoting = async (sessionId: number): Promise<void> => {
 export const submitVote = async (
   sessionId: number,
   voterIstid: string,
-  nomineeId: string
+  nomineeIds: string[]
 ): Promise<void> => {
-  await db_query(`SELECT neiist.submit_vote($1, $2, $3)`, [sessionId, voterIstid, nomineeId]);
+  await db_query(`SELECT neiist.submit_vote($1, $2, $3::TEXT[])`, [
+    sessionId,
+    voterIstid,
+    nomineeIds,
+  ]);
 };
 
 export const finishVoting = async (sessionId: number): Promise<void> => {
@@ -93,17 +98,12 @@ export const getSessionResults = async (sessionId: number): Promise<SessionResul
   return rows.map(mapDbSessionResult);
 };
 
-export const getUserVote = async (
-  sessionId: number,
-  voterIstid: string
-): Promise<string | null> => {
-  const {
-    rows: [row],
-  } = await db_query<{ nominee_id: string }>(`SELECT * FROM neiist.get_user_vote($1, $2)`, [
-    sessionId,
-    voterIstid,
-  ]);
-  return row?.nominee_id ?? null;
+export const getUserVotes = async (sessionId: number, voterIstid: string): Promise<string[]> => {
+  const { rows } = await db_query<{ nominee_id: string }>(
+    `SELECT * FROM neiist.get_user_vote($1, $2)`,
+    [sessionId, voterIstid]
+  );
+  return rows.map((row) => row.nominee_id);
 };
 
 export const setSessionShowResults = async (
@@ -134,6 +134,7 @@ const fetchGlobalVotingState = async (): Promise<GlobalVotingState> => {
           sessionName: session.name,
           sessionDescription: session.description ?? undefined,
           sessionType: session.type,
+          maxChoices: session.maxChoices,
           nominees,
         };
       })

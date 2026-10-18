@@ -1495,7 +1495,15 @@
     "session_default_name": "Session {number}",
     "view_details": "View details",
     "close": "Close",
-    "rank_format": "#{rank}"
+    "rank_format": "#{rank}",
+    "choose_up_to": "Choose up to {max} options — they all count the same.",
+    "choose": "Choose",
+    "remove_choice": "Remove choice",
+    "choices_selected": "{count} of {max} chosen",
+    "submit_votes": "Submit votes",
+    "update_votes": "Update votes",
+    "max_choices_reached": "You already chose {max} options. Remove one to choose another.",
+    "your_ballot": "Your ballot"
   },
 
   "voting_management": {
@@ -1518,7 +1526,7 @@
       "title": "Title",
       "type": "Type",
       "period": "Period",
-      "voters": "Votes",
+      "voters": "Voters",
       "status": "Status",
       "empty": "No voting sessions found."
     },
@@ -1565,7 +1573,9 @@
       "finish_error": "Failed to close voting session.",
       "publish_success": "Results published successfully.",
       "hide_success": "Results hidden successfully.",
-      "toggle_publish_error": "Failed to toggle results visibility."
+      "toggle_publish_error": "Failed to toggle results visibility.",
+      "max_choices": "Choices per voter",
+      "max_choices_value": "Up to {count}"
     },
     "form": {
       "back": "Back",
@@ -1607,7 +1617,11 @@
       "error_image_size": "Image cannot exceed 5MB.",
       "error_image_type": "Only JPEG, PNG and WebP formats are allowed.",
       "error_create": "Failed to create voting session.",
-      "error_upload": "Failed to upload images."
+      "error_upload": "Failed to upload images.",
+      "max_choices_label": "Choices per voter",
+      "max_choices_hint": "Maximum number of options each person can vote for, all with the same weight. Use 1 for a single vote.",
+      "max_choices_error_min": "Must be a whole number of at least 1.",
+      "max_choices_error_max": "Cannot be greater than the number of options ({count})."
     }
   },
 

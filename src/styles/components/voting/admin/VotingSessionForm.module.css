@@ -155,3 +155,7 @@
     align-items: flex-start;
   }
 }
+
+.maxChoicesInput {
+  max-width: 8rem;
+}
