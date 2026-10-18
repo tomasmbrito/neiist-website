@@ -1575,7 +1575,9 @@
       "hide_success": "Results hidden successfully.",
       "toggle_publish_error": "Failed to toggle results visibility.",
       "max_choices": "Choices per voter",
-      "max_choices_value": "Up to {count}"
+      "max_choices_value": "Up to {count}",
+      "show_all": "Show all ({count})",
+      "show_less": "Show less"
     },
     "form": {
       "back": "Back",

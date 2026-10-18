@@ -10,7 +10,7 @@ import {
   togglePublishResultsAction,
 } from "@/lib/votingSystem";
 import { Modal, Badge, Button, ConfirmDialog, Text, Alert } from "@neiist/ui";
-import { FiTrash2, FiEye, FiEyeOff } from "react-icons/fi";
+import { FiTrash2, FiEye, FiEyeOff, FiChevronDown, FiChevronUp } from "react-icons/fi";
 import ReactMarkdown from "react-markdown";
 import styles from "@/styles/components/voting/admin/VotingSessionDetailOverlay.module.css";
 import type { Dictionary } from "@/i18n/dictionaries";
@@ -43,6 +43,7 @@ export default function VotingSessionDetailOverlay({
   const [pendingAction, setPendingAction] = useState<"start" | "finish" | "delete" | null>(null);
   const [isResultsPublic, setIsResultsPublic] = useState(Boolean(session.showResults));
   const [isTogglingPublish, setIsTogglingPublish] = useState(false);
+  const [showAllResults, setShowAllResults] = useState(false);
 
   const handleClose = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString());
@@ -109,7 +110,8 @@ export default function VotingSessionDetailOverlay({
 
   // Relative to voters (not votes), so percentages stay meaningful with multiple choices
   const totalVoters = session.totalVotes || results.reduce((acc, r) => acc + r.voteCount, 0);
-  const topResults = results.slice(0, 3);
+  const hasHiddenResults = results.length > 3;
+  const visibleResults = showAllResults ? results : results.slice(0, 3);
 
   return (
     <>
@@ -162,7 +164,7 @@ export default function VotingSessionDetailOverlay({
             <Text size="sm" variant="muted" className={styles.sectionTitle}>
               {dict.details.results}
               {session.status === VOTING_STATUS.VOTING ? ` — ${dict.details.live}` : ""}{" "}
-              {results.length > 3 && dict.details.top_3}
+              {hasHiddenResults && !showAllResults && dict.details.top_3}
             </Text>
           </div>
 
@@ -172,7 +174,7 @@ export default function VotingSessionDetailOverlay({
             </Text>
           ) : (
             <div className={styles.candidateList}>
-              {topResults.map((result) => {
+              {visibleResults.map((result) => {
                 const percentage = totalVoters > 0 ? (result.voteCount / totalVoters) * 100 : 0;
                 return (
                   <div key={result.nomineeId} className={styles.candidate}>
@@ -188,10 +190,24 @@ export default function VotingSessionDetailOverlay({
                   </div>
                 );
               })}
-              {results.length > 3 && (
-                <Text size="sm" variant="muted" className={styles.moreResults}>
-                  {dict.details.more_results.replace("{count}", String(results.length - 3))}
-                </Text>
+              {hasHiddenResults && (
+                <div className={styles.moreResults}>
+                  {!showAllResults && (
+                    <Text size="sm" variant="muted">
+                      {dict.details.more_results.replace("{count}", String(results.length - 3))}
+                    </Text>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowAllResults((prev) => !prev)}>
+                    {showAllResults ? <FiChevronUp size={16} /> : <FiChevronDown size={16} />}
+                    {showAllResults
+                      ? dict.details.show_less
+                      : dict.details.show_all.replace("{count}", String(results.length))}
+                  </Button>
+                </div>
               )}
             </div>
           )}

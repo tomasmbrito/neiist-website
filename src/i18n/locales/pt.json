@@ -1575,7 +1575,9 @@
       "hide_success": "Resultados ocultados com sucesso.",
       "toggle_publish_error": "Erro ao alterar visibilidade dos resultados.",
       "max_choices": "Escolhas por votante",
-      "max_choices_value": "Até {count}"
+      "max_choices_value": "Até {count}",
+      "show_all": "Ver todos ({count})",
+      "show_less": "Mostrar menos"
     },
     "form": {
       "back": "Voltar",
