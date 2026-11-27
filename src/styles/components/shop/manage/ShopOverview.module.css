@@ -61,24 +61,34 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  gap: 1rem 1.25rem;
+}
+
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 0.75rem 1rem;
+}
+
+.ordersRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 1.5rem;
 }
 
 .metricToggle {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  padding: 0.25rem 0.25rem 0.25rem 0.75rem;
+  padding: 0.25rem;
   border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius-full);
   background: var(--ui-surface);
   color: var(--light-foreground-colour);
   font-size: 0.875rem;
-}
-
-.metricToggle > span {
-  margin-right: 0.25rem;
 }
 
 .legend {
@@ -139,6 +149,10 @@
 @media (max-width: 1024px) {
   .container {
     margin: 0 2rem 3rem;
+  }
+
+  .ordersRow {
+    grid-template-columns: 1fr;
   }
 }
 

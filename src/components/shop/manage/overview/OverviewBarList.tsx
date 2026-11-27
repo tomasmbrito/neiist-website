@@ -24,7 +24,7 @@ export default function OverviewBarList({ title, rows, metric, dict }: OverviewB
   const max = Math.max(...rows.map(getTotal), 0);
 
   return (
-    <Card className={styles.card}>
+    <Card>
       <Card.Header title={title} />
       <Card.Body>
         {rows.length === 0 ? (

@@ -1,7 +1,7 @@
 import { Card, ColorSwatch } from "@neiist/ui";
 import type { Dictionary } from "@/i18n/dictionaries";
 import styles from "@/styles/components/shop/manage/overview/OverviewMatrix.module.css";
-import type { OverviewProductMatrix } from "@/utils/shop/shopOverviewUtils";
+import { formatCount, type OverviewProductMatrix } from "@/utils/shop/shopOverviewUtils";
 
 interface OverviewMatrixProps {
   product: OverviewProductMatrix;
@@ -19,7 +19,7 @@ export default function OverviewMatrix({ product, dict }: OverviewMatrixProps) {
         description={dict.matrix_subtitle
           .replace("{rows}", matrix.rowName)
           .replace("{cols}", matrix.colName)
-          .replace("{count}", String(matrix.total))}
+          .replace("{units}", formatCount(matrix.total, dict.units_count_one, dict.units_count))}
       />
       <Card.Body>
         <div className={styles.scroll}>

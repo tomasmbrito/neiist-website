@@ -1,7 +1,12 @@
 import { addDays, endOfDay, format, startOfDay } from "date-fns";
 import type { Order, OrderItem, OrderSource } from "@/types/shop/order";
 import type { OrderStatus } from "@/types/shop/orderStatus";
-import { RESERVATION, type CheckoutChoice } from "@/types/shop/payment";
+import {
+  PAYMENT_FEES,
+  RESERVATION,
+  type CheckoutChoice,
+  type PaymentMethod,
+} from "@/types/shop/payment";
 import { formatMoney, fromCents, toCents } from "@/utils/shop/moneyUtils";
 import { isSettledOrderStatus } from "@/utils/shop/orderStatusUtils";
 import { formatCampus, isColorKey, isSizeKey, splitNameHex } from "@/utils/shop/shopUtils";
@@ -20,7 +25,15 @@ export interface OverviewLine {
   order: Order;
   item: OrderItem;
   bucket: OverviewBucket;
+  /** What the customer pays for this line, after the order discount is spread across its items. */
+  netCents: number;
+  /** Payment provider fee for this line (estimated while the order is not paid yet). */
+  feeCents: number;
+  /** What NEIIST pays per unit, or null when the product has no cost set. */
+  unitCost: number | null;
 }
+
+export type ProductCosts = Record<number, number>;
 
 export interface OverviewTotals {
   orders: number;
@@ -72,11 +85,41 @@ export interface OverviewProductMatrix {
   matrix: OverviewMatrix;
 }
 
-export interface OverviewDiscounts {
-  orders: number;
+export interface OverviewFinanceTotals {
+  units: number;
+  gross: number;
+  discounts: number;
+  net: number;
+  fees: number;
+  cost: number;
+  profit: number;
+  margin: number | null;
+}
+
+export interface OverviewFinance {
+  paid: OverviewFinanceTotals;
+  expected: OverviewFinanceTotals;
+  pendingNet: number;
+  discountCodes: Array<{ code: string; orders: number; amount: number }>;
+  missingCost: Array<{ productId: number; name: string }>;
+}
+
+export interface OverviewProductFinance extends OverviewFinanceTotals {
+  key: string;
+  productId: number;
+  label: string;
+  paidUnits: number;
+  averagePrice: number;
+  unitCost: number | null;
+}
+
+export interface OverviewFeeRow {
+  key: string;
+  label: string;
+  payments: number;
   amount: number;
-  netPaidAmount: number;
-  codes: Array<{ code: string; orders: number; amount: number }>;
+  fees: number;
+  rate: number;
 }
 
 interface GroupKey {
@@ -86,6 +129,10 @@ interface GroupKey {
 }
 
 const SIZE_ORDER = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "2XL", "XXXL", "3XL", "4XL"];
+
+export function formatCount(count: number, one: string, other: string): string {
+  return (count === 1 ? one : other).replace("{count}", String(count));
+}
 
 export function formatMetric(value: number, metric: OverviewMetric): string {
   return metric === "amount" ? formatMoney(value) : String(value);
@@ -110,17 +157,88 @@ export function getOverviewProducts(orders: Order[]): Array<{ value: string; lab
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 
-export function buildOverviewLines(orders: Order[], filters: OverviewFilters): OverviewLine[] {
+export function getPaymentFeeCents(method: PaymentMethod, amountCents: number): number {
+  const fee = PAYMENT_FEES[method];
+  if (!fee || amountCents <= 0) return 0;
+  return Math.round((amountCents * fee.rate + toCents(fee.fixed)) * (1 + fee.vat));
+}
+
+/** Total of each payment across all the orders it settled, so fixed fees are charged once. */
+function getPaymentTotals(orders: Order[]): Map<number, number> {
+  const totals = new Map<number, number>();
+  orders.forEach((order) =>
+    (order.payments ?? []).forEach((payment) =>
+      totals.set(payment.id, (totals.get(payment.id) ?? 0) + toCents(payment.amount))
+    )
+  );
+  return totals;
+}
+
+function getOrderFeeCents(order: Order, paymentTotals: Map<number, number>): number {
+  const payments = order.payments ?? [];
+  const successful = payments.filter((payment) => payment.status === "successful");
+
+  if (successful.length > 0) {
+    return successful.reduce((acc, payment) => {
+      const paymentTotal = paymentTotals.get(payment.id) ?? toCents(payment.amount);
+      const fee = getPaymentFeeCents(payment.method, paymentTotal);
+      return (
+        acc + (paymentTotal > 0 ? Math.round((fee * toCents(payment.amount)) / paymentTotal) : 0)
+      );
+    }, 0);
+  }
+
+  const pendingPayment = payments.find((payment) => payment.status === "pending");
+  return pendingPayment
+    ? getPaymentFeeCents(pendingPayment.method, toCents(order.total_amount))
+    : 0;
+}
+
+/** Splits an order-level amount across its items in proportion to their price. */
+function splitByItem(totalCents: number, weights: number[]): number[] {
+  const weightSum = weights.reduce((acc, weight) => acc + weight, 0);
+  if (weightSum <= 0) return weights.map(() => 0);
+
+  let remaining = totalCents;
+  return weights.map((weight, index) => {
+    if (index === weights.length - 1) return remaining;
+    const share = Math.round((totalCents * weight) / weightSum);
+    remaining -= share;
+    return share;
+  });
+}
+
+export function buildOverviewLines(
+  orders: Order[],
+  filters: OverviewFilters,
+  costs: ProductCosts = {}
+): OverviewLine[] {
   const from = filters.from ? startOfDay(filters.from) : null;
   const to = filters.to ? endOfDay(filters.to) : null;
+  const paymentTotals = getPaymentTotals(orders);
 
   return orders.flatMap((order) => {
     const createdAt = new Date(order.created_at);
     if ((from && createdAt < from) || (to && createdAt > to)) return [];
 
-    return order.items
-      .filter((item) => !filters.productKey || getItemProductKey(item) === filters.productKey)
-      .map((item) => ({ order, item, bucket: getItemBucket(item.status) }));
+    const weights = order.items.map((item) =>
+      item.status === "cancelled" ? 0 : toCents(item.total_price)
+    );
+    const netShares = splitByItem(toCents(order.total_amount), weights);
+    const feeShares = splitByItem(getOrderFeeCents(order, paymentTotals), weights);
+
+    return order.items.flatMap((item, index) => {
+      if (filters.productKey && getItemProductKey(item) !== filters.productKey) return [];
+      const bucket = getItemBucket(item.status);
+      return {
+        order,
+        item,
+        bucket,
+        netCents: bucket === "cancelled" ? toCents(item.total_price) : netShares[index],
+        feeCents: bucket === "cancelled" ? 0 : feeShares[index],
+        unitCost: item.product_id in costs ? costs[item.product_id] : null,
+      };
+    });
   });
 }
 
@@ -128,8 +246,122 @@ function sumLines(lines: OverviewLine[]): OverviewTotals {
   return {
     orders: new Set(lines.map((line) => line.order.order_number)).size,
     units: lines.reduce((acc, line) => acc + line.item.quantity, 0),
-    amount: fromCents(lines.reduce((acc, line) => acc + toCents(line.item.total_price), 0)),
+    amount: fromCents(lines.reduce((acc, line) => acc + line.netCents, 0)),
   };
+}
+
+function sumFinance(lines: OverviewLine[]): OverviewFinanceTotals {
+  const grossCents = lines.reduce((acc, line) => acc + toCents(line.item.total_price), 0);
+  const netCents = lines.reduce((acc, line) => acc + line.netCents, 0);
+  const feeCents = lines.reduce((acc, line) => acc + line.feeCents, 0);
+  const costCents = lines.reduce(
+    (acc, line) => acc + (line.unitCost === null ? 0 : toCents(line.unitCost) * line.item.quantity),
+    0
+  );
+  const profitCents = netCents - feeCents - costCents;
+
+  return {
+    units: lines.reduce((acc, line) => acc + line.item.quantity, 0),
+    gross: fromCents(grossCents),
+    discounts: fromCents(grossCents - netCents),
+    net: fromCents(netCents),
+    fees: fromCents(feeCents),
+    cost: fromCents(costCents),
+    profit: fromCents(profitCents),
+    margin: netCents > 0 ? profitCents / netCents : null,
+  };
+}
+
+export function summarizeFinance(lines: OverviewLine[]): OverviewFinance {
+  const active = lines.filter((line) => line.bucket !== "cancelled");
+  const orders = new Map(active.map((line) => [line.order.order_number, line.order]));
+
+  const codes = new Map<string, { code: string; orders: number; cents: number }>();
+  orders.forEach((order) => {
+    const cents = toCents(order.discount_amount);
+    if (cents <= 0) return;
+    const code = order.discount_code ?? "—";
+    const entry = codes.get(code) ?? { code, orders: 0, cents: 0 };
+    entry.orders += 1;
+    entry.cents += cents;
+    codes.set(code, entry);
+  });
+
+  const missingCost = new Map<number, string>();
+  active.forEach(({ item, unitCost }) => {
+    if (unitCost === null && item.product_id) missingCost.set(item.product_id, item.product_name);
+  });
+
+  return {
+    paid: sumFinance(active.filter((line) => line.bucket === "paid")),
+    expected: sumFinance(active),
+    pendingNet: fromCents(
+      active
+        .filter((line) => line.bucket === "pending")
+        .reduce((acc, line) => acc + line.netCents, 0)
+    ),
+    discountCodes: [...codes.values()]
+      .map(({ code, orders: count, cents }) => ({ code, orders: count, amount: fromCents(cents) }))
+      .sort((a, b) => b.amount - a.amount),
+    missingCost: [...missingCost.entries()].map(([productId, name]) => ({ productId, name })),
+  };
+}
+
+export function groupProductFinance(lines: OverviewLine[]): OverviewProductFinance[] {
+  const products = new Map<string, OverviewLine[]>();
+  lines
+    .filter((line) => line.bucket !== "cancelled")
+    .forEach((line) => {
+      const key = getItemProductKey(line.item);
+      products.set(key, [...(products.get(key) ?? []), line]);
+    });
+
+  return [...products.entries()]
+    .map(([key, productLines]) => {
+      const totals = sumFinance(productLines);
+      const [{ item, unitCost }] = productLines;
+      return {
+        ...totals,
+        key,
+        productId: item.product_id,
+        label: item.product_name,
+        paidUnits: productLines
+          .filter((line) => line.bucket === "paid")
+          .reduce((acc, line) => acc + line.item.quantity, 0),
+        averagePrice:
+          totals.units > 0 ? fromCents(Math.round(toCents(totals.net) / totals.units)) : 0,
+        unitCost,
+      };
+    })
+    .sort((a, b) => b.units - a.units);
+}
+
+export function groupFeesByMethod(
+  lines: OverviewLine[],
+  labels: Record<PaymentMethod, string>
+): OverviewFeeRow[] {
+  const methods = new Map<PaymentMethod, { orders: Set<string>; net: number; fees: number }>();
+  lines
+    .filter((line) => line.bucket === "paid" && line.order.payment_method)
+    .forEach((line) => {
+      const method = line.order.payment_method as PaymentMethod;
+      const entry = methods.get(method) ?? { orders: new Set<string>(), net: 0, fees: 0 };
+      entry.orders.add(line.order.order_number);
+      entry.net += line.netCents;
+      entry.fees += line.feeCents;
+      methods.set(method, entry);
+    });
+
+  return [...methods.entries()]
+    .map(([method, entry]) => ({
+      key: method,
+      label: labels[method] ?? method,
+      payments: entry.orders.size,
+      amount: fromCents(entry.net),
+      fees: fromCents(entry.fees),
+      rate: entry.net > 0 ? entry.fees / entry.net : 0,
+    }))
+    .sort((a, b) => b.amount - a.amount);
 }
 
 export function summarizeOverview(lines: OverviewLine[]): OverviewSummary {
@@ -220,13 +452,6 @@ function findOptionValue(item: OrderItem, optionKey: string): string | undefined
   return entry?.[1];
 }
 
-export function groupByProduct(lines: OverviewLine[]): OverviewRow[] {
-  return groupLines(lines, ({ item }) => ({
-    key: getItemProductKey(item),
-    label: item.product_name,
-  }));
-}
-
 export function groupByStatus(
   lines: OverviewLine[],
   labels: Record<OrderStatus, string>
@@ -262,11 +487,14 @@ export function groupByCampus(lines: OverviewLine[], noneLabel: string): Overvie
 
 export function groupByPaymentMethod(
   lines: OverviewLine[],
-  labels: Record<CheckoutChoice, string>
+  labels: Record<CheckoutChoice, string>,
+  noPaymentLabel: string
 ): OverviewRow[] {
   return groupLines(lines, ({ order }) => {
-    const method = order.payment_method ?? RESERVATION;
-    return { key: method, label: labels[method] ?? method };
+    if (order.payment_method)
+      return { key: order.payment_method, label: labels[order.payment_method] };
+    if (isSettledOrderStatus(order.status)) return { key: "none", label: noPaymentLabel };
+    return { key: RESERVATION, label: labels[RESERVATION] };
   });
 }
 
@@ -377,40 +605,4 @@ export function buildProductMatrices(lines: OverviewLine[]): OverviewProductMatr
     }))
     .filter((entry): entry is OverviewProductMatrix => entry.matrix !== null)
     .sort((a, b) => b.matrix.total - a.matrix.total);
-}
-
-export function summarizeDiscounts(lines: OverviewLine[]): OverviewDiscounts {
-  const orders = new Map<string, Order>();
-  lines
-    .filter((line) => line.bucket !== "cancelled")
-    .forEach((line) => orders.set(line.order.order_number, line.order));
-
-  const codes = new Map<string, { code: string; orders: number; cents: number }>();
-  let discountCents = 0;
-  let discountedOrders = 0;
-  let netPaidCents = 0;
-
-  orders.forEach((order) => {
-    if (isSettledOrderStatus(order.status)) netPaidCents += toCents(order.total_amount);
-
-    const cents = toCents(order.discount_amount);
-    if (cents <= 0) return;
-    discountCents += cents;
-    discountedOrders += 1;
-
-    const code = order.discount_code ?? "—";
-    const entry = codes.get(code) ?? { code, orders: 0, cents: 0 };
-    entry.orders += 1;
-    entry.cents += cents;
-    codes.set(code, entry);
-  });
-
-  return {
-    orders: discountedOrders,
-    amount: fromCents(discountCents),
-    netPaidAmount: fromCents(netPaidCents),
-    codes: [...codes.values()]
-      .map(({ code, orders: count, cents }) => ({ code, orders: count, amount: fromCents(cents) }))
-      .sort((a, b) => b.amount - a.amount),
-  };
 }

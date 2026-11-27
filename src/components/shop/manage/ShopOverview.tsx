@@ -9,7 +9,10 @@ import { FiBarChart2 } from "react-icons/fi";
 import { Button, ColorfulText, DateInput, EmptyState, Field, Select } from "@neiist/ui";
 import OverviewBarList from "@/components/shop/manage/overview/OverviewBarList";
 import OverviewDailyChart from "@/components/shop/manage/overview/OverviewDailyChart";
+import OverviewFees from "@/components/shop/manage/overview/OverviewFees";
+import OverviewFinance from "@/components/shop/manage/overview/OverviewFinance";
 import OverviewMatrix from "@/components/shop/manage/overview/OverviewMatrix";
+import OverviewProductTable from "@/components/shop/manage/overview/OverviewProductTable";
 import OverviewSummary from "@/components/shop/manage/overview/OverviewSummary";
 import type { Dictionary } from "@/i18n/dictionaries";
 import type { Locale } from "@/i18n/i18n-config";
@@ -27,11 +30,13 @@ import {
   groupByDay,
   groupByOptions,
   groupByPaymentMethod,
-  groupByProduct,
   groupByStatus,
-  summarizeDiscounts,
+  groupFeesByMethod,
+  groupProductFinance,
+  summarizeFinance,
   summarizeOverview,
   type OverviewMetric,
+  type ProductCosts,
 } from "@/utils/shop/shopOverviewUtils";
 
 const ALL_PRODUCTS = "all";
@@ -58,6 +63,8 @@ function getPresetRange(preset: PeriodPreset): { from?: Date; to?: Date } {
 
 interface ShopOverviewProps {
   orders: Order[];
+  costs: ProductCosts;
+  canEditCosts: boolean;
   locale: Locale;
   basePath: string;
   dict: Dictionary["shop_overview"];
@@ -68,6 +75,8 @@ interface ShopOverviewProps {
 
 export default function ShopOverview({
   orders,
+  costs,
+  canEditCosts,
   locale,
   basePath,
   dict,
@@ -91,27 +100,33 @@ export default function ShopOverview({
 
   const lines = useMemo(
     () =>
-      buildOverviewLines(orders, {
-        ...range,
-        productKey: isProductSelected ? productKey : undefined,
-      }),
-    [orders, range, productKey, isProductSelected]
+      buildOverviewLines(
+        orders,
+        { ...range, productKey: isProductSelected ? productKey : undefined },
+        costs
+      ),
+    [orders, range, productKey, isProductSelected, costs]
   );
 
   const overview = useMemo(
     () => ({
       summary: summarizeOverview(lines),
       statuses: groupByStatus(lines, statusLabels),
+      finance: summarizeFinance(lines),
+      productFinance: groupProductFinance(lines),
+      fees: groupFeesByMethod(lines, paymentLabels),
       matrices: buildProductMatrices(lines),
-      products: groupByProduct(lines),
       options: groupByOptions(lines),
       campuses: groupByCampus(lines, dict.no_campus),
-      payments: groupByPaymentMethod(lines, { ...paymentLabels, [RESERVATION]: dict.reservation }),
+      payments: groupByPaymentMethod(
+        lines,
+        { ...paymentLabels, [RESERVATION]: dict.reservation },
+        dict.no_payment
+      ),
       channels: groupByChannel(lines, channelLabels),
       days: groupByDay(lines),
-      discounts: isProductSelected ? null : summarizeDiscounts(lines),
     }),
-    [lines, isProductSelected, statusLabels, paymentLabels, channelLabels, dict]
+    [lines, statusLabels, paymentLabels, channelLabels, dict]
   );
 
   const periodText = useMemo(() => {
@@ -146,7 +161,7 @@ export default function ShopOverview({
         variant="ghost"
         color="neutral"
         className={styles.backBtn}
-        onClick={() => router.push(`${basePath}/orders`)}>
+        onClick={() => router.push(`${basePath}/shop/manage`)}>
         <FaArrowLeft /> {dict.back}
       </Button>
 
@@ -211,33 +226,22 @@ export default function ShopOverview({
         />
       ) : (
         <>
-          <div className={styles.toolbar}>
-            <div className={styles.metricToggle} role="group" aria-label={dict.metric_label}>
-              <span>{dict.metric_label}</span>
-              {(["units", "amount"] as const).map((option) => (
-                <Button
-                  key={option}
-                  size="sm"
-                  variant={metric === option ? "primary" : "ghost"}
-                  aria-pressed={metric === option}
-                  onClick={() => setMetric(option)}>
-                  {option === "units" ? dict.metric_units : dict.metric_amount}
-                </Button>
-              ))}
-            </div>
-            <ul className={styles.legend}>
-              <li className={styles.legendPaid}>{dict.legend_paid}</li>
-              <li className={styles.legendPending}>{dict.legend_pending}</li>
-            </ul>
-          </div>
-
-          <OverviewSummary
-            summary={overview.summary}
-            statuses={overview.statuses}
-            discounts={overview.discounts}
-            metric={metric}
+          <OverviewFinance
+            finance={overview.finance}
+            pendingUnits={overview.summary.pending.units}
             dict={dict}
           />
+
+          <OverviewProductTable
+            rows={overview.productFinance}
+            canEditCosts={canEditCosts}
+            dict={dict}
+          />
+
+          <div className={styles.ordersRow}>
+            <OverviewSummary summary={overview.summary} statuses={overview.statuses} dict={dict} />
+            <OverviewFees rows={overview.fees} dict={dict} />
+          </div>
 
           {overview.matrices.length > 0 && (
             <section className={styles.section}>
@@ -250,19 +254,32 @@ export default function ShopOverview({
             </section>
           )}
 
-          <OverviewDailyChart days={overview.days} metric={metric} dict={dict} />
-
           <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>{dict.breakdown_section}</h2>
+            <div className={styles.sectionHead}>
+              <h2 className={styles.sectionTitle}>{dict.sales_section}</h2>
+              <div className={styles.toolbar}>
+                <ul className={styles.legend}>
+                  <li className={styles.legendPaid}>{dict.legend_paid}</li>
+                  <li className={styles.legendPending}>{dict.legend_pending}</li>
+                </ul>
+                <div className={styles.metricToggle} role="group" aria-label={dict.metric_label}>
+                  {(["units", "amount"] as const).map((option) => (
+                    <Button
+                      key={option}
+                      size="sm"
+                      variant={metric === option ? "primary" : "ghost"}
+                      aria-pressed={metric === option}
+                      onClick={() => setMetric(option)}>
+                      {option === "units" ? dict.metric_units : dict.metric_amount}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <OverviewDailyChart days={overview.days} metric={metric} dict={dict} />
+
             <div className={styles.breakdownGrid}>
-              {!isProductSelected && (
-                <OverviewBarList
-                  title={dict.section_products}
-                  rows={overview.products}
-                  metric={metric}
-                  dict={dict}
-                />
-              )}
               {overview.options.map((option) => (
                 <OverviewBarList
                   key={option.key}

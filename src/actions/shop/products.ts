@@ -10,6 +10,7 @@ import {
   deleteProduct,
   getProduct,
   getProductNoCache,
+  setProductCost,
   setProductSalesEnabled,
 } from "@/lib/db/repositories/shop.repository";
 import { Product, ProductVariantInput, StockChangeInput } from "@/types/shop/product";
@@ -177,6 +178,24 @@ export async function setProductSalesEnabledAction(id: number, enabled: boolean)
 
   revalidateProductCaches(id);
   return updated;
+}
+
+export async function setProductCostAction(
+  productId: number,
+  unitCost: number | null
+): Promise<void> {
+  const { user } = await requirePermission("shop:write");
+
+  if (!Number.isInteger(productId) || productId <= 0) throw new Error("Artigo inválido");
+  if (unitCost !== null && (!Number.isFinite(unitCost) || unitCost < 0))
+    throw new Error("Custo inválido");
+
+  await setProductCost(
+    productId,
+    unitCost === null ? null : Math.round(unitCost * 100) / 100,
+    user.istid
+  );
+  revalidatePath("/[locale]/orders/overview", "page");
 }
 
 export async function changeProductStockAction(

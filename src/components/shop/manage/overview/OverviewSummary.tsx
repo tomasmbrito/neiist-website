@@ -2,11 +2,8 @@ import { Card } from "@neiist/ui";
 import type { Dictionary } from "@/i18n/dictionaries";
 import styles from "@/styles/components/shop/manage/overview/OverviewSummary.module.css";
 import type { OrderStatus } from "@/types/shop/orderStatus";
-import { formatMoney } from "@/utils/shop/moneyUtils";
 import {
-  formatMetric,
-  type OverviewDiscounts,
-  type OverviewMetric,
+  formatCount,
   type OverviewRow,
   type OverviewSummary as Summary,
   type OverviewTotals,
@@ -15,29 +12,13 @@ import {
 interface OverviewSummaryProps {
   summary: Summary;
   statuses: OverviewRow[];
-  discounts: OverviewDiscounts | null;
-  metric: OverviewMetric;
   dict: Dictionary["shop_overview"];
 }
 
-export default function OverviewSummary({
-  summary,
-  statuses,
-  discounts,
-  metric,
-  dict,
-}: OverviewSummaryProps) {
-  const getValue = (row: OverviewRow) => (metric === "amount" ? row.amount : row.units);
-  const statusTotal = statuses.reduce((acc, row) => acc + getValue(row), 0);
+export default function OverviewSummary({ summary, statuses, dict }: OverviewSummaryProps) {
+  const totalUnits = statuses.reduce((acc, row) => acc + row.units, 0);
 
-  const counts = (totals: OverviewTotals) => (
-    <span className={styles.counts}>
-      <span>{dict.units_count.replace("{count}", String(totals.units))}</span>
-      <span>{dict.orders_count.replace("{count}", String(totals.orders))}</span>
-    </span>
-  );
-
-  const figures = [
+  const figures: Array<{ id: string; label: string; totals: OverviewTotals }> = [
     { id: "paid", label: dict.summary_paid, totals: summary.paid },
     { id: "pending", label: dict.summary_pending, totals: summary.pending },
     { id: "cancelled", label: dict.summary_cancelled, totals: summary.cancelled },
@@ -45,18 +26,25 @@ export default function OverviewSummary({
 
   return (
     <Card className={styles.card}>
+      <Card.Header title={dict.orders_title} />
       <Card.Body className={styles.body}>
         <div className={styles.figures}>
           <div className={styles.headline}>
-            <span className={styles.caption}>{dict.summary_total}</span>
-            <strong className={styles.total}>{formatMoney(summary.total.amount)}</strong>
-            {counts(summary.total)}
+            <strong className={styles.total}>{summary.total.units}</strong>
+            <span className={styles.caption}>
+              {dict.summary_total.replace(
+                "{orders}",
+                formatCount(summary.total.orders, dict.orders_count_one, dict.orders_count)
+              )}
+            </span>
           </div>
           {figures.map((figure) => (
             <div key={figure.id} className={styles.figure} data-status={figure.id}>
               <span className={styles.caption}>{figure.label}</span>
-              <strong className={styles.amount}>{formatMoney(figure.totals.amount)}</strong>
-              {counts(figure.totals)}
+              <strong className={styles.amount}>{figure.totals.units}</strong>
+              <span className={styles.counts}>
+                {formatCount(figure.totals.orders, dict.orders_count_one, dict.orders_count)}
+              </span>
             </div>
           ))}
         </div>
@@ -67,8 +55,8 @@ export default function OverviewSummary({
               key={row.key}
               className={styles.segment}
               data-status={row.key as OrderStatus}
-              style={{ flexGrow: getValue(row) }}
-              title={`${row.label}: ${formatMetric(getValue(row), metric)}`}
+              style={{ flexGrow: row.units }}
+              title={`${row.label}: ${row.units}`}
             />
           ))}
         </div>
@@ -78,34 +66,13 @@ export default function OverviewSummary({
             <li key={row.key} className={styles.legendItem}>
               <span className={styles.dot} data-status={row.key as OrderStatus} />
               <span>{row.label}</span>
-              <strong>{formatMetric(getValue(row), metric)}</strong>
+              <strong>{row.units}</strong>
               <span className={styles.legendShare}>
-                {statusTotal > 0 ? Math.round((getValue(row) / statusTotal) * 100) : 0}%
+                {totalUnits > 0 ? Math.round((row.units / totalUnits) * 100) : 0}%
               </span>
             </li>
           ))}
         </ul>
-
-        {discounts && discounts.orders > 0 && (
-          <div className={styles.discounts}>
-            <p>
-              {dict.discounts_text
-                .replace("{amount}", formatMoney(discounts.amount))
-                .replace("{count}", String(discounts.orders))
-                .replace("{net}", formatMoney(discounts.netPaidAmount))}
-            </p>
-            <ul>
-              {discounts.codes.map((code) => (
-                <li key={code.code}>
-                  <strong>{code.code}</strong>
-                  {dict.discount_code_line
-                    .replace("{count}", String(code.orders))
-                    .replace("{amount}", formatMoney(code.amount))}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
       </Card.Body>
     </Card>
   );
