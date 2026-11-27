@@ -158,6 +158,7 @@
     "delete_error": "Failed to remove reader"
   },
   "orders_table": {
+    "overview_link": "Overview",
     "title": "Orders",
     "archive_title": "Orders (Archive)",
     "archive": "Archive",
@@ -1097,7 +1098,6 @@
     "pos_management_link": "POS Management",
     "discounts_link": "Discount Codes",
     "schedules_link": "Campus Schedules",
-    "overview_link": "Overview",
     "add_product": "Add Product",
     "search_placeholder": "Search product...",
     "filters_button": "Filters",
@@ -1177,7 +1177,7 @@
   },
   "shop_overview": {
     "title": "Overview",
-    "back": "Back to Inventory",
+    "back": "Back to Orders",
     "period_all": "All orders,",
     "period_from": "Orders since {from},",
     "period_to": "Orders until {to},",

@@ -2,13 +2,12 @@ import { Suspense } from "react";
 import ShopManagement from "@/components/shop/manage/ShopManagement";
 import { getAllProductsAdmin, getAllCategories } from "@/lib/db/repositories/shop.repository";
 import { requirePermission } from "@/lib/auth";
-import { hasPermission } from "@/lib/security/permissions";
 import GlobalLoading from "@/app/loading";
 import { getDictionary } from "@/i18n/dictionaries";
 import { defaultLocale, isValidLocale, LocaleParams } from "@/i18n/i18n-config";
 
 async function ShopManageContent({ params }: { params: LocaleParams }) {
-  const { user } = await requirePermission(["shop:read", "shop:write"], { match: "any" });
+  await requirePermission(["shop:read", "shop:write"], { match: "any" });
 
   const { locale: rawLocale } = await params;
   const locale = isValidLocale(rawLocale) ? rawLocale : defaultLocale;
@@ -22,7 +21,6 @@ async function ShopManageContent({ params }: { params: LocaleParams }) {
       categories={categories}
       dict={dict.shop_management}
       basePath={`/${locale}`}
-      canViewOverview={hasPermission(user, "orders:read")}
     />
   );
 }

@@ -146,7 +146,7 @@ export default function ShopOverview({
         variant="ghost"
         color="neutral"
         className={styles.backBtn}
-        onClick={() => router.push(`${basePath}/shop/manage`)}>
+        onClick={() => router.push(`${basePath}/orders`)}>
         <FaArrowLeft /> {dict.back}
       </Button>
 

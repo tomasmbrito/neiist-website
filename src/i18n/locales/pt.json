@@ -158,6 +158,7 @@
     "delete_error": "Falha ao remover leitor"
   },
   "orders_table": {
+    "overview_link": "Visão Geral",
     "title": "Encomendas",
     "archive_title": "Encomendas (Arquivo)",
     "archive": "Arquivo",
@@ -1092,7 +1093,6 @@
     "pos_management_link": "Gestão POS",
     "discounts_link": "Códigos de Desconto",
     "schedules_link": "Horários dos Campi",
-    "overview_link": "Visão Geral",
     "add_product": "Adicionar Produto",
     "search_placeholder": "Pesquisar produto...",
     "filters_button": "Filtros",
@@ -1172,7 +1172,7 @@
   },
   "shop_overview": {
     "title": "Visão Geral",
-    "back": "Voltar ao Inventário",
+    "back": "Voltar às Encomendas",
     "period_all": "Todas as encomendas,",
     "period_from": "Encomendas desde {from},",
     "period_to": "Encomendas até {to},",
