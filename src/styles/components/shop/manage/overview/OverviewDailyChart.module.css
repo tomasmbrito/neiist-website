@@ -1,0 +1,76 @@
+.card {
+  min-width: 0;
+}
+
+.chart {
+  position: relative;
+  padding-top: 1.25rem;
+}
+
+.maxLabel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-size: 0.75rem;
+  color: var(--light-foreground-colour);
+  font-variant-numeric: tabular-nums;
+}
+
+.columns {
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+  height: 12rem;
+  margin: 0;
+  padding: 0 0 1.5rem;
+  list-style: none;
+  border-top: 1px dashed var(--ui-border);
+  overflow-x: auto;
+}
+
+.column {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.paid,
+.pending {
+  display: block;
+  width: 100%;
+  background: var(--ui-primary);
+}
+
+.paid {
+  border-radius: 0 0 2px 2px;
+}
+
+.pending {
+  opacity: 0.35;
+  border-radius: 3px 3px 0 0;
+}
+
+.column:hover .paid,
+.column:hover .pending {
+  background: var(--ui-secondary);
+}
+
+.axisLabel {
+  position: absolute;
+  bottom: -1.5rem;
+  left: 0;
+  font-size: 0.6875rem;
+  color: var(--light-foreground-colour);
+  white-space: nowrap;
+}

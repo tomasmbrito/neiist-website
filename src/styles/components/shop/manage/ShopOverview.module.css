@@ -1,0 +1,166 @@
+.container {
+  margin: 0 4rem 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  min-width: 0;
+}
+
+.backBtn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.title {
+  margin: 0;
+}
+
+.period {
+  margin: 0;
+  color: var(--light-foreground-colour);
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem 1.5rem;
+}
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem;
+}
+
+.dateField {
+  width: 10.5rem;
+}
+
+.productField {
+  width: 15rem;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.metricToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.25rem 0.25rem 0.75rem;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-full);
+  background: var(--ui-surface);
+  color: var(--light-foreground-colour);
+  font-size: 0.875rem;
+}
+
+.metricToggle > span {
+  margin-right: 0.25rem;
+}
+
+.legend {
+  display: flex;
+  gap: 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--light-foreground-colour);
+  font-size: 0.875rem;
+}
+
+.legendPaid,
+.legendPending {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.legendPaid::before,
+.legendPending::before {
+  content: "";
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-primary);
+}
+
+.legendPending::before {
+  opacity: 0.35;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--foreground-colour);
+}
+
+.matrixGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr));
+  gap: 1.5rem;
+}
+
+.breakdownGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  align-items: start;
+  gap: 1.5rem;
+}
+
+@media (max-width: 1024px) {
+  .container {
+    margin: 0 2rem 3rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .container {
+    margin: 0 1rem 2rem;
+    gap: 1.25rem;
+  }
+
+  .fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .dateField,
+  .productField {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .productField {
+    grid-column: 1 / -1;
+  }
+}

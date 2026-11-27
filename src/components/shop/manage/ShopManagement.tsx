@@ -12,7 +12,15 @@ import {
 import { useRouter } from "next/navigation";
 import { pt } from "date-fns/locale";
 import { FaEdit, FaPlus } from "react-icons/fa";
-import { FiClock, FiEye, FiEyeOff, FiPackage, FiSliders, FiTrash2 } from "react-icons/fi";
+import {
+  FiBarChart2,
+  FiClock,
+  FiEye,
+  FiEyeOff,
+  FiPackage,
+  FiSliders,
+  FiTrash2,
+} from "react-icons/fi";
 import { MdOutlineDiscount } from "react-icons/md";
 import { TbFilter } from "react-icons/tb";
 import {
@@ -62,6 +70,7 @@ interface ShopManagementProps {
   categories: Category[];
   dict: Dictionary["shop_management"];
   basePath?: string;
+  canViewOverview?: boolean;
 }
 
 type FilterKey = "category" | "productType" | "channels" | "stock" | "status";
@@ -100,6 +109,7 @@ export default function ShopManagement({
   categories,
   dict,
   basePath,
+  canViewOverview = false,
 }: ShopManagementProps) {
   const router = useRouter();
   const [productList, setProductList] = useState(products);
@@ -542,6 +552,14 @@ export default function ShopManagement({
               </div>
 
               <div className={styles.rightControls}>
+                {canViewOverview && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.push(`${basePath || ""}/shop/manage/overview`)}>
+                    <FiBarChart2 /> {dict.overview_link}
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"

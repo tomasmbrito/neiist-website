@@ -135,6 +135,10 @@ export function isColorKey(key?: string): boolean {
   return !!key && COLOR_KEYS.has(key.trim().toLowerCase());
 }
 
+export function isSizeKey(key?: string): boolean {
+  return !!key && SIZE_KEYS.has(key.trim().toLowerCase());
+}
+
 export function getColorFromOptions(
   options?: Record<string, string> | null,
   label?: string | null
