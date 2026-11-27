@@ -1,0 +1,150 @@
+.card {
+  --status-pending: var(--ui-warning);
+  --status-paid: var(--ui-primary);
+  --status-ready: var(--ui-tertiary);
+  --status-delivered: var(--ui-success);
+  --status-cancelled: var(--ui-border);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.figures {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1.3fr) repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.headline,
+.figure {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.figure {
+  padding-left: 1rem;
+  border-left: 3px solid var(--figure-colour);
+}
+
+.figure[data-status="paid"] {
+  --figure-colour: var(--status-paid);
+}
+
+.figure[data-status="pending"] {
+  --figure-colour: var(--status-pending);
+}
+
+.figure[data-status="cancelled"] {
+  --figure-colour: var(--status-cancelled);
+}
+
+.caption {
+  color: var(--light-foreground-colour);
+  font-size: 0.8125rem;
+}
+
+.total {
+  font-size: 2.25rem;
+  line-height: 1.1;
+  color: var(--foreground-colour);
+  font-variant-numeric: tabular-nums;
+}
+
+.amount {
+  font-size: 1.35rem;
+  line-height: 1.2;
+  color: var(--foreground-colour);
+  font-variant-numeric: tabular-nums;
+}
+
+.counts {
+  color: var(--light-foreground-colour);
+  font-size: 0.75rem;
+}
+
+.statusBar {
+  display: flex;
+  gap: 3px;
+  height: 0.75rem;
+  border-radius: var(--ui-radius-full);
+  overflow: hidden;
+  background: var(--ui-bg-hover);
+}
+
+.segment {
+  flex-basis: 0;
+  min-width: 0;
+  background: var(--segment-colour);
+}
+
+.segment[data-status="pending"],
+.dot[data-status="pending"] {
+  --segment-colour: var(--status-pending);
+}
+
+.segment[data-status="paid"],
+.dot[data-status="paid"] {
+  --segment-colour: var(--status-paid);
+}
+
+.segment[data-status="ready"],
+.dot[data-status="ready"] {
+  --segment-colour: var(--status-ready);
+}
+
+.segment[data-status="delivered"],
+.dot[data-status="delivered"] {
+  --segment-colour: var(--status-delivered);
+}
+
+.segment[data-status="cancelled"],
+.dot[data-status="cancelled"] {
+  --segment-colour: var(--status-cancelled);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--foreground-colour);
+}
+
+.dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--ui-radius-full);
+  background: var(--segment-colour);
+}
+
+.legendShare {
+  color: var(--light-foreground-colour);
+}
+
+@media (max-width: 600px) {
+  .figures {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .headline {
+    grid-column: 1 / -1;
+  }
+
+  .figure {
+    padding-left: 0.75rem;
+  }
+}

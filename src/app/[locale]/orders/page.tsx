@@ -33,6 +33,7 @@ async function OrdersManagementContent({ params, searchParams }: PageProps) {
   const canEditOrder = hasPermission(user, "orders:write");
   const canDeliver = hasPermission(user, "orders:deliver") || canEditOrder;
   const canDeleteOrder = hasPermission(user, "orders:delete");
+  const canViewOverview = hasPermission(user, "orders:read");
 
   const [allOrders, products] = await Promise.all([getAllOrders(), getAllProducts(true)]);
 
@@ -58,6 +59,7 @@ async function OrdersManagementContent({ params, searchParams }: PageProps) {
         isArchive={isArchive}
         canEdit={canEditOrder}
         canOverride={canDeleteOrder}
+        canViewOverview={canViewOverview}
       />
       {selectedOrder && (
         <OrderDetailOverlay

@@ -12,7 +12,15 @@ import {
 import { useRouter } from "next/navigation";
 import { pt } from "date-fns/locale";
 import { FaEdit, FaPlus } from "react-icons/fa";
-import { FiClock, FiEye, FiEyeOff, FiPackage, FiSliders, FiTrash2 } from "react-icons/fi";
+import {
+  FiClock,
+  FiDollarSign,
+  FiEye,
+  FiEyeOff,
+  FiPackage,
+  FiSliders,
+  FiTrash2,
+} from "react-icons/fi";
 import { MdOutlineDiscount } from "react-icons/md";
 import { TbFilter } from "react-icons/tb";
 import {
@@ -25,6 +33,7 @@ import {
   DataTable,
   DropdownMenu,
   EmptyState,
+  InputDialog,
   SearchInput,
   Stack,
   TableToolbar,
@@ -34,6 +43,7 @@ import {
 import {
   changeProductStockAction,
   deleteProductAction,
+  setProductCostAction,
   setProductSalesEnabledAction,
 } from "@/actions/shop/products";
 import ProductImage from "@/components/shop/catalog/ProductImage";
@@ -59,6 +69,7 @@ const STATUS_BADGE_VARIANT: Record<
 
 interface ShopManagementProps {
   products: Product[];
+  costs: Record<number, number>;
   categories: Category[];
   dict: Dictionary["shop_management"];
   basePath?: string;
@@ -97,6 +108,7 @@ function getStockSortValue(product: Product): number {
 
 export default function ShopManagement({
   products,
+  costs,
   categories,
   dict,
   basePath,
@@ -110,6 +122,8 @@ export default function ShopManagement({
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [pendingAction, setPendingAction] = useState<ConfirmAction | null>(null);
   const [stockDrawerProductId, setStockDrawerProductId] = useState<number | null>(null);
+  const [costList, setCostList] = useState(costs);
+  const [costProduct, setCostProduct] = useState<Product | null>(null);
   const filterButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -391,6 +405,17 @@ export default function ShopManagement({
         ),
       },
       {
+        id: "cost",
+        header: dict.col_cost,
+        align: "end",
+        cell: (product) =>
+          product.id in costList ? (
+            formatMoney(costList[product.id])
+          ) : (
+            <span className={styles.descriptionCell}>{dict.cost_missing}</span>
+          ),
+      },
+      {
         id: "stock",
         header: dict.col_stock,
         sortable: true,
@@ -433,8 +458,33 @@ export default function ShopManagement({
         },
       },
     ],
-    [dict, openColumnFilter, statusLabels]
+    [costList, dict, openColumnFilter, statusLabels]
   );
+
+  const handleCostSave = async (value: string) => {
+    if (!costProduct) return;
+    const product = costProduct;
+    const trimmed = value.trim().replace(",", ".");
+    const cost = trimmed === "" ? null : Number(trimmed);
+    if (cost !== null && (!Number.isFinite(cost) || cost < 0)) {
+      Alert.error(dict.cost_invalid);
+      return;
+    }
+
+    setCostProduct(null);
+    try {
+      await setProductCostAction(product.id, cost);
+      setCostList((prev) => {
+        const next = { ...prev };
+        if (cost === null) delete next[product.id];
+        else next[product.id] = cost;
+        return next;
+      });
+      Alert.success(dict.cost_saved);
+    } catch (err: unknown) {
+      Alert.error(err instanceof Error ? err.message : dict.error_generic);
+    }
+  };
 
   const renderRowActions = useCallback(
     (product: Product) => {
@@ -450,6 +500,11 @@ export default function ShopManagement({
             icon={<FiSliders size={14} />}
             onClick={() => setStockDrawerProductId(product.id)}>
             {dict.manage_stock}
+          </DropdownMenu.Item>
+          <DropdownMenu.Item
+            icon={<FiDollarSign size={14} />}
+            onClick={() => setCostProduct(product)}>
+            {dict.set_cost}
           </DropdownMenu.Item>
           <DropdownMenu.Divider />
           {salesEnabled ? (
@@ -492,6 +547,22 @@ export default function ShopManagement({
         isDestructive={pendingAction?.type === "delete" || pendingAction?.type === "disable_sales"}
         onConfirm={runConfirmAction}
         onCancel={() => setPendingAction(null)}
+      />
+
+      <InputDialog
+        open={Boolean(costProduct)}
+        title={dict.cost_dialog_title.replace("{product}", costProduct?.name ?? "")}
+        label={dict.col_cost}
+        hint={dict.cost_dialog_hint}
+        type="number"
+        initialValue={
+          costProduct && costProduct.id in costList ? costList[costProduct.id].toFixed(2) : ""
+        }
+        placeholder="0.00"
+        confirmLabel={dict.confirm_dialog.confirm}
+        cancelLabel={dict.confirm_dialog.cancel}
+        onConfirm={(value) => void handleCostSave(value)}
+        onCancel={() => setCostProduct(null)}
       />
 
       <InventoryStockDrawer

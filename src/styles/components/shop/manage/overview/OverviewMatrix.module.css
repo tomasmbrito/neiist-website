@@ -1,0 +1,95 @@
+.card {
+  min-width: 0;
+}
+
+.scroll {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th {
+  font-weight: var(--ui-font-weight-regular);
+  font-size: 0.8125rem;
+  color: var(--light-foreground-colour);
+  text-align: center;
+  padding: 0.25rem;
+}
+
+.corner {
+  text-align: left !important;
+}
+
+.rowHead {
+  text-align: left !important;
+  white-space: nowrap;
+  color: var(--foreground-colour) !important;
+  font-size: 0.875rem !important;
+}
+
+.rowHead > span {
+  margin-right: 0.5rem;
+  vertical-align: middle;
+}
+
+.cell,
+.emptyCell,
+.totalCell,
+.grandTotal {
+  min-width: 2.75rem;
+  height: 2.5rem;
+  border-radius: var(--ui-radius-md);
+  text-align: center;
+}
+
+.cell {
+  background: color-mix(in srgb, var(--ui-primary) var(--heat), transparent);
+  color: var(--foreground-colour);
+}
+
+.cell[data-strong] {
+  color: var(--ui-text-on-colour);
+  font-weight: var(--ui-font-weight-bold);
+}
+
+.emptyCell {
+  color: var(--light-foreground-colour);
+  background: var(--ui-bg-hover);
+}
+
+.totalCell,
+.grandTotal {
+  font-weight: var(--ui-font-weight-bold);
+  color: var(--foreground-colour);
+}
+
+.totalHead {
+  color: var(--foreground-colour) !important;
+}
+
+.grandTotal {
+  background: var(--ui-bg-hover);
+}
+
+@media (max-width: 600px) {
+  .table {
+    border-spacing: 2px;
+  }
+
+  .cell,
+  .emptyCell,
+  .totalCell,
+  .grandTotal {
+    min-width: 2rem;
+    height: 2.25rem;
+  }
+
+  .colourName {
+    display: none;
+  }
+}

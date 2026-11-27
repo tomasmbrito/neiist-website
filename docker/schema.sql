@@ -540,6 +540,14 @@ CREATE TABLE neiist.product_variant_options (
 -- Index for better search performance on products variants
 CREATE INDEX idx_product_variants_product ON neiist.product_variants(product_id);
 
+-- PRODUCT COSTS (what NEIIST pays per unit; kept out of the public product data)
+CREATE TABLE neiist.product_costs (
+  product_id INTEGER PRIMARY KEY REFERENCES neiist.products(id) ON DELETE CASCADE,
+  unit_cost NUMERIC(10,2) NOT NULL CHECK (unit_cost >= 0),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by VARCHAR(10) REFERENCES neiist.users(istid) ON DELETE SET NULL
+);
+
 -- ORDER NUMBER GENERATOR
 CREATE SEQUENCE neiist.order_sequence;
 
@@ -3245,6 +3253,35 @@ RETURNS TABLE (
 ) AS $$
 BEGIN
   RETURN QUERY SELECT c.id, c.name FROM neiist.categories c ORDER BY c.name;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Product costs
+CREATE OR REPLACE FUNCTION neiist.get_product_costs()
+RETURNS TABLE (
+  product_id INTEGER,
+  unit_cost NUMERIC(10,2)
+) AS $$
+BEGIN
+  RETURN QUERY SELECT pc.product_id, pc.unit_cost FROM neiist.product_costs pc;
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION neiist.set_product_cost(
+  p_product_id INTEGER,
+  p_unit_cost NUMERIC(10,2),
+  p_updated_by VARCHAR(10)
+) RETURNS VOID AS $$
+BEGIN
+  IF p_unit_cost IS NULL THEN
+    DELETE FROM neiist.product_costs pc WHERE pc.product_id = p_product_id;
+    RETURN;
+  END IF;
+
+  INSERT INTO neiist.product_costs (product_id, unit_cost, updated_by)
+  VALUES (p_product_id, p_unit_cost, p_updated_by)
+  ON CONFLICT (product_id) DO UPDATE
+    SET unit_cost = EXCLUDED.unit_cost, updated_at = NOW(), updated_by = EXCLUDED.updated_by;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

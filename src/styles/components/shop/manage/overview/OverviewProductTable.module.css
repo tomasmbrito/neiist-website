@@ -1,0 +1,29 @@
+.stacked {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+
+.stacked > span {
+  font-size: 0.75rem;
+  color: var(--light-foreground-colour);
+}
+
+.gain {
+  color: var(--ui-success);
+}
+
+.loss {
+  color: var(--ui-danger);
+}
+
+.missing {
+  color: var(--light-foreground-colour);
+}
+
+@media (max-width: 768px) {
+  .stacked {
+    align-items: flex-start;
+  }
+}

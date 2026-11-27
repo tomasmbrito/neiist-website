@@ -30,6 +30,7 @@ import {
   StockChangeInput,
 } from "@/types/shop/product";
 import { encodeVariantOptionsForStorage } from "@/utils/shop/shopUtils";
+import { parseDbNumeric } from "@/utils/shop/moneyUtils";
 import { db_query } from "@/lib/db/connection";
 import { cacheTag, revalidateTag } from "next/cache";
 
@@ -38,6 +39,21 @@ export const getAllCategories = async (): Promise<Category[]> => {
   cacheTag("categories");
   const { rows } = await db_query<Category>("SELECT * FROM neiist.get_all_categories()");
   return rows;
+};
+
+export const getProductCosts = async (): Promise<Record<number, number>> => {
+  const { rows } = await db_query<{ product_id: number; unit_cost: string }>(
+    "SELECT * FROM neiist.get_product_costs()"
+  );
+  return Object.fromEntries(rows.map((row) => [row.product_id, parseDbNumeric(row.unit_cost)]));
+};
+
+export const setProductCost = async (
+  productId: number,
+  unitCost: number | null,
+  updatedBy: string
+): Promise<void> => {
+  await db_query("SELECT neiist.set_product_cost($1, $2, $3)", [productId, unitCost, updatedBy]);
 };
 
 export const addCategory = async (name: string): Promise<Category | null> => {

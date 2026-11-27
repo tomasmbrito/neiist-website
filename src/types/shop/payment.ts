@@ -17,6 +17,19 @@ export const isPaymentMethod = (value: unknown): value is PaymentMethod =>
   typeof value === "string" && (PAYMENT_METHODS as readonly string[]).includes(value);
 
 /**
+ * Provider fees charged per payment, used to estimate the shop's profit.
+ * fee = (amount * rate + fixed) * (1 + vat). Online card and Apple Pay share the SumUp online rate.
+ */
+export const PAYMENT_FEES: Record<PaymentMethod, { rate: number; fixed: number; vat: number }> = {
+  cash: { rate: 0, fixed: 0, vat: 0 },
+  "sumup-tpa": { rate: 0.015, fixed: 0, vat: 0 },
+  sumup: { rate: 0.0275, fixed: 0, vat: 0 },
+  "apple-pay": { rate: 0.0275, fixed: 0, vat: 0 },
+  mbway: { rate: 0.007, fixed: 0.07, vat: 0.23 },
+  other: { rate: 0, fixed: 0, vat: 0 },
+};
+
+/**
  * Provider-independent payment methods persisted by PostgreSQL.
  */
 export const DB_PAYMENT_METHODS = [

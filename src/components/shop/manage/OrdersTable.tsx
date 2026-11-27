@@ -17,6 +17,7 @@ import {
   FiXCircle,
   FiChevronDown,
   FiEdit2,
+  FiBarChart2,
 } from "react-icons/fi";
 import { TbFilter, TbTableExport } from "react-icons/tb";
 import { getCompactProductsSummary } from "@/utils/shop/shopUtils";
@@ -92,6 +93,7 @@ interface OrdersTableProps {
   isArchive?: boolean;
   canEdit?: boolean;
   canOverride?: boolean;
+  canViewOverview?: boolean;
 }
 
 interface FilterState {
@@ -109,6 +111,7 @@ export default function OrdersTable({
   isArchive = false,
   canEdit = false,
   canOverride = false,
+  canViewOverview = false,
 }: OrdersTableProps) {
   const router = useRouter();
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -632,6 +635,15 @@ export default function OrdersTable({
             />
           </div>
           <div className={styles.rightControls}>
+            {canViewOverview && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`${basePath || ""}/orders/overview`)}>
+                <FiBarChart2 />
+                {dict.overview_link}
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
