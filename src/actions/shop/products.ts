@@ -195,6 +195,7 @@ export async function setProductCostAction(
     unitCost === null ? null : Math.round(unitCost * 100) / 100,
     user.istid
   );
+  revalidatePath("/[locale]/shop/manage", "page");
   revalidatePath("/[locale]/orders/overview", "page");
 }
 

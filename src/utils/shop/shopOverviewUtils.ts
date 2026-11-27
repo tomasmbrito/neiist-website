@@ -100,7 +100,6 @@ export interface OverviewFinance {
   paid: OverviewFinanceTotals;
   expected: OverviewFinanceTotals;
   pendingNet: number;
-  discountCodes: Array<{ code: string; orders: number; amount: number }>;
   missingCost: Array<{ productId: number; name: string }>;
 }
 
@@ -111,15 +110,6 @@ export interface OverviewProductFinance extends OverviewFinanceTotals {
   paidUnits: number;
   averagePrice: number;
   unitCost: number | null;
-}
-
-export interface OverviewFeeRow {
-  key: string;
-  label: string;
-  payments: number;
-  amount: number;
-  fees: number;
-  rate: number;
 }
 
 interface GroupKey {
@@ -274,18 +264,6 @@ function sumFinance(lines: OverviewLine[]): OverviewFinanceTotals {
 
 export function summarizeFinance(lines: OverviewLine[]): OverviewFinance {
   const active = lines.filter((line) => line.bucket !== "cancelled");
-  const orders = new Map(active.map((line) => [line.order.order_number, line.order]));
-
-  const codes = new Map<string, { code: string; orders: number; cents: number }>();
-  orders.forEach((order) => {
-    const cents = toCents(order.discount_amount);
-    if (cents <= 0) return;
-    const code = order.discount_code ?? "—";
-    const entry = codes.get(code) ?? { code, orders: 0, cents: 0 };
-    entry.orders += 1;
-    entry.cents += cents;
-    codes.set(code, entry);
-  });
 
   const missingCost = new Map<number, string>();
   active.forEach(({ item, unitCost }) => {
@@ -300,9 +278,6 @@ export function summarizeFinance(lines: OverviewLine[]): OverviewFinance {
         .filter((line) => line.bucket === "pending")
         .reduce((acc, line) => acc + line.netCents, 0)
     ),
-    discountCodes: [...codes.values()]
-      .map(({ code, orders: count, cents }) => ({ code, orders: count, amount: fromCents(cents) }))
-      .sort((a, b) => b.amount - a.amount),
     missingCost: [...missingCost.entries()].map(([productId, name]) => ({ productId, name })),
   };
 }
@@ -336,32 +311,27 @@ export function groupProductFinance(lines: OverviewLine[]): OverviewProductFinan
     .sort((a, b) => b.units - a.units);
 }
 
-export function groupFeesByMethod(
-  lines: OverviewLine[],
-  labels: Record<PaymentMethod, string>
-): OverviewFeeRow[] {
-  const methods = new Map<PaymentMethod, { orders: Set<string>; net: number; fees: number }>();
+/** Fees paid per payment method, with the share of the money they took. */
+export function summarizeFeesByMethod(
+  lines: OverviewLine[]
+): Record<string, { fees: number; rate: number }> {
+  const methods = new Map<string, { net: number; fees: number }>();
   lines
     .filter((line) => line.bucket === "paid" && line.order.payment_method)
     .forEach((line) => {
-      const method = line.order.payment_method as PaymentMethod;
-      const entry = methods.get(method) ?? { orders: new Set<string>(), net: 0, fees: 0 };
-      entry.orders.add(line.order.order_number);
+      const method = line.order.payment_method as string;
+      const entry = methods.get(method) ?? { net: 0, fees: 0 };
       entry.net += line.netCents;
       entry.fees += line.feeCents;
       methods.set(method, entry);
     });
 
-  return [...methods.entries()]
-    .map(([method, entry]) => ({
-      key: method,
-      label: labels[method] ?? method,
-      payments: entry.orders.size,
-      amount: fromCents(entry.net),
-      fees: fromCents(entry.fees),
-      rate: entry.net > 0 ? entry.fees / entry.net : 0,
-    }))
-    .sort((a, b) => b.amount - a.amount);
+  return Object.fromEntries(
+    [...methods.entries()].map(([method, { net, fees }]) => [
+      method,
+      { fees: fromCents(fees), rate: net > 0 ? fees / net : 0 },
+    ])
+  );
 }
 
 export function summarizeOverview(lines: OverviewLine[]): OverviewSummary {

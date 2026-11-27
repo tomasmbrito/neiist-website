@@ -75,3 +75,21 @@
 .grandTotal {
   background: var(--ui-bg-hover);
 }
+
+@media (max-width: 600px) {
+  .table {
+    border-spacing: 2px;
+  }
+
+  .cell,
+  .emptyCell,
+  .totalCell,
+  .grandTotal {
+    min-width: 2rem;
+    height: 2.25rem;
+  }
+
+  .colourName {
+    display: none;
+  }
+}

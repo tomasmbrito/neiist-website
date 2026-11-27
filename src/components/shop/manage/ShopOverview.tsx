@@ -9,7 +9,6 @@ import { FiBarChart2 } from "react-icons/fi";
 import { Button, ColorfulText, DateInput, EmptyState, Field, Select } from "@neiist/ui";
 import OverviewBarList from "@/components/shop/manage/overview/OverviewBarList";
 import OverviewDailyChart from "@/components/shop/manage/overview/OverviewDailyChart";
-import OverviewFees from "@/components/shop/manage/overview/OverviewFees";
 import OverviewFinance from "@/components/shop/manage/overview/OverviewFinance";
 import OverviewMatrix from "@/components/shop/manage/overview/OverviewMatrix";
 import OverviewProductTable from "@/components/shop/manage/overview/OverviewProductTable";
@@ -21,6 +20,7 @@ import type { Order, OrderSource } from "@/types/shop/order";
 import type { OrderStatus } from "@/types/shop/orderStatus";
 import { RESERVATION, type PaymentMethod } from "@/types/shop/payment";
 import { getAcademicYearForDate, parseAcademicYearRange } from "@/utils/academicYearUtils";
+import { formatMoney } from "@/utils/shop/moneyUtils";
 import {
   buildOverviewLines,
   buildProductMatrices,
@@ -31,8 +31,8 @@ import {
   groupByOptions,
   groupByPaymentMethod,
   groupByStatus,
-  groupFeesByMethod,
   groupProductFinance,
+  summarizeFeesByMethod,
   summarizeFinance,
   summarizeOverview,
   type OverviewMetric,
@@ -64,7 +64,6 @@ function getPresetRange(preset: PeriodPreset): { from?: Date; to?: Date } {
 interface ShopOverviewProps {
   orders: Order[];
   costs: ProductCosts;
-  canEditCosts: boolean;
   locale: Locale;
   basePath: string;
   dict: Dictionary["shop_overview"];
@@ -76,7 +75,6 @@ interface ShopOverviewProps {
 export default function ShopOverview({
   orders,
   costs,
-  canEditCosts,
   locale,
   basePath,
   dict,
@@ -114,7 +112,7 @@ export default function ShopOverview({
       statuses: groupByStatus(lines, statusLabels),
       finance: summarizeFinance(lines),
       productFinance: groupProductFinance(lines),
-      fees: groupFeesByMethod(lines, paymentLabels),
+      fees: summarizeFeesByMethod(lines),
       matrices: buildProductMatrices(lines),
       options: groupByOptions(lines),
       campuses: groupByCampus(lines, dict.no_campus),
@@ -127,6 +125,21 @@ export default function ShopOverview({
       days: groupByDay(lines),
     }),
     [lines, statusLabels, paymentLabels, channelLabels, dict]
+  );
+
+  const paymentNotes = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(overview.fees)
+          .filter(([, { fees }]) => fees > 0)
+          .map(([method, { fees, rate }]) => [
+            method,
+            dict.fee_note
+              .replace("{amount}", formatMoney(fees))
+              .replace("{rate}", `${(rate * 100).toFixed(1)}%`),
+          ])
+      ),
+    [overview.fees, dict.fee_note]
   );
 
   const periodText = useMemo(() => {
@@ -161,7 +174,7 @@ export default function ShopOverview({
         variant="ghost"
         color="neutral"
         className={styles.backBtn}
-        onClick={() => router.push(`${basePath}/shop/manage`)}>
+        onClick={() => router.push(`${basePath}/orders`)}>
         <FaArrowLeft /> {dict.back}
       </Button>
 
@@ -229,19 +242,13 @@ export default function ShopOverview({
           <OverviewFinance
             finance={overview.finance}
             pendingUnits={overview.summary.pending.units}
+            inventoryHref={`${basePath}/shop/manage`}
             dict={dict}
           />
 
-          <OverviewProductTable
-            rows={overview.productFinance}
-            canEditCosts={canEditCosts}
-            dict={dict}
-          />
+          <OverviewProductTable rows={overview.productFinance} dict={dict} />
 
-          <div className={styles.ordersRow}>
-            <OverviewSummary summary={overview.summary} statuses={overview.statuses} dict={dict} />
-            <OverviewFees rows={overview.fees} dict={dict} />
-          </div>
+          <OverviewSummary summary={overview.summary} statuses={overview.statuses} dict={dict} />
 
           {overview.matrices.length > 0 && (
             <section className={styles.section}>
@@ -298,6 +305,7 @@ export default function ShopOverview({
               <OverviewBarList
                 title={dict.section_payment}
                 rows={overview.payments}
+                notes={paymentNotes}
                 metric={metric}
                 dict={dict}
               />

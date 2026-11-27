@@ -12,9 +12,17 @@ interface OverviewBarListProps {
   rows: OverviewRow[];
   metric: OverviewMetric;
   dict: Dictionary["shop_overview"];
+  /** Extra line shown under a row, by row key. */
+  notes?: Record<string, string>;
 }
 
-export default function OverviewBarList({ title, rows, metric, dict }: OverviewBarListProps) {
+export default function OverviewBarList({
+  title,
+  rows,
+  metric,
+  dict,
+  notes = {},
+}: OverviewBarListProps) {
   const getTotal = (row: OverviewRow) => (metric === "amount" ? row.amount : row.units);
   const getPaid = (row: OverviewRow) => (metric === "amount" ? row.paidAmount : row.paidUnits);
   const getPending = (row: OverviewRow) =>
@@ -66,6 +74,7 @@ export default function OverviewBarList({ title, rows, metric, dict }: OverviewB
                       </span>
                     )}
                   </div>
+                  {notes[row.key] && <p className={styles.note}>{notes[row.key]}</p>}
                 </li>
               );
             })}

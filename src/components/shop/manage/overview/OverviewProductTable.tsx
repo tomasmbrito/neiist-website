@@ -1,9 +1,7 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { Alert, Card, ColumnDef, DataTable, Input } from "@neiist/ui";
-import { setProductCostAction } from "@/actions/shop/products";
+import { useMemo } from "react";
+import { Card, ColumnDef, DataTable } from "@neiist/ui";
 import type { Dictionary } from "@/i18n/dictionaries";
 import styles from "@/styles/components/shop/manage/overview/OverviewProductTable.module.css";
 import { formatMoney } from "@/utils/shop/moneyUtils";
@@ -11,68 +9,10 @@ import type { OverviewProductFinance } from "@/utils/shop/shopOverviewUtils";
 
 interface OverviewProductTableProps {
   rows: OverviewProductFinance[];
-  canEditCosts: boolean;
   dict: Dictionary["shop_overview"];
 }
 
-interface CostInputProps {
-  row: OverviewProductFinance;
-  dict: Dictionary["shop_overview"];
-}
-
-function CostInput({ row, dict }: CostInputProps) {
-  const router = useRouter();
-  const [isSaving, startTransition] = useTransition();
-  const initial = row.unitCost === null ? "" : row.unitCost.toFixed(2);
-  const [value, setValue] = useState(initial);
-
-  const save = () => {
-    const trimmed = value.trim().replace(",", ".");
-    if (trimmed === initial) return;
-    const cost = trimmed === "" ? null : Number(trimmed);
-    if (cost !== null && (!Number.isFinite(cost) || cost < 0)) {
-      Alert.error(dict.cost_invalid);
-      setValue(initial);
-      return;
-    }
-
-    startTransition(async () => {
-      try {
-        await setProductCostAction(row.productId, cost);
-        Alert.success(dict.cost_saved.replace("{product}", row.label));
-        router.refresh();
-      } catch {
-        Alert.error(dict.cost_error);
-        setValue(initial);
-      }
-    });
-  };
-
-  return (
-    <div className={styles.costInput}>
-      <Input
-        type="text"
-        inputMode="decimal"
-        value={value}
-        placeholder={dict.cost_placeholder}
-        aria-label={dict.cost_label.replace("{product}", row.label)}
-        disabled={isSaving}
-        onChange={(event) => setValue(event.target.value)}
-        onBlur={save}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") event.currentTarget.blur();
-        }}
-      />
-      <span aria-hidden="true">€</span>
-    </div>
-  );
-}
-
-export default function OverviewProductTable({
-  rows,
-  canEditCosts,
-  dict,
-}: OverviewProductTableProps) {
+export default function OverviewProductTable({ rows, dict }: OverviewProductTableProps) {
   const columns = useMemo<ColumnDef<OverviewProductFinance>[]>(
     () => [
       {
@@ -128,11 +68,8 @@ export default function OverviewProductTable({
         header: dict.col_unit_cost,
         dataLabel: dict.col_unit_cost,
         align: "end",
-        width: "8.5rem",
         cell: (row) =>
-          canEditCosts && row.productId ? (
-            <CostInput key={row.unitCost ?? "none"} row={row} dict={dict} />
-          ) : row.unitCost === null ? (
+          row.unitCost === null ? (
             <span className={styles.missing}>{dict.cost_missing}</span>
           ) : (
             formatMoney(row.unitCost)
@@ -160,7 +97,7 @@ export default function OverviewProductTable({
           ),
       },
     ],
-    [canEditCosts, dict]
+    [dict]
   );
 
   return (

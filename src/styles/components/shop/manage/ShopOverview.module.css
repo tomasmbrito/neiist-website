@@ -72,13 +72,6 @@
   gap: 0.75rem 1rem;
 }
 
-.ordersRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
-  align-items: start;
-  gap: 1.5rem;
-}
-
 .metricToggle {
   display: inline-flex;
   align-items: center;
@@ -135,24 +128,24 @@
 
 .matrixGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr));
+  align-items: start;
   gap: 1.5rem;
 }
 
 .breakdownGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
-  align-items: start;
-  gap: 1.5rem;
+  columns: 3 20rem;
+  column-gap: 1.5rem;
+}
+
+.breakdownGrid > * {
+  break-inside: avoid;
+  margin-bottom: 1.5rem;
 }
 
 @media (max-width: 1024px) {
   .container {
     margin: 0 2rem 3rem;
-  }
-
-  .ordersRow {
-    grid-template-columns: 1fr;
   }
 }
 

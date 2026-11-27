@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Card } from "@neiist/ui";
 import type { Dictionary } from "@/i18n/dictionaries";
 import styles from "@/styles/components/shop/manage/overview/OverviewFinance.module.css";
@@ -7,6 +8,7 @@ import { formatCount, type OverviewFinance as Finance } from "@/utils/shop/shopO
 interface OverviewFinanceProps {
   finance: Finance;
   pendingUnits: number;
+  inventoryHref: string;
   dict: Dictionary["shop_overview"];
 }
 
@@ -14,7 +16,12 @@ function formatMargin(margin: number | null): string {
   return margin === null ? "—" : `${Math.round(margin * 100)}%`;
 }
 
-export default function OverviewFinance({ finance, pendingUnits, dict }: OverviewFinanceProps) {
+export default function OverviewFinance({
+  finance,
+  pendingUnits,
+  inventoryHref,
+  dict,
+}: OverviewFinanceProps) {
   const { expected, paid } = finance;
   const isLoss = expected.profit < 0;
 
@@ -95,32 +102,14 @@ export default function OverviewFinance({ finance, pendingUnits, dict }: Overvie
           </ul>
         </div>
 
-        {(finance.missingCost.length > 0 || finance.discountCodes.length > 0) && (
-          <div className={styles.footer}>
-            {finance.missingCost.length > 0 && (
-              <p className={styles.warning}>
-                {dict.finance_missing_cost.replace(
-                  "{products}",
-                  finance.missingCost.map((product) => product.name).join(", ")
-                )}
-              </p>
-            )}
-            {finance.discountCodes.length > 0 && (
-              <div className={styles.codes}>
-                <span>{dict.finance_codes}</span>
-                <ul>
-                  {finance.discountCodes.map((code) => (
-                    <li key={code.code}>
-                      <strong>{code.code}</strong>
-                      {dict.discount_code_line
-                        .replace("{count}", String(code.orders))
-                        .replace("{amount}", formatMoney(code.amount))}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
+        {finance.missingCost.length > 0 && (
+          <p className={styles.warning}>
+            {dict.finance_missing_cost.replace(
+              "{products}",
+              finance.missingCost.map((product) => product.name).join(", ")
+            )}{" "}
+            <Link href={inventoryHref}>{dict.finance_missing_cost_link}</Link>
+          </p>
         )}
       </Card.Body>
     </Card>

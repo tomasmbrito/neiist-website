@@ -17,9 +17,9 @@ export default function OverviewMatrix({ product, dict }: OverviewMatrixProps) {
       <Card.Header
         title={product.name}
         description={dict.matrix_subtitle
-          .replace("{rows}", matrix.rowName)
-          .replace("{cols}", matrix.colName)
-          .replace("{units}", formatCount(matrix.total, dict.units_count_one, dict.units_count))}
+          .replace("{units}", formatCount(matrix.total, dict.units_count_one, dict.units_count))
+          .replace("{rows}", matrix.rowName.toLowerCase())
+          .replace("{cols}", matrix.colName.toLowerCase())}
       />
       <Card.Body>
         <div className={styles.scroll}>
@@ -44,7 +44,7 @@ export default function OverviewMatrix({ product, dict }: OverviewMatrixProps) {
                 <tr key={row.key}>
                   <th scope="row" className={styles.rowHead}>
                     {row.hex && <ColorSwatch color={row.hex} size="sm" ariaLabel={row.label} />}
-                    {row.label}
+                    <span className={row.hex ? styles.colourName : undefined}>{row.label}</span>
                   </th>
                   {matrix.cols.map((col) => {
                     const value = matrix.cells[row.key]?.[col.key] ?? 0;
